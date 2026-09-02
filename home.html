@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Michael Krauklis</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600&display=swap');
+  :root{ --bg:#10131a; --ink:#e9e7de; --ink-dim:#9aa0ae; --amber:#e0a54c; --teal:#4fb3ab; --line:#2a3040; }
+  *{ box-sizing:border-box; }
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:'Inter', -apple-system, sans-serif; line-height:1.6;
+  }
+  .wrap{ max-width: 780px; margin: 0 auto; padding: 96px 24px; }
+  h1{ font-family:'Fraunces', Georgia, serif; font-weight:600; font-size: clamp(2rem,5vw,3rem); margin:0 0 8px; }
+  p.lede{ color: var(--ink-dim); max-width: 60ch; }
+  a{ color: var(--amber); text-decoration:none; }
+  a:hover{ text-decoration:underline; }
+  .links{ margin-top: 40px; display:flex; gap:20px; flex-wrap:wrap; }
+  .card{
+    border:1px solid var(--line); border-radius:8px; padding:20px;
+    flex:1; min-width:220px; background:#171b24;
+  }
+  .card h2{ font-family:'Fraunces', serif; font-weight:500; font-size:1.2rem; margin:0 0 6px; }
+  .card p{ color:var(--ink-dim); font-size:0.92rem; margin:0; }
+
+  .cert-grid{
+    display:grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap:20px;
+    margin-top:20px;
+    max-width: 520px;
+  }
+  @media (max-width: 560px){ .cert-grid{ grid-template-columns: repeat(2, 1fr); } }
+  .cert-badge{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    text-align:center;
+    gap:8px;
+  }
+  .cert-badge span{
+    font-size:0.76rem;
+    color:var(--ink-dim);
+    line-height:1.35;
+  }
+
+  .writing-list{
+    display:flex;
+    flex-direction:column;
+    gap:14px;
+    margin-top:16px;
+  }
+  .writing-item{
+    display:block;
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:16px 18px;
+    background:#171b24;
+    text-decoration:none;
+  }
+  .writing-item:hover{ border-color: var(--amber); }
+  .writing-item h3{
+    font-family:'Fraunces', serif;
+    font-weight:500;
+    font-size:1.02rem;
+    color:var(--ink);
+    margin:0 0 4px;
+  }
+  .writing-item p{
+    color:var(--ink-dim);
+    font-size:0.88rem;
+    margin:0;
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Michael Krauklis</h1>
+    <p class="lede">Chief Architect at Thryve Labs, building machine-learning vision systems for caregiving environments. Based in Rochester, NY, with a background spanning cloud architecture, AI/ML, and enterprise systems.</p>
+    <div class="links">
+      <div class="card">
+        <h2><a href="https://www.linkedin.com/in/mkrauklis/">LinkedIn</a></h2>
+        <p>Full background, experience, and professional history.</p>
+      </div>
+      <div class="card">
+        <h2><a href="/lab/">The Lab</a></h2>
+        <p>A growing collection of interactive tools — for example, Ridgeline, a Fourier-transform mountain silhouette reconstructor.</p>
+      </div>
+    </div>
+
+    <div style="margin-top:48px;">
+      <h2 style="font-size:1.1rem; color:var(--ink-dim); font-weight:600; font-family:'Inter',sans-serif; text-transform:none;">Certifications</h2>
+      <div class="cert-grid">
+
+        <div class="cert-badge">
+          <svg viewBox="0 0 80 92" width="56" height="64">
+            <polygon points="40,2 76,22 76,70 40,90 4,70 4,22" fill="none" stroke="var(--amber)" stroke-width="2.5"/>
+            <line x1="40" y1="28" x2="26" y2="52" stroke="var(--amber)" stroke-width="2" stroke-linecap="round"/>
+            <line x1="40" y1="28" x2="54" y2="52" stroke="var(--amber)" stroke-width="2" stroke-linecap="round"/>
+            <line x1="26" y1="52" x2="54" y2="52" stroke="var(--amber)" stroke-width="2" stroke-linecap="round"/>
+            <circle cx="40" cy="28" r="4.5" fill="var(--amber)"/>
+            <circle cx="26" cy="52" r="4.5" fill="var(--amber)"/>
+            <circle cx="54" cy="52" r="4.5" fill="var(--amber)"/>
+          </svg>
+          <span>Machine Learning<br>Specialty</span>
+        </div>
+
+        <div class="cert-badge">
+          <svg viewBox="0 0 80 92" width="56" height="64">
+            <polygon points="40,2 76,22 76,70 40,90 4,70 4,22" fill="none" stroke="var(--teal)" stroke-width="2.5"/>
+            <circle cx="40" cy="38" r="12" fill="none" stroke="var(--teal)" stroke-width="3"/>
+            <line x1="40" y1="50" x2="40" y2="64" stroke="var(--teal)" stroke-width="3" stroke-linecap="round"/>
+            <line x1="30" y1="58" x2="50" y2="58" stroke="var(--teal)" stroke-width="3" stroke-linecap="round"/>
+          </svg>
+          <span>ML Engineer<br>Associate</span>
+        </div>
+
+        <div class="cert-badge">
+          <svg viewBox="0 0 80 92" width="56" height="64">
+            <polygon points="40,2 76,22 76,70 40,90 4,70 4,22" fill="none" stroke="var(--amber)" stroke-width="2.5"/>
+            <rect x="28" y="30" width="24" height="24" rx="3" fill="none" stroke="var(--amber)" stroke-width="2.5"/>
+            <circle cx="40" cy="42" r="6" fill="none" stroke="var(--amber)" stroke-width="2"/>
+            <line x1="40" y1="22" x2="40" y2="30" stroke="var(--amber)" stroke-width="2.5" stroke-linecap="round"/>
+            <line x1="40" y1="54" x2="40" y2="62" stroke="var(--amber)" stroke-width="2.5" stroke-linecap="round"/>
+            <line x1="20" y1="42" x2="28" y2="42" stroke="var(--amber)" stroke-width="2.5" stroke-linecap="round"/>
+            <line x1="52" y1="42" x2="60" y2="42" stroke="var(--amber)" stroke-width="2.5" stroke-linecap="round"/>
+          </svg>
+          <span>AI Practitioner</span>
+        </div>
+
+        <div class="cert-badge">
+          <svg viewBox="0 0 80 92" width="56" height="64">
+            <polygon points="40,2 76,22 76,70 40,90 4,70 4,22" fill="none" stroke="var(--teal)" stroke-width="2.5"/>
+            <ellipse cx="40" cy="34" rx="14" ry="6" fill="none" stroke="var(--teal)" stroke-width="2.5"/>
+            <path d="M26 34 L26 52 Q26 58 40 58 Q54 58 54 52 L54 34" fill="none" stroke="var(--teal)" stroke-width="2.5"/>
+            <path d="M26 43 Q40 49 54 43" fill="none" stroke="var(--teal)" stroke-width="2.5"/>
+          </svg>
+          <span>Data Engineer<br>Associate</span>
+        </div>
+
+        <div class="cert-badge">
+          <svg viewBox="0 0 80 92" width="56" height="64">
+            <polygon points="40,2 76,22 76,70 40,90 4,70 4,22" fill="none" stroke="var(--amber)" stroke-width="2.5"/>
+            <path d="M24 54 L34 34 L46 34 L56 54" fill="none" stroke="var(--amber)" stroke-width="3" stroke-linejoin="round"/>
+            <line x1="20" y1="54" x2="60" y2="54" stroke="var(--amber)" stroke-width="3" stroke-linecap="round"/>
+          </svg>
+          <span>Solutions Architect<br>Associate</span>
+        </div>
+
+        <div class="cert-badge">
+          <svg viewBox="0 0 80 92" width="56" height="64">
+            <polygon points="40,2 76,22 76,70 40,90 4,70 4,22" fill="none" stroke="var(--teal)" stroke-width="2.5"/>
+            <circle cx="40" cy="42" r="10" fill="none" stroke="var(--teal)" stroke-width="2.5"/>
+            <line x1="40" y1="24" x2="40" y2="30" stroke="var(--teal)" stroke-width="2.5" stroke-linecap="round"/>
+            <line x1="40" y1="54" x2="40" y2="60" stroke="var(--teal)" stroke-width="2.5" stroke-linecap="round"/>
+            <line x1="22" y1="42" x2="28" y2="42" stroke="var(--teal)" stroke-width="2.5" stroke-linecap="round"/>
+            <line x1="52" y1="42" x2="58" y2="42" stroke="var(--teal)" stroke-width="2.5" stroke-linecap="round"/>
+          </svg>
+          <span>SysOps Administrator<br>Associate</span>
+        </div>
+
+      </div>
+      <p style="margin-top:20px;"><a href="https://www.linkedin.com/in/mkrauklis/details/certifications/">See all certifications on LinkedIn &rarr;</a></p>
+    </div>
+
+    <div style="margin-top:48px;">
+      <h2 style="font-size:1.1rem; color:var(--ink-dim); font-weight:600; font-family:'Inter',sans-serif; text-transform:none;">Engagement</h2>
+      <div class="writing-list">
+
+        <a class="writing-item" href="https://youtube.com/watch?v=scg6QJ66Vxs">
+          <h3>Howdy Partner (AWS Partner Webinar Series)</h3>
+          <p>Presented on AI and machine learning as part of AWS's Howdy Partner series — a platform reserved for AWS's top-tier partners.</p>
+        </a>
+
+        <a class="writing-item" href="https://aws.amazon.com/blogs/apn/empirical-approach-to-improving-performance-and-reducing-costs-with-amazon-athena/">
+          <h3>An Empirical Approach to Improving Performance and Reducing Costs with Amazon Athena</h3>
+          <p>AWS Partner Network blog.</p>
+        </a>
+
+        <a class="writing-item" href="https://aws.amazon.com/blogs/apn/best-practices-from-innovative-solutions-for-migrating-databases-in-aws-amplify-deployments/">
+          <h3>Best Practices for Migrating Databases in AWS Amplify Deployments</h3>
+          <p>AWS Partner Network blog.</p>
+        </a>
+
+        <a class="writing-item" href="https://www.linkedin.com/in/mkrauklis/recent-activity/all/">
+          <h3>Your AI System Made a Decision. Do You Know Why?</h3>
+          <p>A regulator, customer, or lawyer will ask this at some point in 2026.</p>
+        </a>
+
+        <a class="writing-item" href="https://www.linkedin.com/in/mkrauklis/recent-activity/all/">
+          <h3>Missing the Forest for the Model</h3>
+          <p>In single-model systems, you optimize the model. In multi-signal operational AI, you investigate the system.</p>
+        </a>
+
+        <a class="writing-item" href="https://www.linkedin.com/in/mkrauklis/recent-activity/all/">
+          <h3>Caregivers Don't Quit the Care. They Quit the System.</h3>
+          <p>Most people reading this have either been a caregiver or know one.</p>
+        </a>
+
+      </div>
+      <p style="margin-top:16px;"><a href="https://www.linkedin.com/in/mkrauklis/recent-activity/all/">More on LinkedIn &rarr;</a></p>
+    </div>
+  </div>
+</body>
+</html>

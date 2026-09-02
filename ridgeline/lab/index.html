@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Lab — Michael Krauklis</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600&display=swap');
+  :root{ --bg:#10131a; --ink:#e9e7de; --ink-dim:#9aa0ae; --amber:#e0a54c; --line:#2a3040; }
+  *{ box-sizing:border-box; }
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:'Inter', -apple-system, sans-serif; line-height:1.6;
+  }
+  .wrap{ max-width: 780px; margin: 0 auto; padding: 96px 24px; }
+  h1{ font-family:'Fraunces', Georgia, serif; font-weight:600; font-size: clamp(1.8rem,4.5vw,2.6rem); margin:0 0 8px; }
+  p.lede{ color: var(--ink-dim); max-width: 60ch; }
+  a{ color: var(--amber); text-decoration:none; }
+  a:hover{ text-decoration:underline; }
+  .back{ color: var(--ink-dim); font-size:0.85rem; }
+  .tool-list{ margin-top: 40px; display:flex; flex-direction:column; gap:16px; }
+  .tool{
+    border:1px solid var(--line); border-radius:8px; padding:20px 22px;
+    background:#171b24;
+  }
+  .tool h2{ font-family:'Fraunces', serif; font-weight:500; font-size:1.25rem; margin:0 0 6px; }
+  .tool p{ color:var(--ink-dim); font-size:0.92rem; margin:0; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <a class="back" href="/">&larr; michaelkrauklis.com</a>
+    <h1 style="margin-top:14px;">The Lab</h1>
+    <p class="lede">Small browser-based tools — each one a self-contained piece of applied math or simulation, open source and free to use.</p>
+    <div class="tool-list">
+      <div class="tool">
+        <h2><a href="/lab/ridgeline/">Ridgeline</a></h2>
+        <p>Traces a mountain silhouette from a photo, decomposes it with a discrete Fourier transform, and renders the reconstruction as an image sequence or animation.</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

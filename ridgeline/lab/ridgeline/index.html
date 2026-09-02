@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ridgeline — Fourier Mountain Reconstruction</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap');
+
+  :root{
+    --bg: #10131a;
+    --bg-panel: #171b24;
+    --bg-panel-2: #1d2230;
+    --line: #2a3040;
+    --ink: #e9e7de;
+    --ink-dim: #9aa0ae;
+    --amber: #e0a54c;
+    --amber-dim: #7a5f34;
+    --teal: #5eb0a4;
+    --danger: #d97a6c;
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    line-height: 1.55;
+  }
+  h1,h2,h3{
+    font-family: 'Fraunces', Georgia, serif;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    margin: 0 0 0.4em 0;
+  }
+  h1{ font-size: clamp(2rem, 5vw, 3.4rem); font-weight: 600; }
+  h2{ font-size: 1.5rem; }
+  p{ color: var(--ink-dim); max-width: 62ch; }
+  a{ color: var(--amber); }
+
+  .wrap{ max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+  header.hero{
+    padding: 64px 0 40px;
+    border-bottom: 1px solid var(--line);
+  }
+  .hero-grid{
+    display: grid;
+    grid-template-columns: 1.1fr 0.9fr;
+    gap: 40px;
+    align-items: center;
+  }
+  @media (max-width: 800px){ .hero-grid{ grid-template-columns: 1fr; } }
+
+  .hero-line{
+    color: var(--amber);
+    font-size: 0.95rem;
+    margin-bottom: 14px;
+    display: block;
+  }
+  #heroCanvas{
+    width: 100%;
+    height: 220px;
+    display: block;
+    background: linear-gradient(180deg, #161a24 0%, #10131a 100%);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+  }
+
+  main{ padding: 48px 0 96px; }
+
+  section{ margin-bottom: 56px; }
+  .step-tag{
+    color: var(--teal);
+    font-size: 0.85rem;
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
+    margin-bottom: 6px;
+    display:block;
+  }
+
+  .panel{
+    background: var(--bg-panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 28px;
+  }
+
+  .dropzone{
+    border: 1.5px dashed var(--line);
+    border-radius: 8px;
+    padding: 48px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .15s ease, background .15s ease;
+  }
+  .dropzone:hover, .dropzone.drag{
+    border-color: var(--amber);
+    background: rgba(224,165,76,0.04);
+  }
+  .dropzone input{ display:none; }
+  .dropzone .cta{
+    color: var(--amber);
+    font-weight: 600;
+  }
+
+  .row{ display:flex; gap: 24px; flex-wrap: wrap; }
+  .col{ flex: 1; min-width: 260px; }
+
+  canvas.stage{
+    width: 100%;
+    max-width: 100%;
+    display:block;
+    background: #0c0e13;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+  }
+
+  label.field{
+    display:block;
+    font-size: 0.85rem;
+    color: var(--ink-dim);
+    margin: 18px 0 6px;
+  }
+  input[type=range]{
+    width: 100%;
+    accent-color: var(--amber);
+  }
+  .field-value{ color: var(--ink); font-weight: 600; }
+
+  .toggle-group{
+    display:flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+  }
+  .toggle-group button{
+    background: var(--bg-panel-2);
+    border: 1px solid var(--line);
+    color: var(--ink-dim);
+    padding: 9px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.88rem;
+    transition: all .12s ease;
+  }
+  .toggle-group button.active{
+    border-color: var(--amber);
+    color: var(--amber);
+    background: rgba(224,165,76,0.08);
+  }
+
+  button.primary{
+    background: var(--amber);
+    color: #10131a;
+    border: none;
+    padding: 12px 22px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+  }
+  button.primary:disabled{
+    background: var(--amber-dim);
+    color: #6b6b6b;
+    cursor: not-allowed;
+  }
+  button.secondary{
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--ink);
+    padding: 12px 22px;
+    border-radius: 6px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+  }
+
+  .actions{ display:flex; gap: 12px; margin-top: 20px; flex-wrap: wrap; align-items:center; }
+  .status{ color: var(--ink-dim); font-size: 0.85rem; }
+
+  #gridOutput{
+    display:grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-top: 20px;
+  }
+  @media (max-width: 640px){ #gridOutput{ grid-template-columns: repeat(2, 1fr); } }
+  #gridOutput canvas{
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: #0c0e13;
+  }
+  .panel-label{
+    font-size: 0.72rem;
+    color: var(--ink-dim);
+    margin-top: 4px;
+  }
+
+  .divider{
+    border: none;
+    border-top: 1px solid var(--line);
+    margin: 40px 0;
+  }
+
+  #adSlot{
+    border: 1px dashed var(--line);
+    border-radius: 6px;
+    padding: 18px;
+    text-align: center;
+    color: var(--ink-dim);
+    font-size: 0.8rem;
+  }
+
+  footer{
+    border-top: 1px solid var(--line);
+    padding: 28px 0;
+    color: var(--ink-dim);
+    font-size: 0.82rem;
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <span class="hero-line">a mountain range is a stack of sine waves</span>
+      <h1>Ridgeline</h1>
+      <p>Upload a photo of a skyline. Ridgeline traces the silhouette, breaks it into
+      the sine waves that compose it, and shows the mountain assembling itself one
+      frequency at a time — as a print or as a video of arms spinning it into being.</p>
+    </div>
+    <canvas id="heroCanvas"></canvas>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section>
+    <span class="step-tag">01 — upload</span>
+    <h2>Give it a skyline</h2>
+    <p>Works best with a clear silhouette against open sky — dusk shots and backlit
+    ridgelines separate cleanest.</p>
+    <div class="dropzone" id="dropzone">
+      <input type="file" id="fileInput" accept="image/*">
+      <div><span class="cta">Choose a photo</span> or drag one here</div>
+    </div>
+  </section>
+
+  <section id="extractSection" style="display:none;">
+    <span class="step-tag">02 — trace the silhouette</span>
+    <h2>Find the line</h2>
+    <p>Ridgeline scans each column of the photo for where sky meets land. Adjust the
+    threshold until the traced line (amber) hugs the real ridge.</p>
+    <div class="panel row">
+      <div class="col">
+        <canvas class="stage" id="sourceCanvas"></canvas>
+      </div>
+      <div class="col">
+        <label class="field">Detection threshold — <span class="field-value" id="threshVal">128</span></label>
+        <input type="range" id="threshSlider" min="1" max="254" value="128">
+        <label class="field">
+          <input type="checkbox" id="invertCheck" style="accent-color: var(--amber); margin-right:6px;">
+          Sky is darker than land (invert)
+        </label>
+        <label class="field">Sample resolution — <span class="field-value" id="sampleVal">160</span> points</label>
+        <input type="range" id="sampleSlider" min="60" max="300" step="10" value="160">
+      </div>
+    </div>
+  </section>
+
+  <section id="composeSection" style="display:none;">
+    <span class="step-tag">03 — decompose</span>
+    <h2>Choose an output</h2>
+
+    <div class="toggle-group" id="modeToggle">
+      <button data-mode="image" class="active">Image — panel sequence</button>
+      <button data-mode="video">Video — animation</button>
+    </div>
+
+    <div class="panel" style="margin-top:18px;">
+
+      <div id="imageControls">
+        <label class="field">Number of panels — <span class="field-value" id="panelCountVal">6</span></label>
+        <input type="range" id="panelCountSlider" min="3" max="9" value="6">
+        <p style="margin-top:12px; font-size:0.85rem;">Panels are ordered by wave magnitude — the biggest,
+        most structural waves appear first, smaller ones refine the shape after. The last panel overlays
+        the full reconstruction on your original photo.</p>
+        <div class="actions">
+          <button class="primary" id="renderImageBtn">Render panels</button>
+          <span class="status" id="imageStatus"></span>
+        </div>
+        <div id="gridOutput"></div>
+        <div class="actions" id="imageDownloadRow" style="display:none;">
+          <button class="secondary" id="downloadImageBtn">Download PNG</button>
+        </div>
+      </div>
+
+      <div id="videoControls" style="display:none;">
+        <label class="field">Drawing style</label>
+        <div class="toggle-group" id="videoStyleToggle">
+          <button data-style="sum" class="active">Sequential summation</button>
+          <button data-style="arms">Rotating arms (epicycles)</button>
+        </div>
+        <p style="margin-top:14px; font-size:0.85rem;" id="videoStyleNote">
+          Arm count is chosen automatically — enough waves to carry 95% of the signal's energy.
+        </p>
+        <label class="field">Duration — <span class="field-value" id="durationVal">8</span>s</label>
+        <input type="range" id="durationSlider" min="3" max="20" value="8">
+        <label class="field">
+          <input type="checkbox" id="overlayEndCheck" checked style="accent-color: var(--amber); margin-right:6px;">
+          End on original photo overlay
+        </label>
+        <div class="actions">
+          <button class="primary" id="renderVideoBtn">Preview animation</button>
+          <button class="secondary" id="recordVideoBtn" disabled>Record &amp; download</button>
+          <span class="status" id="videoStatus"></span>
+        </div>
+        <canvas class="stage" id="videoCanvas" style="margin-top:16px; display:none;"></canvas>
+      </div>
+
+    </div>
+  </section>
+
+  <hr class="divider">
+  <div id="adSlot">Ad placement — drop your AdSense (or other network) unit code here once approved.</div>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    Ridgeline runs entirely in your browser — no photo is uploaded to a server.
+    Part of <a href="/lab/">The Lab</a> by <a href="/">Michael Krauklis</a>.
+  </div>
+</footer>
+
+<script>
+(function(){
+
+  // ---------- DFT core ----------
+  function dft(x){
+    const M = x.length, X = new Array(M);
+    for (let k = 0; k < M; k++){
+      let re = 0, im = 0;
+      const w = -2*Math.PI*k/M;
+      for (let n = 0; n < M; n++){
+        const ang = w*n;
+        re += x[n]*Math.cos(ang);
+        im += x[n]*Math.sin(ang);
+      }
+      X[k] = {re, im};
+    }
+    return X;
+  }
+
+  function components(X){
+    const M = X.length, half = Math.floor(M/2), comps = [];
+    for (let k = 1; k <= half; k++){
+      const mag = Math.hypot(X[k].re, X[k].im);
+      const phase = Math.atan2(X[k].im, X[k].re);
+      const isNyquist = (M % 2 === 0 && k === half);
+      const amplitude = isNyquist ? mag/M : (2*mag)/M;
+      comps.push({k, amplitude, phase});
+    }
+    comps.sort((a,b)=> b.amplitude - a.amplitude);
+    return comps;
+  }
+
+  function reconstructAt(dc, comps, M, count, n){
+    let val = dc/M;
+    const lim = Math.min(count, comps.length);
+    for (let i = 0; i < lim; i++){
+      const c = comps[i];
+      val += c.amplitude * Math.cos(2*Math.PI*c.k*n/M + c.phase);
+    }
+    return val;
+  }
+
+  function energyCount95(comps){
+    const total = comps.reduce((s,c)=> s + c.amplitude*c.amplitude, 0);
+    let cum = 0, count = 0;
+    for (const c of comps){
+      cum += c.amplitude*c.amplitude;
+      count++;
+      if (cum/total >= 0.95) break;
+    }
+    return count;
+  }
+
+  // ---------- App state ----------
+  const state = {
+    img: null,
+    elevations: null,   // sampled silhouette, length N
+    N: 160,
+    M: 320,
+    dc: 0,
+    comps: null,
+    mode: 'image',
+    videoStyle: 'sum'
+  };
+
+  // ---------- Hero decorative canvas (static demo mountain, few terms) ----------
+  function drawHero(){
+    const c = document.getElementById('heroCanvas');
+    const dpr = window.devicePixelRatio || 1;
+    const w = c.clientWidth, h = c.clientHeight;
+    c.width = w*dpr; c.height = h*dpr;
+    const ctx = c.getContext('2d');
+    ctx.scale(dpr,dpr);
+    ctx.clearRect(0,0,w,h);
+    // synth ridge from a few sine waves as decorative motif
+    const terms = [
+      {a: 0.28, f: 1, p: 0.4},
+      {a: 0.16, f: 2.3, p: 1.1},
+      {a: 0.09, f: 4.7, p: 2.0},
+      {a: 0.05, f: 8.1, p: 0.2}
+    ];
+    ctx.beginPath();
+    ctx.moveTo(0, h);
+    for (let x = 0; x <= w; x += 2){
+      let y = h*0.55;
+      const t = x/w;
+      for (const term of terms) y -= term.a*h*Math.sin(term.f*t*Math.PI*2 + term.p);
+      ctx.lineTo(x, y);
+    }
+    ctx.lineTo(w, h);
+    ctx.closePath();
+    const grad = ctx.createLinearGradient(0,0,0,h);
+    grad.addColorStop(0, 'rgba(224,165,76,0.22)');
+    grad.addColorStop(1, 'rgba(224,165,76,0.02)');
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.beginPath();
+    for (let x = 0; x <= w; x += 2){
+      let y = h*0.55;
+      const t = x/w;
+      for (const term of terms) y -= term.a*h*Math.sin(term.f*t*Math.PI*2 + term.p);
+      if (x===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.strokeStyle = '#e0a54c';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+  window.addEventListener('resize', drawHero);
+  drawHero();
+
+  // ---------- Upload ----------
+  const dropzone = document.getElementById('dropzone');
+  const fileInput = document.getElementById('fileInput');
+  dropzone.addEventListener('click', ()=> fileInput.click());
+  dropzone.addEventListener('dragover', e=>{ e.preventDefault(); dropzone.classList.add('drag'); });
+  dropzone.addEventListener('dragleave', ()=> dropzone.classList.remove('drag'));
+  dropzone.addEventListener('drop', e=>{
+    e.preventDefault(); dropzone.classList.remove('drag');
+    if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', e=>{
+    if (e.target.files[0]) loadFile(e.target.files[0]);
+  });
+
+  function loadFile(file){
+    const reader = new FileReader();
+    reader.onload = ev =>{
+      const img = new Image();
+      img.onload = ()=>{
+        state.img = img;
+        document.getElementById('extractSection').style.display = 'block';
+        drawSource();
+        extractAndPreview();
+        document.getElementById('extractSection').scrollIntoView({behavior:'smooth', block:'start'});
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  const sourceCanvas = document.getElementById('sourceCanvas');
+  function drawSource(){
+    const img = state.img;
+    const maxW = 640;
+    const scale = Math.min(1, maxW/img.width);
+    const w = Math.round(img.width*scale), h = Math.round(img.height*scale);
+    sourceCanvas.width = w; sourceCanvas.height = h;
+    const ctx = sourceCanvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, w, h);
+  }
+
+  // ---------- Silhouette extraction ----------
+  const threshSlider = document.getElementById('threshSlider');
+  const threshVal = document.getElementById('threshVal');
+  const sampleSlider = document.getElementById('sampleSlider');
+  const sampleVal = document.getElementById('sampleVal');
+  const invertCheck = document.getElementById('invertCheck');
+
+  [threshSlider, sampleSlider, invertCheck].forEach(el=>{
+    el.addEventListener('input', ()=>{
+      threshVal.textContent = threshSlider.value;
+      sampleVal.textContent = sampleSlider.value;
+      extractAndPreview();
+    });
+  });
+
+  function extractAndPreview(){
+    if (!state.img) return;
+    const ctx = sourceCanvas.getContext('2d');
+    const w = sourceCanvas.width, h = sourceCanvas.height;
+    const data = ctx.getImageData(0,0,w,h).data;
+    const N = parseInt(sampleSlider.value, 10);
+    const threshold = parseInt(threshSlider.value, 10);
+    const invert = invertCheck.checked;
+    const elevations = new Array(N);
+
+    for (let i = 0; i < N; i++){
+      const x = Math.min(w-1, Math.floor(i*w/N));
+      let foundY = h-1;
+      for (let y = 0; y < h; y++){
+        const idx = (y*w + x)*4;
+        const lum = 0.299*data[idx] + 0.587*data[idx+1] + 0.114*data[idx+2];
+        const isLand = invert ? (lum > threshold) : (lum < threshold);
+        if (isLand){ foundY = y; break; }
+      }
+      elevations[i] = foundY;
+    }
+    state.elevations = elevations;
+    state.N = N;
+
+    // redraw source with overlay line
+    drawSource();
+    ctx.beginPath();
+    for (let i = 0; i < N; i++){
+      const x = i*w/N;
+      const y = elevations[i];
+      if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.strokeStyle = '#e0a54c';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    computeFourier();
+    document.getElementById('composeSection').style.display = 'block';
+  }
+
+  function computeFourier(){
+    const el = state.elevations;
+    const N = el.length;
+    const M = 2*N;
+    const x = new Array(M);
+    for (let n = 0; n < N; n++) x[n] = el[n];
+    for (let n = N; n < M; n++) x[n] = el[M-1-n];
+    const X = dft(x);
+    state.dc = X[0].re;
+    state.comps = components(X);
+    state.M = M;
+  }
+
+  // ---------- Mode toggle ----------
+  document.getElementById('modeToggle').addEventListener('click', e=>{
+    const btn = e.target.closest('button'); if (!btn) return;
+    document.querySelectorAll('#modeToggle button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    state.mode = btn.dataset.mode;
+    document.getElementById('imageControls').style.display = state.mode==='image' ? 'block' : 'none';
+    document.getElementById('videoControls').style.display = state.mode==='video' ? 'block' : 'none';
+  });
+
+  document.getElementById('videoStyleToggle').addEventListener('click', e=>{
+    const btn = e.target.closest('button'); if (!btn) return;
+    document.querySelectorAll('#videoStyleToggle button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    state.videoStyle = btn.dataset.style;
+    document.getElementById('videoStyleNote').textContent = state.videoStyle==='arms'
+      ? 'Arm count is chosen automatically — enough waves to carry 95% of the signal\'s energy.'
+      : 'Panels accumulate one wave at a time, largest magnitude first.';
+  });
+
+  const panelCountSlider = document.getElementById('panelCountSlider');
+  panelCountSlider.addEventListener('input', ()=>{
+    document.getElementById('panelCountVal').textContent = panelCountSlider.value;
+  });
+
+  const durationSlider = document.getElementById('durationSlider');
+  durationSlider.addEventListener('input', ()=>{
+    document.getElementById('durationVal').textContent = durationSlider.value;
+  });
+
+  // ---------- Image (panel grid) rendering ----------
+  function panelCounts(totalComps, panels){
+    // last panel = full detail (all comps), first panel = 1 comp, spaced roughly geometrically
+    const counts = [];
+    for (let i = 1; i <= panels; i++){
+      const frac = i/panels;
+      const c = Math.max(1, Math.round(Math.pow(frac, 1.8) * totalComps));
+      counts.push(Math.min(c, totalComps));
+    }
+    counts[counts.length-1] = totalComps;
+    return counts;
+  }
+
+  function drawReconPanel(canvas, count, overlayOriginal){
+    const w = canvas.width, h = canvas.height;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0,0,w,h);
+
+    if (overlayOriginal && state.img){
+      ctx.globalAlpha = 0.55;
+      ctx.drawImage(state.img, 0, 0, w, h);
+      ctx.globalAlpha = 1;
+    } else {
+      ctx.fillStyle = '#0c0e13';
+      ctx.fillRect(0,0,w,h);
+    }
+
+    const N = state.N, M = state.M;
+    const scaleX = w/N;
+    const scaleY = overlayOriginal ? (h/sourceCanvas.height) : 1;
+
+    ctx.beginPath();
+    for (let n = 0; n < N; n++){
+      const y = reconstructAt(state.dc, state.comps, M, count, n) * scaleY;
+      const x = n*scaleX;
+      if (n===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.strokeStyle = overlayOriginal ? '#e0a54c' : '#5eb0a4';
+    ctx.lineWidth = overlayOriginal ? 2.5 : 2;
+    ctx.stroke();
+  }
+
+  document.getElementById('renderImageBtn').addEventListener('click', ()=>{
+    if (!state.comps) return;
+    const panels = parseInt(panelCountSlider.value, 10);
+    const counts = panelCounts(state.comps.length, panels);
+    const grid = document.getElementById('gridOutput');
+    grid.innerHTML = '';
+    const cw = 300, ch = 180;
+
+    counts.forEach((count, i)=>{
+      const wrap = document.createElement('div');
+      const cv = document.createElement('canvas');
+      cv.width = cw; cv.height = ch;
+      const isLast = i === counts.length-1;
+      drawReconPanel(cv, count, isLast);
+      wrap.appendChild(cv);
+      const label = document.createElement('div');
+      label.className = 'panel-label';
+      label.textContent = isLast ? `${count} waves — full reconstruction` : `${count} wave${count>1?'s':''}`;
+      wrap.appendChild(label);
+      grid.appendChild(wrap);
+    });
+
+    document.getElementById('imageStatus').textContent = `${panels} panels rendered`;
+    document.getElementById('imageDownloadRow').style.display = 'flex';
+    state.lastCounts = counts;
+  });
+
+  document.getElementById('downloadImageBtn').addEventListener('click', ()=>{
+    const cvs = document.querySelectorAll('#gridOutput canvas');
+    if (!cvs.length) return;
+    const cols = 3;
+    const rows = Math.ceil(cvs.length/cols);
+    const pad = 14;
+    const cw = cvs[0].width, ch = cvs[0].height;
+    const out = document.createElement('canvas');
+    out.width = cols*cw + (cols+1)*pad;
+    out.height = rows*ch + (rows+1)*pad + 40;
+    const octx = out.getContext('2d');
+    octx.fillStyle = '#10131a';
+    octx.fillRect(0,0,out.width,out.height);
+    octx.fillStyle = '#e9e7de';
+    octx.font = '600 20px Georgia, serif';
+    octx.fillText('Ridgeline — Fourier Reconstruction', pad, 28);
+    cvs.forEach((cv, i)=>{
+      const col = i % cols, row = Math.floor(i/cols);
+      const x = pad + col*(cw+pad);
+      const y = 40 + pad + row*(ch+pad);
+      octx.drawImage(cv, x, y);
+    });
+    const link = document.createElement('a');
+    link.download = 'ridgeline-reconstruction.png';
+    link.href = out.toDataURL('image/png');
+    link.click();
+  });
+
+  // ---------- Video rendering ----------
+  const videoCanvas = document.getElementById('videoCanvas');
+  let recorder = null, recordedChunks = [];
+
+  function setupVideoCanvas(){
+    videoCanvas.width = 640;
+    videoCanvas.height = 400;
+    videoCanvas.style.display = 'block';
+  }
+
+  function animateVideo(record){
+    if (!state.comps) return;
+    setupVideoCanvas();
+    const ctx = videoCanvas.getContext('2d');
+    const w = videoCanvas.width, h = videoCanvas.height;
+    const N = state.N, M = state.M;
+    const durationSec = parseInt(durationSlider.value, 10);
+    const overlayEnd = document.getElementById('overlayEndCheck').checked;
+    const style = state.videoStyle;
+
+    const fps = 30;
+    const totalFrames = durationSec*fps;
+    const holdFrames = overlayEnd ? Math.round(fps*1.2) : 0;
+    const drawFrames = totalFrames - holdFrames;
+
+    const K95 = energyCount95(state.comps);
+    const armsK = Math.min(K95, state.comps.length);
+
+    const scaleX = (w*0.62)/N; // leave room for arms viewport in arms mode
+    const originX = style==='arms' ? w*0.34 : 0;
+    const midY = h*0.42;
+    const traceScale = 1;
+
+    // precompute value range for vertical fit
+    let minV = Infinity, maxV = -Infinity;
+    for (let n = 0; n < N; n++){
+      const v = reconstructAt(state.dc, state.comps, M, state.comps.length, n);
+      if (v<minV) minV=v; if (v>maxV) maxV=v;
+    }
+    const range = Math.max(1, maxV-minV);
+    const fitScale = (h*0.6)/range;
+
+    function valueToY(v){ return midY + (v - (minV+maxV)/2)*fitScale; }
+
+    if (record){
+      recordedChunks = [];
+      const stream = videoCanvas.captureStream(fps);
+      recorder = new MediaRecorder(stream, {mimeType:'video/webm;codecs=vp9'});
+      recorder.ondataavailable = e=>{ if (e.data.size>0) recordedChunks.push(e.data); };
+      recorder.onstop = ()=>{
+        const blob = new Blob(recordedChunks, {type:'video/webm'});
+        const link = document.createElement('a');
+        link.download = 'ridgeline-animation.webm';
+        link.href = URL.createObjectURL(blob);
+        link.click();
+        document.getElementById('videoStatus').textContent = 'Downloaded.';
+      };
+      recorder.start();
+    }
+
+    let frame = 0;
+    function drawFrameSum(progress){
+      ctx.clearRect(0,0,w,h);
+      ctx.fillStyle = '#0c0e13';
+      ctx.fillRect(0,0,w,h);
+      const count = Math.max(1, Math.round(progress*state.comps.length));
+      ctx.beginPath();
+      for (let n = 0; n < N; n++){
+        const v = reconstructAt(state.dc, state.comps, M, count, n);
+        const x = n*(w/N);
+        const y = valueToY(v);
+        if (n===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      ctx.strokeStyle = '#5eb0a4';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+      ctx.fillStyle = '#9aa0ae';
+      ctx.font = '13px Inter, sans-serif';
+      ctx.fillText(count + ' / ' + state.comps.length + ' waves', 14, 24);
+    }
+
+    function drawFrameArms(t){
+      ctx.clearRect(0,0,w,h);
+      ctx.fillStyle = '#0c0e13';
+      ctx.fillRect(0,0,w,h);
+
+      // arms viewport center
+      const cx0 = w*0.17, cy0 = midY;
+      let cx = cx0, cy = cy0;
+      const theta = 2*Math.PI * t; // t in [0,1) over one pass of length N within period M
+
+      ctx.strokeStyle = 'rgba(154,160,174,0.5)';
+      ctx.lineWidth = 1;
+
+      // DC arm
+      const dcR = Math.abs(state.dc/M);
+      ctx.beginPath(); ctx.arc(cx, cy, dcR, 0, Math.PI*2); ctx.stroke();
+      const dcAngle = state.dc >= 0 ? 0 : Math.PI;
+      let nx = cx + dcR*Math.cos(dcAngle);
+      let ny = cy + dcR*Math.sin(dcAngle);
+      ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(nx,ny); ctx.stroke();
+      cx = nx; cy = ny;
+
+      const nUnits = t*N; // fractional sample position
+
+      for (let i = 0; i < armsK; i++){
+        const c = state.comps[i];
+        const r = Math.abs(c.k===0?0:c.amplitude)/2 * fitScale;
+        const baseAngle = 2*Math.PI*c.k*nUnits/M + c.phase;
+        const sign = c.amplitude >= 0 ? 0 : Math.PI;
+
+        // arm A: +k
+        let ang = baseAngle + sign;
+        ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.stroke();
+        let ax = cx + r*Math.cos(ang), ay = cy + r*Math.sin(ang);
+        ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(ax,ay); ctx.stroke();
+        cx = ax; cy = ay;
+
+        // arm B: -k (conjugate)
+        let angB = -baseAngle + sign;
+        ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.stroke();
+        let bx = cx + r*Math.cos(angB), by = cy + r*Math.sin(angB);
+        ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(bx,by); ctx.stroke();
+        cx = bx; cy = by;
+      }
+
+      // pen tip
+      ctx.fillStyle = '#e0a54c';
+      ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI*2); ctx.fill();
+
+      // trace path drawn so far, into the right-hand plot
+      const traceX0 = w*0.36;
+      const traceW = w*0.6;
+      ctx.strokeStyle = '#e0a54c';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      const upTo = Math.min(N, Math.ceil(nUnits)+1);
+      for (let n = 0; n < upTo; n++){
+        const v = reconstructAt(state.dc, state.comps, M, armsK, n);
+        const x = traceX0 + n*(traceW/N);
+        const y = valueToY(v);
+        if (n===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      ctx.stroke();
+
+      // connector line from pen tip to current trace point
+      ctx.strokeStyle = 'rgba(224,165,76,0.35)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      const curX = traceX0 + Math.min(N-1,nUnits)*(traceW/N);
+      ctx.lineTo(curX, cy);
+      ctx.stroke();
+    }
+
+    function drawOverlayFrame(){
+      ctx.clearRect(0,0,w,h);
+      ctx.globalAlpha = 0.55;
+      if (state.img) ctx.drawImage(state.img, 0, 0, w, h);
+      ctx.globalAlpha = 1;
+      const scaleY = h/sourceCanvas.height;
+      ctx.beginPath();
+      for (let n = 0; n < N; n++){
+        const v = reconstructAt(state.dc, state.comps, M, state.comps.length, n) * scaleY;
+        const x = n*(w/N);
+        if (n===0) ctx.moveTo(x,v); else ctx.lineTo(x,v);
+      }
+      ctx.strokeStyle = '#e0a54c';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+    }
+
+    function step(){
+      if (frame < drawFrames){
+        const progress = frame/(drawFrames-1);
+        if (style==='sum') drawFrameSum(progress);
+        else drawFrameArms(progress);
+        frame++;
+        requestAnimationFrame(step);
+      } else if (overlayEnd && frame < totalFrames){
+        drawOverlayFrame();
+        frame++;
+        requestAnimationFrame(step);
+      } else {
+        if (record && recorder && recorder.state !== 'inactive') recorder.stop();
+        document.getElementById('videoStatus').textContent = record ? 'Finalizing…' : 'Preview complete.';
+      }
+    }
+    document.getElementById('videoStatus').textContent = record ? 'Recording…' : 'Playing preview…';
+    frame = 0;
+    step();
+  }
+
+  document.getElementById('renderVideoBtn').addEventListener('click', ()=>{
+    animateVideo(false);
+    document.getElementById('recordVideoBtn').disabled = false;
+  });
+  document.getElementById('recordVideoBtn').addEventListener('click', ()=>{
+    animateVideo(true);
+  });
+
+})();
+</script>
+</body>
+</html>
