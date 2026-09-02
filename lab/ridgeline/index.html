@@ -183,12 +183,11 @@
   .status{ color: var(--ink-dim); font-size: 0.85rem; }
 
   #gridOutput{
-    display:grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
+    display:flex;
+    flex-direction: column;
+    gap: 22px;
     margin-top: 20px;
   }
-  @media (max-width: 640px){ #gridOutput{ grid-template-columns: repeat(2, 1fr); } }
   #gridOutput canvas{
     width: 100%;
     border: 1px solid var(--line);
@@ -199,6 +198,37 @@
     font-size: 0.72rem;
     color: var(--ink-dim);
     margin-top: 4px;
+  }
+
+  .step-row{
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--line);
+  }
+  .step-row:last-child{ border-bottom: none; padding-bottom: 0; }
+  .step-header{
+    font-size: 0.82rem;
+    color: var(--ink-dim);
+    margin-bottom: 10px;
+  }
+  .step-header b{ color: var(--ink); font-weight: 600; }
+  .step-strip{
+    display:flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .mini-block{
+    flex: 1 1 200px;
+    min-width: 160px;
+    max-width: 240px;
+  }
+  .step-connector{
+    flex: 0 0 auto;
+    font-family: 'Fraunces', Georgia, serif;
+    font-size: 1.5rem;
+    color: var(--ink-dim);
+    padding: 0 2px;
+    align-self: center;
   }
 
   .divider{
@@ -286,13 +316,14 @@
     <div class="panel" style="margin-top:18px;">
 
       <div id="imageControls">
-        <label class="field">Number of panels — <span class="field-value" id="panelCountVal">6</span></label>
-        <input type="range" id="panelCountSlider" min="3" max="9" value="6">
-        <p style="margin-top:12px; font-size:0.85rem;">Panels are ordered by wave magnitude — the biggest,
-        most structural waves appear first, smaller ones refine the shape after. The last panel overlays
-        the full reconstruction on your original photo.</p>
+        <label class="field">Number of steps — <span class="field-value" id="panelCountVal">6</span></label>
+        <input type="range" id="panelCountSlider" min="3" max="16" value="6">
+        <p style="margin-top:12px; font-size:0.85rem;">Each step shows the equation directly: the ridge so far,
+        plus the next wave (or batch of waves) ordered by magnitude — biggest and most structural first — equals
+        the new ridge. Formulas are in terms of x ∈ [0, 1], the normalized position across the ridge. The last
+        step overlays the full reconstruction on your original photo.</p>
         <div class="actions">
-          <button class="primary" id="renderImageBtn">Render panels</button>
+          <button class="primary" id="renderImageBtn">Render steps</button>
           <span class="status" id="imageStatus"></span>
         </div>
         <div id="gridOutput"></div>
@@ -308,8 +339,10 @@
           <button data-style="arms">Rotating arms (epicycles)</button>
         </div>
         <p style="margin-top:14px; font-size:0.85rem;" id="videoStyleNote">
-          Arm count is chosen automatically — enough waves to carry 95% of the signal's energy.
+          Each step reveals the wave being added (top strip, red) before it merges into the ridge (green).
         </p>
+        <label class="field" id="videoStepsLabel">Number of steps — <span class="field-value" id="videoStepsVal">8</span></label>
+        <input type="range" id="videoStepsSlider" min="3" max="16" value="8">
         <label class="field">Duration — <span class="field-value" id="durationVal">8</span>s</label>
         <input type="range" id="durationSlider" min="3" max="20" value="8">
         <label class="field">
@@ -390,6 +423,17 @@
       if (cum/total >= 0.95) break;
     }
     return count;
+  }
+
+  function easeInOutCubic(t){
+    return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2;
+  }
+
+  // formula for one wave in terms of x normalized 0..1 across the ridge (M = 2N, so k/2 = cycles across N samples)
+  function fmtNum(v){ return (Math.round(v*100)/100).toString(); }
+  function waveFormula(c){
+    const freq = fmtNum(c.k/2), amp = fmtNum(c.amplitude), phase = fmtNum(c.phase);
+    return `y = ${amp}·cos(2π·${freq}·x + ${phase})`;
   }
 
   // ---------- App state ----------
@@ -573,9 +617,12 @@
     document.querySelectorAll('#videoStyleToggle button').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
     state.videoStyle = btn.dataset.style;
-    document.getElementById('videoStyleNote').textContent = state.videoStyle==='arms'
-      ? 'Arm count is chosen automatically — enough waves to carry 95% of the signal\'s energy.'
-      : 'Panels accumulate one wave at a time, largest magnitude first.';
+    const isSum = state.videoStyle === 'sum';
+    document.getElementById('videoStyleNote').textContent = isSum
+      ? 'Each step reveals the wave being added (top strip, red) before it merges into the ridge (green).'
+      : 'Every wave rotates at once — the pen\'s height (dashed line) is their sum, and becomes one point of the ridge as it unrolls to the right.';
+    document.getElementById('videoStepsLabel').style.display = isSum ? 'block' : 'none';
+    document.getElementById('videoStepsSlider').style.display = isSum ? 'block' : 'none';
   });
 
   const panelCountSlider = document.getElementById('panelCountSlider');
@@ -583,30 +630,60 @@
     document.getElementById('panelCountVal').textContent = panelCountSlider.value;
   });
 
+  const videoStepsSlider = document.getElementById('videoStepsSlider');
+  videoStepsSlider.addEventListener('input', ()=>{
+    document.getElementById('videoStepsVal').textContent = videoStepsSlider.value;
+  });
+
   const durationSlider = document.getElementById('durationSlider');
   durationSlider.addEventListener('input', ()=>{
     document.getElementById('durationVal').textContent = durationSlider.value;
   });
 
-  // ---------- Image (panel grid) rendering ----------
+  // ---------- Image (step-by-step equation) rendering ----------
   function panelCounts(totalComps, panels){
-    // last panel = full detail (all comps), first panel = 1 comp, spaced roughly geometrically
+    // every step but the last adds exactly one wave — "nothing + wave1 = x1, x1 + wave2 = x2, ..." —
+    // the last step jumps straight to the full reconstruction (all remaining waves at once)
     const counts = [];
-    for (let i = 1; i <= panels; i++){
-      const frac = i/panels;
-      const c = Math.max(1, Math.round(Math.pow(frac, 1.8) * totalComps));
-      counts.push(Math.min(c, totalComps));
+    for (let i = 1; i < panels; i++){
+      if (i >= totalComps) break;
+      counts.push(i);
     }
-    counts[counts.length-1] = totalComps;
-    return counts;
+    counts.push(totalComps);
+    // de-duplicate in case totalComps was already reached
+    return [...new Set(counts)];
   }
 
-  function drawReconPanel(canvas, count, overlayOriginal){
+  function buildSteps(panels){
+    const counts = panelCounts(state.comps.length, panels);
+    const prevCounts = [0, ...counts.slice(0, -1)];
+    return counts.map((count, i) => ({
+      prevCount: prevCounts[i],
+      count,
+      addedComps: state.comps.slice(prevCounts[i], count),
+      isLast: i === counts.length - 1
+    }));
+  }
+
+  function reconstructRange(){
+    const N = state.N, M = state.M;
+    let minV = Infinity, maxV = -Infinity;
+    for (let n = 0; n < N; n++){
+      const v = reconstructAt(state.dc, state.comps, M, state.comps.length, n);
+      if (v < minV) minV = v;
+      if (v > maxV) maxV = v;
+    }
+    return { minV, maxV, range: Math.max(1, maxV - minV) };
+  }
+
+  // draws the ridge itself (a running sum) — used for the "so far" and "= result" panels
+  function drawRidgeMini(canvas, count, range, opts){
+    opts = opts || {};
     const w = canvas.width, h = canvas.height;
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0,0,w,h);
 
-    if (overlayOriginal && state.img){
+    if (opts.overlayOriginal && state.img){
       ctx.globalAlpha = 0.55;
       ctx.drawImage(state.img, 0, 0, w, h);
       ctx.globalAlpha = 1;
@@ -616,69 +693,214 @@
     }
 
     const N = state.N, M = state.M;
-    const scaleX = w/N;
-    const scaleY = overlayOriginal ? (h/sourceCanvas.height) : 1;
+    const midY = h*0.5;
+    const fitScale = (h*0.7)/range.range;
+    const center = (range.minV+range.maxV)/2;
+    const scaleYOverlay = opts.overlayOriginal ? h/sourceCanvas.height : null;
+
+    if (opts.ghostCount != null){
+      ctx.beginPath();
+      for (let n = 0; n < N; n++){
+        const raw = reconstructAt(state.dc, state.comps, M, opts.ghostCount, n);
+        const y = midY + (raw-center)*fitScale;
+        const x = n*(w/N);
+        if (n===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      ctx.strokeStyle = 'rgba(154,160,174,0.45)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4,3]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
 
     ctx.beginPath();
     for (let n = 0; n < N; n++){
-      const y = reconstructAt(state.dc, state.comps, M, count, n) * scaleY;
-      const x = n*scaleX;
+      const raw = reconstructAt(state.dc, state.comps, M, count, n);
+      const y = opts.overlayOriginal ? raw*scaleYOverlay : midY + (raw-center)*fitScale;
+      const x = n*(w/N);
       if (n===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
     }
-    ctx.strokeStyle = overlayOriginal ? '#e0a54c' : '#5eb0a4';
-    ctx.lineWidth = overlayOriginal ? 2.5 : 2;
+    ctx.strokeStyle = opts.color || '#5eb0a4';
+    ctx.lineWidth = opts.lineWidth || 2;
     ctx.stroke();
+  }
+
+  // draws only the wave(s) being added this step, centered on its own zero baseline
+  function drawWaveMini(canvas, prevCount, count, range){
+    const w = canvas.width, h = canvas.height;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0,0,w,h);
+    ctx.fillStyle = '#0c0e13';
+    ctx.fillRect(0,0,w,h);
+
+    const N = state.N, M = state.M;
+    const midY = h*0.5;
+    const fitScale = (h*0.7)/range.range;
+
+    ctx.strokeStyle = 'rgba(154,160,174,0.3)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0,midY); ctx.lineTo(w,midY); ctx.stroke();
+
+    ctx.beginPath();
+    for (let n = 0; n < N; n++){
+      const cur = reconstructAt(state.dc, state.comps, M, count, n);
+      const prev = reconstructAt(state.dc, state.comps, M, prevCount, n);
+      const y = midY + (cur-prev)*fitScale;
+      const x = n*(w/N);
+      if (n===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.strokeStyle = '#d97a6c';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  function miniCanvasBlock(w, h, label){
+    const el = document.createElement('div');
+    el.className = 'mini-block';
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    el.appendChild(cv);
+    const lab = document.createElement('div');
+    lab.className = 'panel-label';
+    lab.textContent = label;
+    el.appendChild(lab);
+    return { el, canvas: cv };
+  }
+
+  function connectorEl(sym){
+    const d = document.createElement('div');
+    d.className = 'step-connector';
+    d.textContent = sym;
+    return d;
+  }
+
+  function stepHeaderText(step, i){
+    const n = step.addedComps.length;
+    const waveWord = n===1 ? '1 wave' : `${n} waves`;
+    return step.prevCount===0
+      ? `Step ${i+1} — start from nothing, add ${waveWord}`
+      : `Step ${i+1} — add ${waveWord} (running total ${step.count})`;
+  }
+
+  function waveLabelText(step){
+    if (step.addedComps.length===1){
+      return waveFormula(step.addedComps[0]);
+    }
+    if (step.addedComps.length<=3){
+      return step.addedComps.map(waveFormula).join('  +  ');
+    }
+    const amps = step.addedComps.map(c=>c.amplitude);
+    return `${step.addedComps.length} waves combined (amp ${fmtNum(Math.min(...amps))}–${fmtNum(Math.max(...amps))})`;
   }
 
   document.getElementById('renderImageBtn').addEventListener('click', ()=>{
     if (!state.comps) return;
     const panels = parseInt(panelCountSlider.value, 10);
-    const counts = panelCounts(state.comps.length, panels);
+    const steps = buildSteps(panels);
+    const range = reconstructRange();
     const grid = document.getElementById('gridOutput');
     grid.innerHTML = '';
-    const cw = 300, ch = 180;
+    const cw = 220, ch = 140;
 
-    counts.forEach((count, i)=>{
-      const wrap = document.createElement('div');
-      const cv = document.createElement('canvas');
-      cv.width = cw; cv.height = ch;
-      const isLast = i === counts.length-1;
-      drawReconPanel(cv, count, isLast);
-      wrap.appendChild(cv);
-      const label = document.createElement('div');
-      label.className = 'panel-label';
-      label.textContent = isLast ? `${count} waves — full reconstruction` : `${count} wave${count>1?'s':''}`;
-      wrap.appendChild(label);
-      grid.appendChild(wrap);
+    steps.forEach((step, i)=>{
+      const row = document.createElement('div');
+      row.className = 'step-row';
+
+      const header = document.createElement('div');
+      header.className = 'step-header';
+      header.innerHTML = stepHeaderText(step, i);
+      row.appendChild(header);
+
+      const strip = document.createElement('div');
+      strip.className = 'step-strip';
+
+      const prevWrap = miniCanvasBlock(cw, ch, step.prevCount===0 ? 'nothing (flat baseline)' : `sum of ${step.prevCount}`);
+      drawRidgeMini(prevWrap.canvas, step.prevCount, range, { color:'#7f8794' });
+      strip.appendChild(prevWrap.el);
+
+      strip.appendChild(connectorEl('+'));
+
+      const waveWrap = miniCanvasBlock(cw, ch, waveLabelText(step));
+      drawWaveMini(waveWrap.canvas, step.prevCount, step.count, range);
+      strip.appendChild(waveWrap.el);
+
+      strip.appendChild(connectorEl('='));
+
+      const sumWrap = miniCanvasBlock(cw, ch, step.isLast ? `${step.count} waves — full reconstruction` : `sum of ${step.count}`);
+      drawRidgeMini(sumWrap.canvas, step.count, range, {
+        color: step.isLast ? '#e0a54c' : '#5eb0a4',
+        lineWidth: step.isLast ? 2.5 : 2,
+        overlayOriginal: step.isLast,
+        ghostCount: step.prevCount>0 ? step.prevCount : null
+      });
+      strip.appendChild(sumWrap.el);
+
+      row.appendChild(strip);
+      grid.appendChild(row);
     });
 
-    document.getElementById('imageStatus').textContent = `${panels} panels rendered`;
+    document.getElementById('imageStatus').textContent = `${steps.length} steps rendered`;
     document.getElementById('imageDownloadRow').style.display = 'flex';
-    state.lastCounts = counts;
+    state.lastSteps = steps;
+    state.lastRange = range;
   });
 
   document.getElementById('downloadImageBtn').addEventListener('click', ()=>{
-    const cvs = document.querySelectorAll('#gridOutput canvas');
-    if (!cvs.length) return;
-    const cols = 3;
-    const rows = Math.ceil(cvs.length/cols);
-    const pad = 14;
-    const cw = cvs[0].width, ch = cvs[0].height;
+    if (!state.lastSteps) return;
+    const steps = state.lastSteps, range = state.lastRange;
+    const cw = 220, ch = 140, gap = 14, connW = 34, headerH = 24, rowGapY = 20;
+    const rowWidth = cw*3 + connW*2 + gap*4;
     const out = document.createElement('canvas');
-    out.width = cols*cw + (cols+1)*pad;
-    out.height = rows*ch + (rows+1)*pad + 40;
+    out.width = rowWidth + 28;
+    out.height = 50 + steps.length*(headerH + ch + 22 + rowGapY);
     const octx = out.getContext('2d');
     octx.fillStyle = '#10131a';
     octx.fillRect(0,0,out.width,out.height);
     octx.fillStyle = '#e9e7de';
     octx.font = '600 20px Georgia, serif';
-    octx.fillText('Ridgeline — Fourier Reconstruction', pad, 28);
-    cvs.forEach((cv, i)=>{
-      const col = i % cols, row = Math.floor(i/cols);
-      const x = pad + col*(cw+pad);
-      const y = 40 + pad + row*(ch+pad);
-      octx.drawImage(cv, x, y);
+    octx.fillText('Ridgeline — Fourier Reconstruction', 14, 30);
+
+    let y = 50;
+    steps.forEach((step, i)=>{
+      octx.fillStyle = '#9aa0ae';
+      octx.font = '13px Inter, sans-serif';
+      octx.fillText(stepHeaderText(step, i).replace(/<\/?b>/g,''), 14, y+14);
+
+      let x = 14;
+      const rowTop = y + headerH;
+
+      const prevCv = document.createElement('canvas'); prevCv.width=cw; prevCv.height=ch;
+      drawRidgeMini(prevCv, step.prevCount, range, { color:'#7f8794' });
+      octx.drawImage(prevCv, x, rowTop);
+      x += cw + gap;
+
+      octx.fillStyle = '#e9e7de';
+      octx.font = '600 22px Georgia, serif';
+      octx.fillText('+', x, rowTop+ch/2+8);
+      x += connW;
+
+      const waveCv = document.createElement('canvas'); waveCv.width=cw; waveCv.height=ch;
+      drawWaveMini(waveCv, step.prevCount, step.count, range);
+      octx.drawImage(waveCv, x, rowTop);
+      x += cw + gap;
+
+      octx.fillStyle = '#e9e7de';
+      octx.font = '600 22px Georgia, serif';
+      octx.fillText('=', x, rowTop+ch/2+8);
+      x += connW;
+
+      const sumCv = document.createElement('canvas'); sumCv.width=cw; sumCv.height=ch;
+      drawRidgeMini(sumCv, step.count, range, {
+        color: step.isLast ? '#e0a54c' : '#5eb0a4',
+        lineWidth: step.isLast ? 2.5 : 2,
+        overlayOriginal: step.isLast,
+        ghostCount: step.prevCount>0 ? step.prevCount : null
+      });
+      octx.drawImage(sumCv, x, rowTop);
+
+      y = rowTop + ch + 22 + rowGapY;
     });
+
     const link = document.createElement('a');
     link.download = 'ridgeline-reconstruction.png';
     link.href = out.toDataURL('image/png');
@@ -713,10 +935,7 @@
     const K95 = energyCount95(state.comps);
     const armsK = Math.min(K95, state.comps.length);
 
-    const scaleX = (w*0.62)/N; // leave room for arms viewport in arms mode
-    const originX = style==='arms' ? w*0.34 : 0;
     const midY = h*0.42;
-    const traceScale = 1;
 
     // precompute value range for vertical fit
     let minV = Infinity, maxV = -Infinity;
@@ -725,9 +944,19 @@
       if (v<minV) minV=v; if (v>maxV) maxV=v;
     }
     const range = Math.max(1, maxV-minV);
+    const center = (minV+maxV)/2;
     const fitScale = (h*0.6)/range;
 
-    function valueToY(v){ return midY + (v - (minV+maxV)/2)*fitScale; }
+    function valueToY(v){ return midY + (v - center)*fitScale; }
+
+    // step plan for the "sequential summation" style — shared with the image panels
+    let sumSteps = null, sumFrameBounds = null;
+    if (style === 'sum'){
+      const videoStepsCount = parseInt(document.getElementById('videoStepsSlider').value, 10);
+      sumSteps = buildSteps(Math.min(videoStepsCount, state.comps.length));
+      sumFrameBounds = sumSteps.map((_, i) => Math.round(drawFrames * i / sumSteps.length));
+      sumFrameBounds.push(drawFrames);
+    }
 
     if (record){
       recordedChunks = [];
@@ -746,24 +975,79 @@
     }
 
     let frame = 0;
-    function drawFrameSum(progress){
+
+    // sequential summation: reveal the new wave (top strip), then morph the ridge from
+    // the previous sum into the new sum — literally "prev + wave = next" playing out over time
+    function drawFrameSumStep(f){
+      let stepIdx = 0;
+      while (stepIdx < sumSteps.length-1 && f >= sumFrameBounds[stepIdx+1]) stepIdx++;
+      const segStart = sumFrameBounds[stepIdx], segEnd = sumFrameBounds[stepIdx+1];
+      const segLen = Math.max(1, segEnd-segStart);
+      const local = (f-segStart)/segLen;
+      const revealFrac = 0.35;
+      const st = sumSteps[stepIdx];
+
       ctx.clearRect(0,0,w,h);
       ctx.fillStyle = '#0c0e13';
       ctx.fillRect(0,0,w,h);
-      const count = Math.max(1, Math.round(progress*state.comps.length));
+
+      const insetH = h*0.24;
+      const mainTop = insetH + 16;
+      const mainH = h - mainTop;
+      const midYMain = mainTop + mainH*0.5;
+      const fitScaleMain = (mainH*0.62)/range;
+      const waveFit = (insetH*0.62)/range;
+      const waveMidY = insetH*0.5;
+
+      ctx.strokeStyle = 'rgba(154,160,174,0.3)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0,waveMidY); ctx.lineTo(w,waveMidY); ctx.stroke();
+
+      let revealT, morphT;
+      if (local <= revealFrac){
+        revealT = local/revealFrac;
+        morphT = 0;
+      } else {
+        revealT = 1;
+        morphT = easeInOutCubic((local-revealFrac)/(1-revealFrac));
+      }
+
+      // the wave being added, traced left to right
+      ctx.strokeStyle = '#d97a6c';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      const upTo = Math.max(1, Math.round(revealT*N));
+      for (let n = 0; n < upTo; n++){
+        const cur = reconstructAt(state.dc, state.comps, M, st.count, n);
+        const prev = reconstructAt(state.dc, state.comps, M, st.prevCount, n);
+        const y = waveMidY + (cur-prev)*waveFit;
+        const x = n*(w/N);
+        if (n===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      ctx.stroke();
+
+      ctx.fillStyle = '#d97a6c';
+      ctx.font = '12px Inter, sans-serif';
+      const waveLabel = st.addedComps.length===1 ? ('+ ' + waveFormula(st.addedComps[0])) : `+ ${st.addedComps.length} waves`;
+      ctx.fillText(waveLabel, 10, 14);
+
+      // main ridge: interpolate prev sum -> new sum as the wave merges in
       ctx.beginPath();
       for (let n = 0; n < N; n++){
-        const v = reconstructAt(state.dc, state.comps, M, count, n);
+        const prevV = reconstructAt(state.dc, state.comps, M, st.prevCount, n);
+        const curV = reconstructAt(state.dc, state.comps, M, st.count, n);
+        const v = prevV + (curV-prevV)*morphT;
+        const y = midYMain + (v-center)*fitScaleMain;
         const x = n*(w/N);
-        const y = valueToY(v);
         if (n===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
       }
       ctx.strokeStyle = '#5eb0a4';
       ctx.lineWidth = 2.5;
       ctx.stroke();
+
       ctx.fillStyle = '#9aa0ae';
       ctx.font = '13px Inter, sans-serif';
-      ctx.fillText(count + ' / ' + state.comps.length + ' waves', 14, 24);
+      ctx.fillText(`step ${stepIdx+1} / ${sumSteps.length} — running total ${st.count} / ${state.comps.length} waves`, 10, mainTop+16);
     }
 
     function drawFrameArms(t){
@@ -771,42 +1055,33 @@
       ctx.fillStyle = '#0c0e13';
       ctx.fillRect(0,0,w,h);
 
-      // arms viewport center
-      const cx0 = w*0.17, cy0 = midY;
-      let cx = cx0, cy = cy0;
-      const theta = 2*Math.PI * t; // t in [0,1) over one pass of length N within period M
+      // arms viewport: chain starts at the mean elevation, mapped through the same
+      // vertical transform as the trace plot, so the pen's height always equals valueToY(sum-so-far)
+      const cx0 = w*0.17;
+      let cx = cx0, cy = valueToY(state.dc/M);
+
+      const nUnits = t*N; // fractional sample position
 
       ctx.strokeStyle = 'rgba(154,160,174,0.5)';
       ctx.lineWidth = 1;
 
-      // DC arm
-      const dcR = Math.abs(state.dc/M);
-      ctx.beginPath(); ctx.arc(cx, cy, dcR, 0, Math.PI*2); ctx.stroke();
-      const dcAngle = state.dc >= 0 ? 0 : Math.PI;
-      let nx = cx + dcR*Math.cos(dcAngle);
-      let ny = cy + dcR*Math.sin(dcAngle);
-      ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(nx,ny); ctx.stroke();
-      cx = nx; cy = ny;
-
-      const nUnits = t*N; // fractional sample position
-
       for (let i = 0; i < armsK; i++){
         const c = state.comps[i];
-        const r = Math.abs(c.k===0?0:c.amplitude)/2 * fitScale;
+        const r = c.amplitude/2 * fitScale;
         const baseAngle = 2*Math.PI*c.k*nUnits/M + c.phase;
-        const sign = c.amplitude >= 0 ? 0 : Math.PI;
 
-        // arm A: +k
-        let ang = baseAngle + sign;
+        // two counter-rotating arms (+k, -k); their sum lands purely on the vertical
+        // axis, since amplitude*cos(angle) = amplitude/2*e^{i angle} + amplitude/2*e^{-i angle}
+        // — swapping sin/cos here (vs. the textbook horizontal epicycle) puts that sum on y.
+        let angA = baseAngle;
         ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.stroke();
-        let ax = cx + r*Math.cos(ang), ay = cy + r*Math.sin(ang);
+        let ax = cx + r*Math.sin(angA), ay = cy + r*Math.cos(angA);
         ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(ax,ay); ctx.stroke();
         cx = ax; cy = ay;
 
-        // arm B: -k (conjugate)
-        let angB = -baseAngle + sign;
+        let angB = -baseAngle;
         ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.stroke();
-        let bx = cx + r*Math.cos(angB), by = cy + r*Math.sin(angB);
+        let bx = cx + r*Math.sin(angB), by = cy + r*Math.cos(angB);
         ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(bx,by); ctx.stroke();
         cx = bx; cy = by;
       }
@@ -814,6 +1089,13 @@
       // pen tip
       ctx.fillStyle = '#e0a54c';
       ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI*2); ctx.fill();
+
+      // vertical guide: the pen only ever moves up/down at this x — that height is the value
+      ctx.strokeStyle = 'rgba(224,165,76,0.25)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.moveTo(cx0, 0); ctx.lineTo(cx0, h); ctx.stroke();
+      ctx.setLineDash([]);
 
       // trace path drawn so far, into the right-hand plot
       const traceX0 = w*0.36;
@@ -830,14 +1112,18 @@
       }
       ctx.stroke();
 
-      // connector line from pen tip to current trace point
-      ctx.strokeStyle = 'rgba(224,165,76,0.35)';
+      // connector line from pen tip to current trace point — same y by construction
+      ctx.strokeStyle = 'rgba(224,165,76,0.4)';
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(cx, cy);
       const curX = traceX0 + Math.min(N-1,nUnits)*(traceW/N);
       ctx.lineTo(curX, cy);
       ctx.stroke();
+
+      ctx.fillStyle = '#9aa0ae';
+      ctx.font = '12px Inter, sans-serif';
+      ctx.fillText(`${armsK} wave pairs rotating — pen height = their sum`, 10, 16);
     }
 
     function drawOverlayFrame(){
@@ -859,9 +1145,8 @@
 
     function step(){
       if (frame < drawFrames){
-        const progress = frame/(drawFrames-1);
-        if (style==='sum') drawFrameSum(progress);
-        else drawFrameArms(progress);
+        if (style==='sum') drawFrameSumStep(frame);
+        else drawFrameArms(frame/Math.max(1,drawFrames-1));
         frame++;
         requestAnimationFrame(step);
       } else if (overlayEnd && frame < totalFrames){
