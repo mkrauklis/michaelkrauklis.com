@@ -363,6 +363,53 @@
     </div>
   </section>
 
+  <section id="merchSection" style="display:none;">
+    <span class="step-tag">04 — make it merch</span>
+    <h2>Turn it into a print</h2>
+    <p>Three ways to lay out the same math as a standalone graphic — high resolution, made for
+    a shirt, mug, or poster rather than a webpage.</p>
+
+    <div class="toggle-group" id="merchStyleToggle">
+      <button data-style="line" class="active">Minimal line</button>
+      <button data-style="stack">Exploded stack</button>
+      <button data-style="mandala">Mandala rings</button>
+    </div>
+
+    <div class="panel row" style="margin-top:18px;">
+      <div class="col">
+        <canvas class="stage" id="merchCanvas"></canvas>
+      </div>
+      <div class="col">
+        <label class="field">Accent color</label>
+        <input type="color" id="merchAccentColor" value="#e0a54c" style="width:100%; height:38px; border:1px solid var(--line); border-radius:6px; background:none; cursor:pointer;">
+
+        <label class="field">Background</label>
+        <div class="toggle-group" id="merchBgToggle">
+          <button data-bg="dark" class="active">Dark</button>
+          <button data-bg="light">Light</button>
+        </div>
+
+        <label class="field" id="merchFillLabel">Style</label>
+        <div class="toggle-group" id="merchFillToggle">
+          <button data-fill="filled" class="active">Filled silhouette</button>
+          <button data-fill="outline">Outline only</button>
+        </div>
+
+        <label class="field">Caption (optional)</label>
+        <input type="text" id="merchCaptionInput" placeholder="e.g. TETON RANGE" maxlength="40"
+          style="width:100%; background:var(--bg-panel-2); border:1px solid var(--line); border-radius:6px; color:var(--ink); padding:9px 12px; font-family:'Inter',sans-serif; font-size:0.9rem;">
+
+        <div class="actions">
+          <button class="primary" id="renderMerchBtn">Render</button>
+          <span class="status" id="merchStatus"></span>
+        </div>
+        <div class="actions" id="merchDownloadRow" style="display:none;">
+          <button class="secondary" id="downloadMerchBtn">Download high-res PNG</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <hr class="divider">
   <div id="adSlot">Ad placement — drop your AdSense (or other network) unit code here once approved.</div>
 
@@ -619,6 +666,9 @@
     const suggestedArms = Math.min(energyCount95(state.comps), total);
     armsCountSlider.value = suggestedArms;
     document.getElementById('armsCountVal').textContent = armsCountSlider.value;
+
+    document.getElementById('merchSection').style.display = 'block';
+    renderMerch();
   }
 
   // ---------- Mode toggle ----------
@@ -1208,6 +1258,244 @@
   });
   document.getElementById('recordVideoBtn').addEventListener('click', ()=>{
     animateVideo(true);
+  });
+
+  // ---------- Merch designs ----------
+  const merchState = { style: 'line', accent: '#e0a54c', bg: 'dark', fill: 'filled' };
+  const MERCH_DARK_BG = '#10131a', MERCH_LIGHT_BG = '#f5f0e6';
+  const MERCH_SIZES = {
+    line:    { w: 1800, h: 2200 },
+    stack:   { w: 1800, h: 2200 },
+    mandala: { w: 2000, h: 2000 }
+  };
+
+  // manual letter-spacing — canvas text doesn't support tracking natively
+  function drawTrackedText(ctx, text, cx, y, spacing){
+    const widths = [...text].map(ch => ctx.measureText(ch).width);
+    const total = widths.reduce((a,b) => a+b, 0) + spacing*Math.max(0, text.length-1);
+    const prevAlign = ctx.textAlign;
+    ctx.textAlign = 'left';
+    let x = cx - total/2;
+    for (let i = 0; i < text.length; i++){
+      ctx.fillText(text[i], x, y);
+      x += widths[i] + spacing;
+    }
+    ctx.textAlign = prevAlign;
+  }
+
+  function drawMerchLine(ctx, w, h, opts){
+    ctx.fillStyle = opts.bgColor;
+    ctx.fillRect(0, 0, w, h);
+
+    const N = state.N, M = state.M;
+    const marginX = w*0.12;
+    const bandTop = h*0.30, bandBottom = h*0.62;
+    const bandH = bandBottom - bandTop;
+
+    const vals = new Array(N);
+    let minV = Infinity, maxV = -Infinity;
+    for (let n = 0; n < N; n++){
+      vals[n] = reconstructAt(state.dc, state.comps, M, state.comps.length, n);
+      if (vals[n] < minV) minV = vals[n];
+      if (vals[n] > maxV) maxV = vals[n];
+    }
+    const range = Math.max(1, maxV-minV);
+    const scaleY = (bandH*0.85)/range;
+    const mid = (minV+maxV)/2;
+    const xAt = n => marginX + n*((w-2*marginX)/(N-1));
+    const yAt = n => bandTop + bandH*0.5 + (vals[n]-mid)*scaleY;
+
+    ctx.beginPath();
+    for (let n = 0; n < N; n++){
+      const x = xAt(n), y = yAt(n);
+      if (n===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+
+    if (opts.fill === 'filled'){
+      ctx.lineTo(xAt(N-1), bandBottom + bandH*0.2);
+      ctx.lineTo(xAt(0), bandBottom + bandH*0.2);
+      ctx.closePath();
+      ctx.fillStyle = opts.accent;
+      ctx.fill();
+    } else {
+      ctx.strokeStyle = opts.accent;
+      ctx.lineWidth = w*0.005;
+      ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      ctx.stroke();
+    }
+
+    if (opts.caption){
+      ctx.fillStyle = opts.accent;
+      ctx.font = `600 ${Math.round(w*0.024)}px 'Inter', sans-serif`;
+      ctx.textBaseline = 'alphabetic';
+      drawTrackedText(ctx, opts.caption.toUpperCase(), w/2, bandBottom + bandH*0.55, w*0.012);
+    }
+  }
+
+  function drawMerchStack(ctx, w, h, opts){
+    ctx.fillStyle = opts.bgColor;
+    ctx.fillRect(0, 0, w, h);
+
+    const N = state.N, M = state.M;
+    const rows = 8;
+    const counts = panelCounts(state.comps.length, rows);
+    const marginX = w*0.1;
+    const top = h*0.1, bottom = opts.caption ? h*0.82 : h*0.9;
+    const rowH = (bottom-top)/counts.length;
+
+    counts.forEach((count, i)=>{
+      const isLast = i === counts.length-1;
+      const prevCount = i>0 ? counts[i-1] : 0;
+      const rowCenterY = top + rowH*(i+0.5);
+      const vals = new Array(N);
+      let minV = Infinity, maxV = -Infinity;
+      for (let n = 0; n < N; n++){
+        const cur = reconstructAt(state.dc, state.comps, M, count, n);
+        vals[n] = isLast ? cur : (cur - reconstructAt(state.dc, state.comps, M, prevCount, n));
+        if (vals[n] < minV) minV = vals[n];
+        if (vals[n] > maxV) maxV = vals[n];
+      }
+      const range = Math.max(1, maxV-minV);
+      const scaleY = (rowH*0.7)/range;
+      const midV = isLast ? (minV+maxV)/2 : 0;
+
+      ctx.beginPath();
+      for (let n = 0; n < N; n++){
+        const x = marginX + n*((w-2*marginX)/(N-1));
+        const y = rowCenterY + (vals[n]-midV)*scaleY;
+        if (n===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      ctx.strokeStyle = opts.accent;
+      ctx.globalAlpha = isLast ? 1 : 0.35 + 0.5*(i/(counts.length-1));
+      ctx.lineWidth = isLast ? w*0.006 : w*0.0022;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    });
+
+    if (opts.caption){
+      ctx.fillStyle = opts.accent;
+      ctx.font = `600 ${Math.round(w*0.024)}px 'Inter', sans-serif`;
+      ctx.textBaseline = 'alphabetic';
+      drawTrackedText(ctx, opts.caption.toUpperCase(), w/2, h*0.94, w*0.012);
+    }
+  }
+
+  function drawMerchMandala(ctx, w, h, opts){
+    ctx.fillStyle = opts.bgColor;
+    ctx.fillRect(0, 0, w, h);
+
+    const N = state.N, M = state.M;
+    const cx = w/2, cy = opts.caption ? h*0.46 : h/2;
+    const rings = 7;
+    const counts = panelCounts(state.comps.length, rings);
+    const baseR = Math.min(w,h)*0.10;
+    const maxR = Math.min(w,h)*0.44;
+    const ringSpacing = (maxR-baseR)/counts.length;
+
+    let minV = Infinity, maxV = -Infinity;
+    for (let n = 0; n < N; n++){
+      const v = reconstructAt(state.dc, state.comps, M, state.comps.length, n);
+      if (v < minV) minV = v;
+      if (v > maxV) maxV = v;
+    }
+    const range = Math.max(1, maxV-minV);
+    const mid = (minV+maxV)/2;
+    const radialScale = (ringSpacing*0.85)/range;
+
+    counts.forEach((count, i)=>{
+      const ringR = baseR + ringSpacing*(i+1);
+      const isLast = i === counts.length-1;
+      ctx.beginPath();
+      for (let n = 0; n <= N; n++){
+        const nn = n % N;
+        const v = reconstructAt(state.dc, state.comps, M, count, nn);
+        const theta = 2*Math.PI*n/N - Math.PI/2;
+        // peaks (smaller raw value) push the ring outward, matching the mountain's real shape
+        const r = ringR - (v-mid)*radialScale;
+        const x = cx + r*Math.cos(theta), y = cy + r*Math.sin(theta);
+        if (n===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      ctx.closePath();
+      ctx.strokeStyle = opts.accent;
+      ctx.globalAlpha = isLast ? 1 : 0.3 + 0.5*(i/(counts.length-1));
+      ctx.lineWidth = isLast ? w*0.0035 : w*0.0016;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    });
+
+    if (opts.caption){
+      ctx.fillStyle = opts.accent;
+      ctx.font = `600 ${Math.round(w*0.026)}px 'Inter', sans-serif`;
+      ctx.textBaseline = 'alphabetic';
+      drawTrackedText(ctx, opts.caption.toUpperCase(), w/2, h*0.92, w*0.014);
+    }
+  }
+
+  function renderMerch(){
+    if (!state.comps) return;
+    const size = MERCH_SIZES[merchState.style];
+    const canvas = document.getElementById('merchCanvas');
+    canvas.width = size.w; canvas.height = size.h;
+    const ctx = canvas.getContext('2d');
+    const opts = {
+      accent: merchState.accent,
+      bgColor: merchState.bg === 'dark' ? MERCH_DARK_BG : MERCH_LIGHT_BG,
+      fill: merchState.fill,
+      caption: document.getElementById('merchCaptionInput').value.trim()
+    };
+    if (merchState.style === 'line') drawMerchLine(ctx, size.w, size.h, opts);
+    else if (merchState.style === 'stack') drawMerchStack(ctx, size.w, size.h, opts);
+    else drawMerchMandala(ctx, size.w, size.h, opts);
+
+    document.getElementById('merchStatus').textContent = `${size.w}×${size.h}px — print-ready`;
+    document.getElementById('merchDownloadRow').style.display = 'flex';
+  }
+
+  document.getElementById('merchStyleToggle').addEventListener('click', e=>{
+    const btn = e.target.closest('button'); if (!btn) return;
+    document.querySelectorAll('#merchStyleToggle button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    merchState.style = btn.dataset.style;
+    document.getElementById('merchFillLabel').style.display = merchState.style==='line' ? 'block' : 'none';
+    document.getElementById('merchFillToggle').style.display = merchState.style==='line' ? 'flex' : 'none';
+    renderMerch();
+  });
+
+  document.getElementById('merchBgToggle').addEventListener('click', e=>{
+    const btn = e.target.closest('button'); if (!btn) return;
+    document.querySelectorAll('#merchBgToggle button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    merchState.bg = btn.dataset.bg;
+    renderMerch();
+  });
+
+  document.getElementById('merchFillToggle').addEventListener('click', e=>{
+    const btn = e.target.closest('button'); if (!btn) return;
+    document.querySelectorAll('#merchFillToggle button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    merchState.fill = btn.dataset.fill;
+    renderMerch();
+  });
+
+  document.getElementById('merchAccentColor').addEventListener('input', e=>{
+    merchState.accent = e.target.value;
+    renderMerch();
+  });
+
+  document.getElementById('renderMerchBtn').addEventListener('click', renderMerch);
+
+  let merchCaptionDebounce = null;
+  document.getElementById('merchCaptionInput').addEventListener('input', ()=>{
+    clearTimeout(merchCaptionDebounce);
+    merchCaptionDebounce = setTimeout(renderMerch, 300);
+  });
+
+  document.getElementById('downloadMerchBtn').addEventListener('click', ()=>{
+    const canvas = document.getElementById('merchCanvas');
+    const link = document.createElement('a');
+    link.download = `ridgeline-${merchState.style}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
   });
 
 })();
