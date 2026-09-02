@@ -343,6 +343,8 @@
         </p>
         <label class="field" id="videoStepsLabel">Number of steps — <span class="field-value" id="videoStepsVal">8</span></label>
         <input type="range" id="videoStepsSlider" min="3" max="16" value="8">
+        <label class="field" id="armsCountLabel" style="display:none;">Number of epicycle arms — <span class="field-value" id="armsCountVal">8</span></label>
+        <input type="range" id="armsCountSlider" min="1" max="16" value="8" style="display:none;">
         <label class="field">Duration — <span class="field-value" id="durationVal">8</span>s</label>
         <input type="range" id="durationSlider" min="3" max="20" value="8">
         <label class="field">
@@ -600,6 +602,22 @@
     state.dc = X[0].re;
     state.comps = components(X);
     state.M = M;
+    updateStepBounds();
+  }
+
+  // the number of usable steps/arms is capped by how many waves actually exist —
+  // there's no point letting a slider go past that
+  function updateStepBounds(){
+    const total = state.comps.length;
+    [panelCountSlider, videoStepsSlider, armsCountSlider].forEach(s=>{
+      s.max = total;
+      if (parseInt(s.value, 10) > total) s.value = total;
+    });
+    document.getElementById('panelCountVal').textContent = panelCountSlider.value;
+    document.getElementById('videoStepsVal').textContent = videoStepsSlider.value;
+    const suggestedArms = Math.min(energyCount95(state.comps), total);
+    armsCountSlider.value = suggestedArms;
+    document.getElementById('armsCountVal').textContent = armsCountSlider.value;
   }
 
   // ---------- Mode toggle ----------
@@ -620,9 +638,11 @@
     const isSum = state.videoStyle === 'sum';
     document.getElementById('videoStyleNote').textContent = isSum
       ? 'Each step reveals the wave being added (top strip, red) before it merges into the ridge (green).'
-      : 'Every wave rotates at once — the pen\'s height (dashed line) is their sum, and becomes one point of the ridge as it unrolls to the right.';
+      : 'Every wave rotates at once, over your photo — the pen\'s height (dashed line) is their sum, and becomes one point of the ridge as it unrolls to the right.';
     document.getElementById('videoStepsLabel').style.display = isSum ? 'block' : 'none';
     document.getElementById('videoStepsSlider').style.display = isSum ? 'block' : 'none';
+    document.getElementById('armsCountLabel').style.display = isSum ? 'none' : 'block';
+    document.getElementById('armsCountSlider').style.display = isSum ? 'none' : 'block';
   });
 
   const panelCountSlider = document.getElementById('panelCountSlider');
@@ -633,6 +653,11 @@
   const videoStepsSlider = document.getElementById('videoStepsSlider');
   videoStepsSlider.addEventListener('input', ()=>{
     document.getElementById('videoStepsVal').textContent = videoStepsSlider.value;
+  });
+
+  const armsCountSlider = document.getElementById('armsCountSlider');
+  armsCountSlider.addEventListener('input', ()=>{
+    document.getElementById('armsCountVal').textContent = armsCountSlider.value;
   });
 
   const durationSlider = document.getElementById('durationSlider');
@@ -694,9 +719,10 @@
 
     const N = state.N, M = state.M;
     const midY = h*0.5;
-    const fitScale = (h*0.7)/range.range;
+    // true-to-photo scale: 1 pixel row of the sampled photo maps to this many canvas pixels —
+    // the same factor the final overlay panel uses, so magnitude looks consistent across every step
+    const fitScale = h/sourceCanvas.height;
     const center = (range.minV+range.maxV)/2;
-    const scaleYOverlay = opts.overlayOriginal ? h/sourceCanvas.height : null;
 
     if (opts.ghostCount != null){
       ctx.beginPath();
@@ -716,7 +742,7 @@
     ctx.beginPath();
     for (let n = 0; n < N; n++){
       const raw = reconstructAt(state.dc, state.comps, M, count, n);
-      const y = opts.overlayOriginal ? raw*scaleYOverlay : midY + (raw-center)*fitScale;
+      const y = opts.overlayOriginal ? raw*fitScale : midY + (raw-center)*fitScale;
       const x = n*(w/N);
       if (n===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
     }
@@ -735,7 +761,9 @@
 
     const N = state.N, M = state.M;
     const midY = h*0.5;
-    const fitScale = (h*0.7)/range.range;
+    // true-to-photo scale: 1 pixel row of the sampled photo maps to this many canvas pixels —
+    // the same factor the final overlay panel uses, so magnitude looks consistent across every step
+    const fitScale = h/sourceCanvas.height;
 
     ctx.strokeStyle = 'rgba(154,160,174,0.3)';
     ctx.lineWidth = 1;
@@ -932,10 +960,7 @@
     const holdFrames = overlayEnd ? Math.round(fps*1.2) : 0;
     const drawFrames = totalFrames - holdFrames;
 
-    const K95 = energyCount95(state.comps);
-    const armsK = Math.min(K95, state.comps.length);
-
-    const midY = h*0.42;
+    const armsK = Math.min(parseInt(document.getElementById('armsCountSlider').value, 10) || 1, state.comps.length);
 
     // precompute value range for vertical fit
     let minV = Infinity, maxV = -Infinity;
@@ -943,11 +968,13 @@
       const v = reconstructAt(state.dc, state.comps, M, state.comps.length, n);
       if (v<minV) minV=v; if (v>maxV) maxV=v;
     }
-    const range = Math.max(1, maxV-minV);
     const center = (minV+maxV)/2;
-    const fitScale = (h*0.6)/range;
+    // true-to-photo scale, matching the final overlay frame exactly
+    const fitScale = h/sourceCanvas.height;
 
-    function valueToY(v){ return midY + (v - center)*fitScale; }
+    // absolute (uncentered) mapping — the arms mode draws the photo behind the trace,
+    // so the pen's height has to land on the same pixel row the photo is drawn at
+    function valueToY(v){ return v*fitScale; }
 
     // step plan for the "sequential summation" style — shared with the image panels
     let sumSteps = null, sumFrameBounds = null;
@@ -995,8 +1022,6 @@
       const mainTop = insetH + 16;
       const mainH = h - mainTop;
       const midYMain = mainTop + mainH*0.5;
-      const fitScaleMain = (mainH*0.62)/range;
-      const waveFit = (insetH*0.62)/range;
       const waveMidY = insetH*0.5;
 
       ctx.strokeStyle = 'rgba(154,160,174,0.3)';
@@ -1020,7 +1045,7 @@
       for (let n = 0; n < upTo; n++){
         const cur = reconstructAt(state.dc, state.comps, M, st.count, n);
         const prev = reconstructAt(state.dc, state.comps, M, st.prevCount, n);
-        const y = waveMidY + (cur-prev)*waveFit;
+        const y = waveMidY + (cur-prev)*fitScale;
         const x = n*(w/N);
         if (n===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
       }
@@ -1037,7 +1062,7 @@
         const prevV = reconstructAt(state.dc, state.comps, M, st.prevCount, n);
         const curV = reconstructAt(state.dc, state.comps, M, st.count, n);
         const v = prevV + (curV-prevV)*morphT;
-        const y = midYMain + (v-center)*fitScaleMain;
+        const y = midYMain + (v-center)*fitScale;
         const x = n*(w/N);
         if (n===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
       }
@@ -1051,9 +1076,20 @@
     }
 
     function drawFrameArms(t){
+      const traceX0 = w*0.36;
+      const traceW = w*0.6;
+
       ctx.clearRect(0,0,w,h);
       ctx.fillStyle = '#0c0e13';
       ctx.fillRect(0,0,w,h);
+
+      // the photo, behind the trace plot, at the same true-to-photo scale as the pen —
+      // so the traced line visibly lands on the real ridge as it's drawn
+      if (state.img){
+        ctx.globalAlpha = 0.4;
+        ctx.drawImage(state.img, traceX0, 0, traceW, h);
+        ctx.globalAlpha = 1;
+      }
 
       // arms viewport: chain starts at the mean elevation, mapped through the same
       // vertical transform as the trace plot, so the pen's height always equals valueToY(sum-so-far)
@@ -1098,8 +1134,6 @@
       ctx.setLineDash([]);
 
       // trace path drawn so far, into the right-hand plot
-      const traceX0 = w*0.36;
-      const traceW = w*0.6;
       ctx.strokeStyle = '#e0a54c';
       ctx.lineWidth = 2.5;
       ctx.beginPath();
