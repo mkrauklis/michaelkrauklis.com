@@ -1,42 +1,14 @@
-# Ridgeline
+# michaelkrauklis.com
 
-A mountain range is a stack of sine waves. Ridgeline traces the silhouette of an
-uploaded photo, decomposes it with a discrete Fourier transform, and shows the
-shape assembling itself one frequency at a time — as a still image (panels
-ordered by wave magnitude) or a video (sequential summation, or classic
-rotating-arm/epicycle drawing).
-
-Everything runs client-side in the browser. No photo is ever uploaded to a
-server, and no build step is required — it's a single `index.html`.
-
-## Try it
-
-Open `index.html` directly in a browser, or serve the repo with GitHub Pages
-(see below).
-
-1. Upload a photo with a clear sky/land silhouette.
-2. Adjust the detection threshold until the traced line hugs the real ridge
-   (use the invert checkbox if the sky is darker than the land, e.g. a
-   backlit or dusk shot).
-3. Choose **Image** for a downloadable panel-sequence PNG, or **Video** for
-   an animated `.webm` — sequential summation or rotating arms.
-
-## How it works
-
-- The silhouette is sampled into N points, mirrored to make it periodic, and
-  run through a discrete Fourier transform (`O(N²)`, computed in-browser).
-- Frequency components are sorted by magnitude, largest first.
-- Reconstructions are built by summing the top-*k* components — the video
-  and panel modes just vary *k* (or, for the arms mode, animate the phase).
-- Epicycle arm count defaults to however many components carry ~95% of the
-  signal's energy.
+Personal site and portfolio — bio, certifications, and talks/writing, plus a
+`/lab` of small interactive tools.
 
 ## Site structure
 
 ```
-/                     portfolio home (michaelkrauklis.com)
+/                     portfolio home
 /lab/                 index of tools
-/lab/ridgeline/       this tool
+/lab/ridgeline/       Ridgeline — Fourier mountain-silhouette tool
 CNAME                 custom domain config for GitHub Pages
 ```
 
@@ -59,11 +31,32 @@ CNAME                 custom domain config for GitHub Pages
    `<your-github-username>.github.io`.
 6. Once DNS resolves, check **Enforce HTTPS** in the Pages settings.
 
+## Lab tools
+
+### Ridgeline (`/lab/ridgeline/`)
+
+A mountain range is a stack of sine waves. Ridgeline traces the silhouette of
+an uploaded photo, decomposes it with a discrete Fourier transform, and shows
+the shape assembling itself one frequency at a time — as a still image
+(panels ordered by wave magnitude) or a video (sequential summation, or
+classic rotating-arm/epicycle drawing).
+
+Everything runs client-side in the browser. No photo is ever uploaded to a
+server, and no build step is required.
+
+**How it works:** the silhouette is sampled into N points, mirrored to make
+it periodic, and run through a discrete Fourier transform (`O(N²)`, computed
+in-browser). Frequency components are sorted by magnitude, largest first.
+Reconstructions are built by summing the top-*k* components — the video and
+panel modes just vary *k* (or, for the arms mode, animate the phase).
+Epicycle arm count defaults to however many components carry ~95% of the
+signal's energy.
+
 ## Ads
 
 There's a labeled placeholder `<div id="adSlot">` near the bottom of
-`index.html`. Once you have an approved ad network account (e.g. AdSense),
-drop the unit's script snippet in there.
+`lab/ridgeline/index.html`. Once you have an approved ad network account
+(e.g. AdSense), drop the unit's script snippet in there.
 
 ## License
 
