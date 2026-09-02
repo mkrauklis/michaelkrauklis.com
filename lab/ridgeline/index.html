@@ -319,9 +319,10 @@
         <label class="field">Number of steps — <span class="field-value" id="panelCountVal">6</span></label>
         <input type="range" id="panelCountSlider" min="3" max="16" value="6">
         <p style="margin-top:12px; font-size:0.85rem;">Each step shows the equation directly: the ridge so far,
-        plus the next wave (or batch of waves) ordered by magnitude — biggest and most structural first — equals
-        the new ridge. Formulas are in terms of x ∈ [0, 1], the normalized position across the ridge. The last
-        step overlays the full reconstruction on your original photo.</p>
+        plus the next wave ordered by magnitude — biggest and most structural first — equals the new ridge.
+        Formulas are in terms of x ∈ [0, 1], the normalized position across the ridge. The number of steps
+        is how many waves make it into the final result — the last step overlays whatever you land on onto
+        your original photo, so you can see how close it gets.</p>
         <div class="actions">
           <button class="primary" id="renderImageBtn">Render steps</button>
           <span class="status" id="imageStatus"></span>
@@ -667,16 +668,13 @@
 
   // ---------- Image (step-by-step equation) rendering ----------
   function panelCounts(totalComps, panels){
-    // every step but the last adds exactly one wave — "nothing + wave1 = x1, x1 + wave2 = x2, ..." —
-    // the last step jumps straight to the full reconstruction (all remaining waves at once)
+    // every step adds exactly one wave — "nothing + wave1 = x1, x1 + wave2 = x2, ..." — and stops
+    // at exactly `panels` waves, so the step count directly controls how much detail the final result has
     const counts = [];
-    for (let i = 1; i < panels; i++){
-      if (i >= totalComps) break;
+    for (let i = 1; i <= panels && i <= totalComps; i++){
       counts.push(i);
     }
-    counts.push(totalComps);
-    // de-duplicate in case totalComps was already reached
-    return [...new Set(counts)];
+    return counts;
   }
 
   function buildSteps(panels){
@@ -802,6 +800,13 @@
     return d;
   }
 
+  function sumLabelText(step){
+    if (!step.isLast) return `sum of ${step.count}`;
+    return step.count === state.comps.length
+      ? `${step.count} waves — full reconstruction`
+      : `${step.count} of ${state.comps.length} waves — your reconstruction`;
+  }
+
   function stepHeaderText(step, i){
     const n = step.addedComps.length;
     const waveWord = n===1 ? '1 wave' : `${n} waves`;
@@ -854,7 +859,7 @@
 
       strip.appendChild(connectorEl('='));
 
-      const sumWrap = miniCanvasBlock(cw, ch, step.isLast ? `${step.count} waves — full reconstruction` : `sum of ${step.count}`);
+      const sumWrap = miniCanvasBlock(cw, ch, sumLabelText(step));
       drawRidgeMini(sumWrap.canvas, step.count, range, {
         color: step.isLast ? '#e0a54c' : '#5eb0a4',
         lineWidth: step.isLast ? 2.5 : 2,
