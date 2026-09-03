@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="google-adsense-account" content="ca-pub-5936916546458743">
 <title>Ridgeline — Fourier Mountain Reconstruction</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap');
@@ -345,6 +346,8 @@
     background: var(--bg-panel-2);
   }
 </style>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5936916546458743"
+     crossorigin="anonymous"></script>
 </head>
 <body>
 
@@ -404,17 +407,13 @@
     no settings required.</p>
 
     <div class="style-cards" id="merchStyleCards">
-      <button class="style-card active" data-style="line">
+      <button class="style-card" data-style="line">
         <canvas data-thumb="line"></canvas>
         <span>Line</span>
       </button>
-      <button class="style-card" data-style="stack">
+      <button class="style-card active" data-style="stack">
         <canvas data-thumb="stack"></canvas>
         <span>Stack</span>
-      </button>
-      <button class="style-card" data-style="mandala">
-        <canvas data-thumb="mandala"></canvas>
-        <span>Mandala</span>
       </button>
     </div>
 
@@ -426,11 +425,17 @@
         <label class="field">Colors</label>
         <div class="swatch-row" id="merchSwatches"></div>
 
-        <label class="field" id="merchFillLabel">Style</label>
-        <div class="toggle-group" id="merchFillToggle">
+        <label class="field" id="merchFillLabel" style="display:none;">Style</label>
+        <div class="toggle-group" id="merchFillToggle" style="display:none;">
           <button data-fill="filled" class="active">Filled silhouette</button>
           <button data-fill="outline">Outline only</button>
+          <button data-fill="photo">Outline on photo</button>
         </div>
+
+        <label class="field" id="merchStackFillLabel">
+          <input type="checkbox" id="merchStackPhotoCheck" checked style="accent-color: var(--amber); margin-right:6px;">
+          Fill the final line with your photo
+        </label>
 
         <label class="field">Caption (optional)</label>
         <input type="text" id="merchCaptionInput" placeholder="e.g. TETON RANGE" maxlength="40"
@@ -520,7 +525,7 @@
   </details>
 
   <hr class="divider">
-  <div id="adSlot">Ad placement — drop your AdSense (or other network) unit code here once approved.</div>
+  <div id="adSlot">AdSense Auto ads is enabled for this page — Google places ads automatically, so no manual unit is needed here.</div>
 
 </main>
 
@@ -1429,12 +1434,11 @@
   });
 
   // ---------- Merch designs ----------
-  const merchState = { style: 'line', accent: '#e0a54c', bg: 'dark', fill: 'filled' };
+  const merchState = { style: 'stack', accent: '#e0a54c', bg: 'dark', fill: 'filled', stackPhotoFill: true };
   const MERCH_DARK_BG = '#10131a', MERCH_LIGHT_BG = '#f5f0e6';
   const MERCH_SIZES = {
-    line:    { w: 1800, h: 2200 },
-    stack:   { w: 1800, h: 2200 },
-    mandala: { w: 2000, h: 2000 }
+    line:  { w: 1800, h: 2200 },
+    stack: { w: 1800, h: 2200 }
   };
 
   // manual letter-spacing — canvas text doesn't support tracking natively
@@ -1451,27 +1455,71 @@
     ctx.textAlign = prevAlign;
   }
 
+  // draws the `count` most significant frequency components as faint individual sine
+  // curves oscillating around the mean elevation — the literal "waves" that sum to the ridge
+  // average color of the top strip of the source photo — used to tint the "sky" gradient
+  // above a photo-filled ridge so the cutoff doesn't look like it's floating on nothing
+  function getSkyColor(){
+    const ctx = sourceCanvas.getContext('2d');
+    const w = sourceCanvas.width, h = sourceCanvas.height;
+    const bandH = Math.max(1, Math.round(h*0.08));
+    const data = ctx.getImageData(0, 0, w, bandH).data;
+    let r=0, g=0, b=0, c=0;
+    for (let i = 0; i < data.length; i += 4){ r += data[i]; g += data[i+1]; b += data[i+2]; c++; }
+    return c ? [Math.round(r/c), Math.round(g/c), Math.round(b/c)] : [120, 150, 180];
+  }
+
+  function drawComponentGhosts(ctx, w, N, M, baselineY, fitScale, xAt, accent, count){
+    const K = Math.min(count, state.comps.length);
+    for (let i = 0; i < K; i++){
+      const c = state.comps[i];
+      ctx.beginPath();
+      for (let n = 0; n < N; n++){
+        const y = baselineY + c.amplitude*Math.cos(2*Math.PI*c.k*n/M + c.phase)*fitScale;
+        const x = xAt(n);
+        if (n===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      ctx.strokeStyle = accent;
+      ctx.globalAlpha = 0.4 - i*0.045;
+      ctx.lineWidth = Math.max(1, w*0.0012);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
   function drawMerchLine(ctx, w, h, opts){
     ctx.fillStyle = opts.bgColor;
     ctx.fillRect(0, 0, w, h);
 
     const N = state.N, M = state.M;
     const marginX = w*0.12;
+    const showPhoto = opts.fill === 'photo' && state.img;
+    // same band for every fill mode, so filled/outline/photo only differ in what fills the
+    // shape — not in where or how big the ridge sits on the page
     const bandTop = h*0.30, bandBottom = h*0.62;
     const bandH = bandBottom - bandTop;
 
+    if (showPhoto){
+      ctx.drawImage(state.img, marginX, bandTop, w-2*marginX, bandH);
+    }
+
     const vals = new Array(N);
-    let minV = Infinity, maxV = -Infinity;
     for (let n = 0; n < N; n++){
       vals[n] = reconstructAt(state.dc, state.comps, M, state.comps.length, n);
-      if (vals[n] < minV) minV = vals[n];
-      if (vals[n] > maxV) maxV = vals[n];
     }
-    const range = Math.max(1, maxV-minV);
-    const scaleY = (bandH*0.85)/range;
-    const mid = (minV+maxV)/2;
+    // true-to-photo scale: elevations are pixel rows sampled straight from the source photo
+    // (0 = top of frame, sourceCanvas.height = bottom), so mapping them directly into the band
+    // — instead of auto-centering to fill it — keeps every peak and valley where it actually
+    // sits in the original image
+    const fitScale = bandH / sourceCanvas.height;
     const xAt = n => marginX + n*((w-2*marginX)/(N-1));
-    const yAt = n => bandTop + bandH*0.5 + (vals[n]-mid)*scaleY;
+    const yAt = n => bandTop + vals[n]*fitScale;
+
+    // faint individual sine components behind the final ridge, so every style keeps the
+    // "many waves sum to one silhouette" idea instead of just showing the finished shape —
+    // drawn before the fill/stroke so a filled silhouette still shows them poking above the ridge
+    const baselineY = bandTop + (state.dc/M)*fitScale;
+    drawComponentGhosts(ctx, w, N, M, baselineY, fitScale, xAt, opts.accent, 6);
 
     ctx.beginPath();
     for (let n = 0; n < N; n++){
@@ -1526,11 +1574,51 @@
       const range = Math.max(1, maxV-minV);
       const scaleY = (rowH*0.7)/range;
       const midV = isLast ? (minV+maxV)/2 : 0;
+      const xAt = n => marginX + n*((w-2*marginX)/(N-1));
+      const yAt = n => rowCenterY + (vals[n]-midV)*scaleY;
+
+      // fill just the area below the final (approximate ridge) row with the source photo,
+      // clipped to the shape under that curve — same affine map the curve itself uses, so the
+      // photo lands exactly where the line says it should
+      if (isLast && opts.stackPhotoFill && state.img){
+        const rowTop = rowCenterY - rowH/2;
+        const rowBottom = rowCenterY + rowH/2;
+
+        // faded sky above the curve, so the photo doesn't look like it's cut off on nothing —
+        // tinted from the photo's own sky color, fully faded out by the top of the row
+        const sky = getSkyColor();
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(xAt(0), rowTop);
+        ctx.lineTo(xAt(N-1), rowTop);
+        for (let n = N-1; n >= 0; n--) ctx.lineTo(xAt(n), yAt(n));
+        ctx.closePath();
+        ctx.clip();
+        const grad = ctx.createLinearGradient(0, rowTop, 0, rowBottom);
+        grad.addColorStop(0, `rgba(${sky[0]},${sky[1]},${sky[2]},0)`);
+        grad.addColorStop(1, `rgba(${sky[0]},${sky[1]},${sky[2]},0.55)`);
+        ctx.fillStyle = grad;
+        ctx.fillRect(xAt(0), rowTop, xAt(N-1)-xAt(0), rowH);
+        ctx.restore();
+
+        ctx.save();
+        ctx.beginPath();
+        for (let n = 0; n < N; n++){
+          const x = xAt(n), y = yAt(n);
+          if (n===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+        }
+        ctx.lineTo(xAt(N-1), rowBottom);
+        ctx.lineTo(xAt(0), rowBottom);
+        ctx.closePath();
+        ctx.clip();
+        const imgTopY = rowCenterY - midV*scaleY;
+        ctx.drawImage(state.img, marginX, imgTopY, w-2*marginX, scaleY*sourceCanvas.height);
+        ctx.restore();
+      }
 
       ctx.beginPath();
       for (let n = 0; n < N; n++){
-        const x = marginX + n*((w-2*marginX)/(N-1));
-        const y = rowCenterY + (vals[n]-midV)*scaleY;
+        const x = xAt(n), y = yAt(n);
         if (n===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
       }
       ctx.strokeStyle = opts.accent;
@@ -1548,57 +1636,6 @@
     }
   }
 
-  function drawMerchMandala(ctx, w, h, opts){
-    ctx.fillStyle = opts.bgColor;
-    ctx.fillRect(0, 0, w, h);
-
-    const N = state.N, M = state.M;
-    const cx = w/2, cy = opts.caption ? h*0.46 : h/2;
-    const rings = 7;
-    const counts = panelCounts(state.comps.length, rings);
-    const baseR = Math.min(w,h)*0.10;
-    const maxR = Math.min(w,h)*0.44;
-    const ringSpacing = (maxR-baseR)/counts.length;
-
-    let minV = Infinity, maxV = -Infinity;
-    for (let n = 0; n < N; n++){
-      const v = reconstructAt(state.dc, state.comps, M, state.comps.length, n);
-      if (v < minV) minV = v;
-      if (v > maxV) maxV = v;
-    }
-    const range = Math.max(1, maxV-minV);
-    const mid = (minV+maxV)/2;
-    const radialScale = (ringSpacing*0.85)/range;
-
-    counts.forEach((count, i)=>{
-      const ringR = baseR + ringSpacing*(i+1);
-      const isLast = i === counts.length-1;
-      ctx.beginPath();
-      for (let n = 0; n <= N; n++){
-        const nn = n % N;
-        const v = reconstructAt(state.dc, state.comps, M, count, nn);
-        const theta = 2*Math.PI*n/N - Math.PI/2;
-        // peaks (smaller raw value) push the ring outward, matching the mountain's real shape
-        const r = ringR - (v-mid)*radialScale;
-        const x = cx + r*Math.cos(theta), y = cy + r*Math.sin(theta);
-        if (n===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-      }
-      ctx.closePath();
-      ctx.strokeStyle = opts.accent;
-      ctx.globalAlpha = isLast ? 1 : 0.3 + 0.5*(i/(counts.length-1));
-      ctx.lineWidth = isLast ? w*0.0035 : w*0.0016;
-      ctx.stroke();
-      ctx.globalAlpha = 1;
-    });
-
-    if (opts.caption){
-      ctx.fillStyle = opts.accent;
-      ctx.font = `600 ${Math.round(w*0.026)}px 'Inter', sans-serif`;
-      ctx.textBaseline = 'alphabetic';
-      drawTrackedText(ctx, opts.caption.toUpperCase(), w/2, h*0.92, w*0.014);
-    }
-  }
-
   // curated color pairs so nobody has to know what "accent" or "hex" means to get something that looks good
   const MERCH_SWATCHES = [
     { accent: '#e0a54c', bg: 'dark',  label: 'Amber on dark' },
@@ -1611,8 +1648,7 @@
 
   function drawDesign(ctx, w, h, style, opts){
     if (style === 'line') drawMerchLine(ctx, w, h, opts);
-    else if (style === 'stack') drawMerchStack(ctx, w, h, opts);
-    else drawMerchMandala(ctx, w, h, opts);
+    else drawMerchStack(ctx, w, h, opts);
   }
 
   function currentMerchOpts(){
@@ -1620,6 +1656,7 @@
       accent: merchState.accent,
       bgColor: merchState.bg === 'dark' ? MERCH_DARK_BG : MERCH_LIGHT_BG,
       fill: merchState.fill,
+      stackPhotoFill: merchState.stackPhotoFill,
       caption: document.getElementById('merchCaptionInput').value.trim()
     };
   }
@@ -1677,6 +1714,7 @@
     merchState.style = btn.dataset.style;
     document.getElementById('merchFillLabel').style.display = merchState.style==='line' ? 'block' : 'none';
     document.getElementById('merchFillToggle').style.display = merchState.style==='line' ? 'flex' : 'none';
+    document.getElementById('merchStackFillLabel').style.display = merchState.style==='stack' ? 'block' : 'none';
     renderMerch();
   });
 
@@ -1694,6 +1732,11 @@
     document.querySelectorAll('#merchFillToggle button').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
     merchState.fill = btn.dataset.fill;
+    renderMerch();
+  });
+
+  document.getElementById('merchStackPhotoCheck').addEventListener('change', e=>{
+    merchState.stackPhotoFill = e.target.checked;
     renderMerch();
   });
 

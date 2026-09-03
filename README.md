@@ -54,9 +54,11 @@ signal's energy.
 
 ## Ads
 
-There's a labeled placeholder `<div id="adSlot">` near the bottom of
-`lab/ridgeline/index.html`. Once you have an approved ad network account
-(e.g. AdSense), drop the unit's script snippet in there.
+AdSense Auto ads is enabled via the loader script in `<head>` of
+`lab/ridgeline/index.html` (client `ca-pub-5936916546458743`), plus the
+site-root `ads.txt`. Google places ads automatically — no manual unit
+markup needed. The `<div id="adSlot">` near the bottom of that page is
+just a labeled note, not a functional ad slot.
 
 ## License
 
