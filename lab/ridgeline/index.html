@@ -1548,7 +1548,6 @@
       ? h*(opts.padding ? 0.82 : 0.90)
       : h*(opts.padding ? 0.9 : 0.97);
     const contentH = contentBottom - contentTop;
-    const xAtFull = n => marginX + n*(availW/(N-1));
     const showPhoto = opts.stackPhotoFill && state.img;
     const waveRows = counts.length - 1;
 
@@ -1583,7 +1582,11 @@
     const photoDH = showPhoto ? scale*sourceCanvas.height : 0;
     const photoX = marginX + (availW-photoDW)/2;
     const photoY = photoTop + (photoAvailH-photoDH)/2;
-    const xAtPhoto = n => photoX + n*(photoDW/(N-1));
+    // every row shares this same x-span, not just the photo row — so the component lines line
+    // up with the photo's actual width instead of stretching wider than the image beneath them
+    const contentXStart = showPhoto ? photoX : marginX;
+    const contentXSpan = showPhoto ? photoDW : availW;
+    const xAt = n => contentXStart + n*(contentXSpan/(N-1));
 
     counts.forEach((count, i)=>{
       const isLast = i === counts.length-1;
@@ -1599,7 +1602,6 @@
         if (vals[n] > maxV) maxV = vals[n];
       }
       const midV = isLast && !inPhotoRow ? (minV+maxV)/2 : 0;
-      const xAt = inPhotoRow ? xAtPhoto : xAtFull;
       // the photo row positions absolutely (matching the photo drawn beneath it exactly);
       // every other row is zero-centered on its own baseline — both use the one shared `scale`
       const yAt = n => inPhotoRow ? (photoY + vals[n]*scale) : (rowCenterY + (vals[n]-midV)*scale);
