@@ -442,6 +442,10 @@
               <button data-bg="dark" class="active">Dark</button>
               <button data-bg="light">Light</button>
             </div>
+            <label class="field" style="display:flex; align-items:center; gap:6px;">
+              <input type="checkbox" id="merchPaddingCheck" checked style="accent-color: var(--amber); margin:0;">
+              Padding
+            </label>
           </div>
         </details>
 
@@ -1427,7 +1431,7 @@
   });
 
   // ---------- Merch designs ----------
-  const merchState = { style: 'stack', accent: '#e0a54c', bg: 'dark', fill: 'filled', stackPhotoFill: true };
+  const merchState = { style: 'stack', accent: '#e0a54c', bg: 'dark', fill: 'filled', stackPhotoFill: true, padding: true };
   const MERCH_DARK_BG = '#10131a', MERCH_LIGHT_BG = '#f5f0e6';
   const MERCH_SIZES = {
     line:  { w: 1800, h: 2200 },
@@ -1473,11 +1477,11 @@
     ctx.fillRect(0, 0, w, h);
 
     const N = state.N, M = state.M;
-    const marginX = w*0.12;
+    const marginX = w*(opts.padding ? 0.12 : 0.03);
     const showPhoto = opts.fill === 'photo' && state.img;
     // same band for every fill mode, so filled/outline/photo only differ in what fills the
     // shape — not in where or how big the ridge sits on the page
-    const bandTop = h*0.30, bandBottom = h*0.62;
+    const bandTop = h*(opts.padding ? 0.30 : 0.20), bandBottom = h*(opts.padding ? 0.62 : 0.75);
     const bandH = bandBottom - bandTop;
 
     if (showPhoto){
@@ -1525,7 +1529,8 @@
       ctx.fillStyle = opts.accent;
       ctx.font = `600 ${Math.round(w*0.024)}px 'Inter', sans-serif`;
       ctx.textBaseline = 'alphabetic';
-      drawTrackedText(ctx, opts.caption.toUpperCase(), w/2, bandBottom + bandH*0.55, w*0.012);
+      const capY = Math.min(bandBottom + bandH*0.55, h*0.965);
+      drawTrackedText(ctx, opts.caption.toUpperCase(), w/2, capY, w*0.012);
     }
   }
 
@@ -1536,9 +1541,12 @@
     const N = state.N, M = state.M;
     const rows = 8;
     const counts = panelCounts(state.comps.length, rows);
-    const marginX = w*0.1;
+    const marginX = w*(opts.padding ? 0.1 : 0.03);
     const availW = w - 2*marginX;
-    const contentTop = h*0.1, contentBottom = opts.caption ? h*0.82 : h*0.9;
+    const contentTop = h*(opts.padding ? 0.1 : 0.03);
+    const contentBottom = opts.caption
+      ? h*(opts.padding ? 0.82 : 0.90)
+      : h*(opts.padding ? 0.9 : 0.97);
     const contentH = contentBottom - contentTop;
     const xAtFull = n => marginX + n*(availW/(N-1));
     const showPhoto = opts.stackPhotoFill && state.img;
@@ -1547,7 +1555,7 @@
     // when showing a photo, the 7 component rows get a compact fixed share of the height so
     // the last "row" can instead be a properly-proportioned photo panel — a real photo can't be
     // squeezed into a single one-eighth-height row without either cropping or stretching it
-    const waveRowH = showPhoto ? contentH*0.055 : contentH/rows;
+    const waveRowH = showPhoto ? contentH*0.08 : contentH/rows;
     const photoTop = contentTop + waveRows*waveRowH;
     const photoAvailH = contentBottom - photoTop;
 
@@ -1600,6 +1608,32 @@
         // the photo now shows in full (aspect-correct, uncropped), so its own real sky is
         // already visible above the ridge — no need to fake one in
         ctx.drawImage(state.img, photoX, photoY, photoDW, photoDH);
+
+        // fade the photo out above the ridge's highest point, easing into the background
+        // instead of a hard edge at the panel's top — also keeps that space from visually
+        // competing with the component rows sitting just above it
+        const ridgeTopY = photoY + Math.min(...vals)*scale;
+        const fadeStart = Math.max(photoY, ridgeTopY - photoDH*0.15);
+        if (fadeStart < ridgeTopY){
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(photoX, photoY, photoDW, ridgeTopY-photoY);
+          ctx.clip();
+          const grad = ctx.createLinearGradient(0, fadeStart, 0, ridgeTopY);
+          grad.addColorStop(0, 'rgba(0,0,0,0)');
+          grad.addColorStop(1, 'rgba(0,0,0,1)');
+          ctx.globalCompositeOperation = 'destination-in';
+          ctx.fillStyle = grad;
+          ctx.fillRect(photoX, photoY, photoDW, ridgeTopY-photoY);
+          // destination-in also erases the background fill in this strip, not just the
+          // photo — paint it back in behind whatever photo alpha survived, so it reads as
+          // a fade into the background instead of a transparent hole
+          ctx.globalCompositeOperation = 'destination-over';
+          ctx.fillStyle = opts.bgColor;
+          ctx.fillRect(photoX, photoY, photoDW, ridgeTopY-photoY);
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.restore();
+        }
       }
 
       ctx.beginPath();
@@ -1618,7 +1652,8 @@
       ctx.fillStyle = opts.accent;
       ctx.font = `600 ${Math.round(w*0.024)}px 'Inter', sans-serif`;
       ctx.textBaseline = 'alphabetic';
-      drawTrackedText(ctx, opts.caption.toUpperCase(), w/2, h*0.94, w*0.012);
+      const capY = contentBottom + h*(opts.padding ? 0.12 : 0.05);
+      drawTrackedText(ctx, opts.caption.toUpperCase(), w/2, capY, w*0.012);
     }
   }
 
@@ -1643,6 +1678,7 @@
       bgColor: merchState.bg === 'dark' ? MERCH_DARK_BG : MERCH_LIGHT_BG,
       fill: merchState.fill,
       stackPhotoFill: merchState.stackPhotoFill,
+      padding: merchState.padding,
       caption: document.getElementById('merchCaptionInput').value.trim()
     };
   }
@@ -1723,6 +1759,11 @@
 
   document.getElementById('merchStackPhotoCheck').addEventListener('change', e=>{
     merchState.stackPhotoFill = e.target.checked;
+    renderMerch();
+  });
+
+  document.getElementById('merchPaddingCheck').addEventListener('change', e=>{
+    merchState.padding = e.target.checked;
     renderMerch();
   });
 
