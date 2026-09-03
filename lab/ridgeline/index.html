@@ -1450,18 +1450,6 @@
 
   // draws the `count` most significant frequency components as faint individual sine
   // curves oscillating around the mean elevation — the literal "waves" that sum to the ridge
-  // average color of the top strip of the source photo — used to tint the "sky" gradient
-  // above a photo-filled ridge so the cutoff doesn't look like it's floating on nothing
-  function getSkyColor(){
-    const ctx = sourceCanvas.getContext('2d');
-    const w = sourceCanvas.width, h = sourceCanvas.height;
-    const bandH = Math.max(1, Math.round(h*0.08));
-    const data = ctx.getImageData(0, 0, w, bandH).data;
-    let r=0, g=0, b=0, c=0;
-    for (let i = 0; i < data.length; i += 4){ r += data[i]; g += data[i+1]; b += data[i+2]; c++; }
-    return c ? [Math.round(r/c), Math.round(g/c), Math.round(b/c)] : [120, 150, 180];
-  }
-
   function drawComponentGhosts(ctx, w, N, M, baselineY, fitScale, xAt, accent, count){
     const K = Math.min(count, state.comps.length);
     for (let i = 0; i < K; i++){
@@ -1549,13 +1537,51 @@
     const rows = 8;
     const counts = panelCounts(state.comps.length, rows);
     const marginX = w*0.1;
-    const top = h*0.1, bottom = opts.caption ? h*0.82 : h*0.9;
-    const rowH = (bottom-top)/counts.length;
+    const availW = w - 2*marginX;
+    const contentTop = h*0.1, contentBottom = opts.caption ? h*0.82 : h*0.9;
+    const contentH = contentBottom - contentTop;
+    const xAtFull = n => marginX + n*(availW/(N-1));
+    const showPhoto = opts.stackPhotoFill && state.img;
+    const waveRows = counts.length - 1;
+
+    // when showing a photo, the 7 component rows get a compact fixed share of the height so
+    // the last "row" can instead be a properly-proportioned photo panel — a real photo can't be
+    // squeezed into a single one-eighth-height row without either cropping or stretching it
+    const waveRowH = showPhoto ? contentH*0.055 : contentH/rows;
+    const photoTop = contentTop + waveRows*waveRowH;
+    const photoAvailH = contentBottom - photoTop;
+
+    // one shared pixels-per-source-unit scale for every row, so a dominant wave actually reads
+    // as dominant next to a minor one instead of every row being auto-normalized to look the
+    // same size. With a photo, that scale is set by fitting the photo (aspect-ratio preserved,
+    // never stretched or cropped) into its panel; without one, it's set by fitting the full
+    // reconstruction's own range into one row, same as before.
+    let scale;
+    if (showPhoto){
+      scale = Math.min(availW/sourceCanvas.width, photoAvailH/sourceCanvas.height);
+    } else {
+      let minV = Infinity, maxV = -Infinity;
+      for (let n = 0; n < N; n++){
+        const v = reconstructAt(state.dc, state.comps, M, counts[counts.length-1], n);
+        if (v < minV) minV = v;
+        if (v > maxV) maxV = v;
+      }
+      scale = (waveRowH*0.7) / Math.max(1, maxV-minV);
+    }
+
+    // photo panel geometry, computed once — centered within its reserved box on whichever axis
+    // has slack, so the image keeps its true proportions
+    const photoDW = showPhoto ? scale*sourceCanvas.width : 0;
+    const photoDH = showPhoto ? scale*sourceCanvas.height : 0;
+    const photoX = marginX + (availW-photoDW)/2;
+    const photoY = photoTop + (photoAvailH-photoDH)/2;
+    const xAtPhoto = n => photoX + n*(photoDW/(N-1));
 
     counts.forEach((count, i)=>{
       const isLast = i === counts.length-1;
+      const inPhotoRow = isLast && showPhoto;
       const prevCount = i>0 ? counts[i-1] : 0;
-      const rowCenterY = top + rowH*(i+0.5);
+      const rowCenterY = contentTop + waveRowH*(i+0.5);
       const vals = new Array(N);
       let minV = Infinity, maxV = -Infinity;
       for (let n = 0; n < N; n++){
@@ -1564,54 +1590,16 @@
         if (vals[n] < minV) minV = vals[n];
         if (vals[n] > maxV) maxV = vals[n];
       }
-      const range = Math.max(1, maxV-minV);
-      const scaleY = (rowH*0.7)/range;
-      const midV = isLast ? (minV+maxV)/2 : 0;
-      const xAt = n => marginX + n*((w-2*marginX)/(N-1));
+      const midV = isLast && !inPhotoRow ? (minV+maxV)/2 : 0;
+      const xAt = inPhotoRow ? xAtPhoto : xAtFull;
+      // the photo row positions absolutely (matching the photo drawn beneath it exactly);
+      // every other row is zero-centered on its own baseline — both use the one shared `scale`
+      const yAt = n => inPhotoRow ? (photoY + vals[n]*scale) : (rowCenterY + (vals[n]-midV)*scale);
 
-      const showPhoto = isLast && opts.stackPhotoFill && state.img;
-      const rowTop = rowCenterY - rowH/2;
-      const rowBottom = rowCenterY + rowH/2;
-      // true-to-photo scale: maps the *entire* source photo height (0..sourceCanvas.height)
-      // into exactly this row's height, so the whole image shows — the old auto-fit scaleY
-      // sized the drawn photo for wave amplitude, not the photo's real proportions, which cut
-      // off whatever didn't fit
-      const fitScale = rowH / sourceCanvas.height;
-      const yAt = n => showPhoto ? (rowTop + vals[n]*fitScale) : (rowCenterY + (vals[n]-midV)*scaleY);
-
-      // fill just the area below the final (approximate ridge) row with the source photo,
-      // clipped to the shape under that curve — same affine map the curve itself uses, so the
-      // photo lands exactly where the line says it should
-      if (showPhoto){
-        // faded sky above the curve, so the photo doesn't look like it's cut off on nothing —
-        // tinted from the photo's own sky color, fully faded out by the top of the row
-        const sky = getSkyColor();
-        ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(xAt(0), rowTop);
-        ctx.lineTo(xAt(N-1), rowTop);
-        for (let n = N-1; n >= 0; n--) ctx.lineTo(xAt(n), yAt(n));
-        ctx.closePath();
-        ctx.clip();
-        const grad = ctx.createLinearGradient(0, rowTop, 0, rowBottom);
-        grad.addColorStop(0, `rgba(${sky[0]},${sky[1]},${sky[2]},0)`);
-        grad.addColorStop(1, `rgba(${sky[0]},${sky[1]},${sky[2]},0.55)`);
-        ctx.fillStyle = grad;
-        ctx.fillRect(xAt(0), rowTop, xAt(N-1)-xAt(0), rowH);
-        ctx.restore();
-
-        ctx.save();
-        ctx.beginPath();
-        for (let n = 0; n < N; n++){
-          const x = xAt(n), y = yAt(n);
-          if (n===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-        }
-        ctx.lineTo(xAt(N-1), rowBottom);
-        ctx.lineTo(xAt(0), rowBottom);
-        ctx.closePath();
-        ctx.clip();
-        ctx.drawImage(state.img, marginX, rowTop, w-2*marginX, fitScale*sourceCanvas.height);
-        ctx.restore();
+      if (inPhotoRow){
+        // the photo now shows in full (aspect-correct, uncropped), so its own real sky is
+        // already visible above the ridge — no need to fake one in
+        ctx.drawImage(state.img, photoX, photoY, photoDW, photoDH);
       }
 
       ctx.beginPath();
