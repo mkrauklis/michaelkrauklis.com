@@ -54,11 +54,11 @@ signal's energy.
 
 ## Ads
 
-AdSense Auto ads is enabled via the loader script in `<head>` of
-`lab/ridgeline/index.html` (client `ca-pub-5936916546458743`), plus the
-site-root `ads.txt`. Google places ads automatically — no manual unit
-markup needed. The `<div id="adSlot">` near the bottom of that page is
-just a labeled note, not a functional ad slot.
+AdSense Auto ads is enabled via the loader script in `<head>` of every
+page (client `ca-pub-5936916546458743`), the `google-adsense-account`
+meta tag on each page for site verification, and the site-root `ads.txt`.
+Google places ads automatically — no manual unit markup needed anywhere
+in the page body.
 
 ## License
 
