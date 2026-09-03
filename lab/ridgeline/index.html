@@ -451,6 +451,9 @@
         <div class="actions" id="merchDownloadRow">
           <button class="primary" id="downloadMerchBtn">Download high-res PNG</button>
         </div>
+        <p style="margin-top:14px; font-size:0.82rem;">Want it on a mug? Download the PNG above, then
+        <a href="https://www.zazzle.com/design_your_own_logo_design_coffee_mug-256206116898885602?rf=238054754631086278" target="_blank" rel="noopener">open this Zazzle mug template</a>
+        and upload it there — click "Personalize this design" and use the file you just downloaded.</p>
       </div>
     </div>
   </section>
@@ -1565,15 +1568,21 @@
       const scaleY = (rowH*0.7)/range;
       const midV = isLast ? (minV+maxV)/2 : 0;
       const xAt = n => marginX + n*((w-2*marginX)/(N-1));
-      const yAt = n => rowCenterY + (vals[n]-midV)*scaleY;
+
+      const showPhoto = isLast && opts.stackPhotoFill && state.img;
+      const rowTop = rowCenterY - rowH/2;
+      const rowBottom = rowCenterY + rowH/2;
+      // true-to-photo scale: maps the *entire* source photo height (0..sourceCanvas.height)
+      // into exactly this row's height, so the whole image shows — the old auto-fit scaleY
+      // sized the drawn photo for wave amplitude, not the photo's real proportions, which cut
+      // off whatever didn't fit
+      const fitScale = rowH / sourceCanvas.height;
+      const yAt = n => showPhoto ? (rowTop + vals[n]*fitScale) : (rowCenterY + (vals[n]-midV)*scaleY);
 
       // fill just the area below the final (approximate ridge) row with the source photo,
       // clipped to the shape under that curve — same affine map the curve itself uses, so the
       // photo lands exactly where the line says it should
-      if (isLast && opts.stackPhotoFill && state.img){
-        const rowTop = rowCenterY - rowH/2;
-        const rowBottom = rowCenterY + rowH/2;
-
+      if (showPhoto){
         // faded sky above the curve, so the photo doesn't look like it's cut off on nothing —
         // tinted from the photo's own sky color, fully faded out by the top of the row
         const sky = getSkyColor();
@@ -1601,8 +1610,7 @@
         ctx.lineTo(xAt(0), rowBottom);
         ctx.closePath();
         ctx.clip();
-        const imgTopY = rowCenterY - midV*scaleY;
-        ctx.drawImage(state.img, marginX, imgTopY, w-2*marginX, scaleY*sourceCanvas.height);
+        ctx.drawImage(state.img, marginX, rowTop, w-2*marginX, fitScale*sourceCanvas.height);
         ctx.restore();
       }
 
