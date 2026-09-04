@@ -192,8 +192,11 @@ round-trip through a QR code and a URL:
 
 Both live in the same URL when both exist (`?z=...&h=...`); the latent alone
 is also independently valid and reconstructs through the shared decoder at
-the phase-1-only quality level. Two QR codes are generated (`buildShareArtifacts()`)
-so both fidelity levels are shareable separately.
+the phase-1-only quality level. Three QR codes are generated
+(`buildShareArtifacts()`): latent-only ("the essence" — reconstructs alone),
+adapter-only ("the key" — `?h=...` with no `z`, reconstructs nothing by
+itself), and both together. See "Split-key sharing" below for why the
+adapter-only code exists at all.
 
 **Base45 was chosen because its 45-character alphabet is exactly QR's
 alphanumeric-mode charset** — the same reasoning behind its use in EU COVID
@@ -219,16 +222,29 @@ field. Found via an actual jsQR round-trip test, not by inspection — if you
 change the encoding scheme, re-verify with a real encode → QR → jsQR decode →
 `URLSearchParams.get()` round-trip, not just a visual QR scan.
 
-Reading a QR code back (`readQrImage()`, wired to the "load a shared
-impression" upload control) uses `jsQR` against an uploaded *image* of a QR
-code — there's no live camera capture, by design, to keep this consistent
+Reading a QR code back (`readQrImages()`, wired to the "load a shared
+impression" upload control) uses `jsQR` against uploaded *images* of QR
+codes — there's no live camera capture, by design, to keep this consistent
 with the rest of the site never requesting camera/microphone access.
 `parseShareText()` accepts either a bare `z=...&h=...` fragment or a full
 URL, so a decoded QR payload and a pasted URL both work through the same
-path. Loading from a URL param (`urlParamHook`) and loading from a scanned
-QR image both funnel through `loadFromParams()`, which also regenerates that
+path. Loading from a URL param (`urlParamHook`) and loading from scanned QR
+images both funnel through `loadFromParams()`, which also regenerates that
 loaded impression's own QR codes via `buildShareArtifacts()` — so a shared
 impression can always be re-shared, not just viewed once.
+
+## Color: black-to-white only, except where color is literal
+
+`valueToColor()` (used by both the live latent heatmap and the explore grid) and the head
+fingerprint's spokes/dots all use a single grayscale scale — dark = smaller/negative, light =
+larger/positive. Earlier versions used amber-vs-teal to encode sign, which turned out to just add
+a second thing to decode for no real benefit: sign is already recoverable from magnitude/geometry
+(spoke length grows outward for positive, inward for negative), so a second arbitrary hue only
+added visual noise on top of an already-dense grid. The one deliberate exception is the head
+fingerprint's 3 outer accent triangles, which stay real red/green/blue — that's not an arbitrary
+color choice, it's a literal, self-explanatory mapping to the decoder's actual R/G/B output
+channels. If you add a new visualization, default to the grayscale scale unless a color genuinely
+*means* something specific the way RGB does here.
 
 ## The head fingerprint (`renderHeadFingerprint`)
 
@@ -240,6 +256,42 @@ two different photos' adapters never look alike and the same photo always looks 
 reads as a mandala/sunburst, which was the point — it's meant to be worth printing and asking
 about, not just informative. If you change `ADAPTER_IN`/`ADAPTER_OUT`, the spoke count and accent
 placement need updating alongside it (hardcoded to 32 and 3 respectively).
+
+## Proving the head matters (`showHeadProof`)
+
+Making a personalization step is easy; making its effect legible is a separate problem. After
+training finishes (and after loading any shared impression that includes an adapter),
+`showHeadProof()` decodes the *same* latent vector twice — once with `adapter: null`, once with
+the real adapter — so the only difference between the two rendered images is the adapter itself,
+nothing else. When a target photo is available (a live training run, not a loaded-from-URL
+impression), it also reports the actual MSE for both, and the percentage the adapter improved on
+it — a real number, not just "does this look sharper to you." This exists because a purely visual
+before/after is easy to eyeball as "basically the same" even when it isn't; the number settles it.
+
+## The loss curve (`renderLossCurve`)
+
+`checkpoint()` records `{iteration, mse}` at every progress update into `lossHistory` and redraws
+the chart each time — this is the literal gradient descent, not a decorative progress bar. A
+dashed vertical line marks `phase1End` (where phase 2, the personalization pass, begins), which is
+usually visible as a small upward jump in the curve: phase 2 adds 70 new free parameters, so the
+loss briefly gets *worse* right at the transition before dropping again as they're fit. That jump
+is expected and worth leaving visible, not smoothing away — it's honest evidence that two separate
+optimizations are happening, not one continuous one.
+
+## Split-key sharing: essence, key, and both-together
+
+Beyond the two independent artifacts described below (latent, adapter), `buildShareArtifacts()`
+also draws a **third** QR containing *only* the adapter (`?h=...`, no `z`) — deliberately
+undecodable by itself, since `loadFromParams` has nothing to decode without a latent. Paired with
+the latent-only QR (which *does* decode alone, just at lower fidelity), this gives a genuine
+two-piece gift mechanic: give the "essence" to one person and the "key" to another, and neither
+piece alone gives the sharp result. The "load a shared impression" flow (`readQrImages()`) accepts
+multiple files in one drop (or sequential drops across separate visits to the page — `pendingZ`/
+`pendingH` persist in module scope for the session) and auto-classifies each by content rather
+than requiring the user to say which slot a scan belongs to; it re-renders through the normal
+`loadFromParams()` path as soon as a latent is available, upgrading in place if a matching adapter
+arrives later. If you change the QR payload format, all three QR variants (latent-only,
+adapter-only, combined) need to stay parseable by `parseShareText()`.
 
 ## The latent explorer (`setupExplore`)
 
@@ -289,14 +341,24 @@ layout.
 ## Testing changes
 
 No test suite for `index.html` (static page, same as Ridgeline). Golden path
-to verify manually: upload a photo → crop to square → run reconstruction
-(watch it through both phases; "personalizing" should start automatically
-after "refining" finishes) → confirm it visibly resembles the source
-(soft/impressionistic is expected and fine; unrecognizable is not) → check
-both QR codes render and actually decode (a real jsQR round-trip, not just
-"a QR-looking pattern appeared") → reload the page with the resulting `?z=`
-URL and confirm it reproduces the same image deterministically → try
-"nudge it" in the explore section and confirm the canvas updates live. Watch
-the browser console for errors during the *personalizing* phase specifically
-— that's where a backend-kernel-support regression (see "The personalization
-adapter" above) would surface.
+to verify manually: upload a photo → crop to square → run training (watch it
+through both phases; "personalizing" should start automatically after
+"training" finishes, and the loss curve should show a small jump right at
+that transition) → confirm the result visibly resembles the source
+(soft/impressionistic is expected and fine; unrecognizable is not) → confirm
+the "latent only" vs. "latent + head" comparison shows two visibly different
+images with a plausible MSE improvement, not an identical pair or a NaN →
+check all three QR codes render and actually decode (a real jsQR round-trip,
+not just "a QR-looking pattern appeared") — the latent-only and combined
+codes should each reconstruct something by themselves, the adapter-only code
+should reconstruct nothing until paired with a latent → reload the page with
+the resulting `?z=` URL and confirm it reproduces the same image
+deterministically → in the "load a shared impression" box, drop the
+latent-only and adapter-only QR images in separately (either order) and
+confirm it renders the blurrier version after the first and upgrades after
+the second → try selecting cells and moving the slider in the explore
+section and confirm the live canvas updates and the distance readout tracks
+`delta * sqrt(selected.size)`. Watch the browser console for errors during
+the *personalizing* phase specifically — that's where a
+backend-kernel-support regression (see "The personalization adapter" above)
+would surface.
