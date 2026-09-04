@@ -1,2 +1,18 @@
 .DS_Store
 *.log
+__pycache__/
+*.pyc
+
+# ML training artifacts (lab/afterimage/training) -- datasets, checkpoints,
+# and venvs are regenerated locally via RUNBOOK.md, never committed. The
+# committed decoder assets live at lab/afterimage/{decoder-manifest.json,weights/}
+# -- training/weights/ and training/decoder-manifest.json are export_decoder.py's
+# raw output before it's copied to that shipped location, so they're ignored too.
+.venv/
+lab/afterimage/training/data/
+lab/afterimage/training/cnn_weights.pt
+lab/afterimage/training/cnn_recon_preview.png
+lab/afterimage/training/latent_search_result.png
+lab/afterimage/training/weights/
+lab/afterimage/training/decoder-manifest.json
+lab/afterimage/test-upload.jpg

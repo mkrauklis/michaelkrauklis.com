@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="google-adsense-account" content="ca-pub-5936916546458743">
+<title>Afterimage — Reconstructing photos from a trace</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap');
+
+  :root{
+    --bg: #10131a;
+    --bg-panel: #171b24;
+    --bg-panel-2: #1d2230;
+    --line: #2a3040;
+    --ink: #e9e7de;
+    --ink-dim: #9aa0ae;
+    --amber: #e0a54c;
+    --teal: #5eb0a4;
+    --violet: #9b8cd9;
+    --danger: #d97a6c;
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    line-height: 1.55;
+  }
+  h1,h2,h3{
+    font-family: 'Fraunces', Georgia, serif;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    margin: 0 0 0.4em 0;
+  }
+  h1{ font-size: clamp(2rem, 5vw, 3.4rem); font-weight: 600; }
+  h2{ font-size: 1.5rem; }
+  p{ color: var(--ink-dim); max-width: 62ch; }
+  a{ color: var(--violet); }
+
+  .wrap{ max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+  header.hero{ padding: 64px 0 40px; border-bottom: 1px solid var(--line); }
+  .hero-grid{ display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 40px; align-items: center; }
+  @media (max-width: 800px){ .hero-grid{ grid-template-columns: 1fr; } }
+  .hero-line{ color: var(--violet); font-size: 0.95rem; margin-bottom: 14px; display: block; }
+  #heroCanvas{
+    width: 100%; height: 220px; display: block;
+    background: linear-gradient(180deg, #161a24 0%, #10131a 100%);
+    border: 1px solid var(--line); border-radius: 6px;
+  }
+
+  main{ padding: 48px 0 96px; }
+  section{ margin-bottom: 56px; }
+  .step-tag{
+    color: var(--teal); font-size: 0.85rem; font-family: 'Inter', sans-serif;
+    font-weight: 600; margin-bottom: 6px; display:block;
+  }
+
+  .panel{ background: var(--bg-panel); border: 1px solid var(--line); border-radius: 8px; padding: 28px; }
+
+  .dropzone{
+    border: 1.5px dashed var(--line); border-radius: 8px; padding: 48px 24px;
+    text-align: center; cursor: pointer; transition: border-color .15s ease, background .15s ease;
+  }
+  .dropzone:hover, .dropzone.drag{ border-color: var(--violet); background: rgba(155,140,217,0.04); }
+  .dropzone input{ display:none; }
+  .dropzone .cta{ color: var(--violet); font-weight: 600; }
+
+  .row{ display:flex; gap: 24px; flex-wrap: wrap; }
+  .col{ flex: 1; min-width: 260px; }
+
+  canvas.stage{
+    width: 100%; max-width: 100%; display:block; background: #0c0e13;
+    border: 1px solid var(--line); border-radius: 6px; cursor: grab;
+  }
+  canvas.stage:active{ cursor: grabbing; }
+
+  label.field{ display:block; font-size: 0.85rem; color: var(--ink-dim); margin: 18px 0 6px; }
+  input[type=range]{ width: 100%; accent-color: var(--violet); }
+  .field-value{ color: var(--ink); font-weight: 600; }
+
+  button.primary{
+    background: var(--violet); color: #10131a; border: none; padding: 12px 22px;
+    border-radius: 6px; font-weight: 600; font-size: 0.95rem; cursor: pointer; font-family: 'Inter', sans-serif;
+  }
+  button.primary:disabled{ background: #4a4560; color: #6b6b6b; cursor: not-allowed; }
+  button.secondary{
+    background: transparent; border: 1px solid var(--line); color: var(--ink);
+    padding: 12px 22px; border-radius: 6px; font-weight: 500; cursor: pointer; font-family: 'Inter', sans-serif;
+  }
+  .actions{ display:flex; gap: 12px; margin-top: 20px; flex-wrap: wrap; align-items:center; }
+  .status{ color: var(--ink-dim); font-size: 0.85rem; }
+
+  .progress-track{
+    width: 100%; height: 8px; background: var(--bg-panel-2); border-radius: 4px;
+    overflow: hidden; margin-top: 14px;
+  }
+  .progress-fill{ height: 100%; background: var(--violet); width: 0%; transition: width .15s ease; }
+
+  .result-grid{ display:flex; gap: 20px; flex-wrap: wrap; margin-top: 20px; }
+  .result-col{ flex: 1; min-width: 200px; max-width: 320px; }
+  .result-col canvas, .result-col img{
+    width: 100%; display:block; border: 1px solid var(--line); border-radius: 6px; background:#0c0e13;
+  }
+  .result-label{ font-size: 0.8rem; color: var(--ink-dim); margin-top: 8px; }
+
+  .divider{ border: none; border-top: 1px solid var(--line); margin: 40px 0; }
+
+  footer{ border-top: 1px solid var(--line); padding: 28px 0; color: var(--ink-dim); font-size: 0.82rem; }
+
+  details.disclosure{ margin-top: 18px; }
+  details.disclosure > summary{
+    cursor: pointer; color: var(--ink-dim); font-size: 0.85rem; font-weight: 600;
+    list-style: none; display: inline-flex; align-items: center; gap: 7px; user-select: none;
+  }
+  details.disclosure > summary::-webkit-details-marker{ display:none; }
+  details.disclosure > summary::before{
+    content: '▸'; color: var(--violet); display: inline-block; transition: transform .15s ease;
+  }
+  details.disclosure[open] > summary::before{ transform: rotate(90deg); }
+  details.disclosure > summary:hover{ color: var(--ink); }
+  details.disclosure .disclosure-body{ margin-top: 16px; }
+  details.advanced{ border-top: 1px solid var(--line); padding-top: 24px; }
+  details.advanced > summary{ font-size: 0.95rem; }
+  details.advanced > summary .adv-sub{ color: var(--ink-dim); font-weight: 400; font-size: 0.82rem; }
+
+  #debugPanel{ display:none; }
+</style>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5936916546458743"
+     crossorigin="anonymous"></script>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <span class="hero-line">reconstruct a photo from a trace, entirely in your browser</span>
+      <h1>Afterimage</h1>
+      <p>Upload a photo and a small neural network — trained once, ahead of time, on thousands of
+      other photos — rebuilds it from a 256-number impression. No copy of your photo ever leaves
+      your browser, and the network itself never sees it either: it only ever sees the impression.</p>
+    </div>
+    <canvas id="heroCanvas"></canvas>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section>
+    <span class="step-tag">01 — upload</span>
+    <h2>Give it a photo</h2>
+    <p>Any photo works, though ones with a clear, central subject reconstruct most recognizably —
+    this is an impression of your photo, not a copy of it.</p>
+    <div class="dropzone" id="dropzone">
+      <input type="file" id="fileInput" accept="image/*">
+      <div><span class="cta">Choose a photo</span> or drag one here</div>
+    </div>
+  </section>
+
+  <section id="cropSection" style="display:none;">
+    <span class="step-tag">02 — crop to a square</span>
+    <h2>Pick the part that matters</h2>
+    <p>The network only works with square photos. Drag the box to reposition it, and use the
+    slider to resize.</p>
+    <div class="panel">
+      <canvas class="stage" id="cropCanvas"></canvas>
+      <label class="field">Crop size — <span class="field-value" id="cropSizeVal"></span></label>
+      <input type="range" id="cropSizeSlider" min="10" max="100" value="100">
+      <div class="actions">
+        <button class="primary" id="useCropBtn">Use this crop</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="reconstructSection" style="display:none;">
+    <span class="step-tag">03 — reconstruct</span>
+    <h2>Watch it rebuild your photo</h2>
+    <p>The network starts from nothing and nudges its impression a little closer to your photo,
+    about 1500 times in a row — usually 30 seconds to two minutes, depending on your device.
+    Nothing here is a lookup or a filter — every pixel below is the network's own output at that
+    point in the process.</p>
+    <div class="panel">
+      <div class="actions">
+        <button class="primary" id="startBtn">Start reconstruction</button>
+        <span class="status" id="reconStatus"></span>
+      </div>
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="result-grid">
+        <div class="result-col">
+          <canvas id="cropPreviewCanvas" width="96" height="96"></canvas>
+          <div class="result-label">your cropped photo</div>
+        </div>
+        <div class="result-col">
+          <canvas id="reconCanvas" width="96" height="96"></canvas>
+          <div class="result-label" id="reconLabel">the network's impression</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <details id="learnSection" class="disclosure advanced" style="display:none;">
+    <summary>How this actually works <span class="adv-sub">— the two-phase architecture, explained</span></summary>
+    <div class="disclosure-body">
+      <div class="panel">
+        <p>There are two completely separate phases here, and only one of them ever touches your
+        photo.</p>
+        <p><b style="color:var(--ink)">Training</b> happened once, ahead of time, on a GPU, using
+        13,000 ordinary photos of animals, vehicles, and people — never yours. A pair of networks,
+        an encoder and a decoder, learned together to compress a photo down to 256 numbers and
+        rebuild it from just those numbers.</p>
+        <p><b style="color:var(--ink)">Rendering</b> is what happens in your browser just now.
+        Only the decoder came along for the ride — the encoder was left behind entirely, because it
+        turns out a decoder on its own, searching for the best 256 numbers for a specific new photo,
+        reconstructs better than the encoder's one-shot guess ever could. That search is the
+        progress bar you just watched.</p>
+        <svg width="100%" viewBox="0 0 680 350" role="img" style="margin-top:18px;">
+          <title>Afterimage's autoencoder as an hourglass of shrinking, deepening image blocks</title>
+          <desc>A photo enters as a wide, shallow block on the left. Four convolutional encoder
+          layers trade spatial size for depth, then one dense head squeezes the result into a
+          256-number latent vector at the waist. The decoder mirrors this in reverse: one dense
+          head expands the latent back out, then four transposed-convolutional layers grow it
+          back into a full photo on the right.</desc>
+          <path d="M42,100 C160,100 250,165 340,165 C430,165 520,100 638,100 L638,300 C520,300 430,245 340,245 C250,245 160,300 42,300 Z" fill="var(--ink)" fill-opacity="0.05" stroke="var(--ink)" stroke-opacity="0.15" stroke-width="0.5"/>
+
+          <rect x="40" y="144" width="80" height="80" rx="4" fill="var(--ink-dim)" stroke="var(--ink-dim)" stroke-width="0.5" opacity="0.35"/>
+          <rect x="48" y="152" width="80" height="80" rx="4" fill="var(--ink-dim)" stroke="var(--ink-dim)" stroke-width="0.5" opacity="0.5"/>
+          <rect x="56" y="160" width="80" height="80" rx="4" fill="var(--ink-dim)" stroke="var(--ink-dim)" stroke-width="0.5" opacity="0.65"/>
+
+          <rect x="179" y="149" width="46" height="46" rx="4" fill="var(--danger)" stroke="var(--danger)" stroke-width="0.5" opacity="0.3"/>
+          <rect x="186" y="156" width="46" height="46" rx="4" fill="var(--danger)" stroke="var(--danger)" stroke-width="0.5" opacity="0.42"/>
+          <rect x="193" y="163" width="46" height="46" rx="4" fill="var(--danger)" stroke="var(--danger)" stroke-width="0.5" opacity="0.55"/>
+          <rect x="200" y="170" width="46" height="46" rx="4" fill="var(--danger)" stroke="var(--danger)" stroke-width="0.5" opacity="0.68"/>
+          <rect x="207" y="177" width="46" height="46" rx="4" fill="var(--danger)" stroke="var(--danger)" stroke-width="0.5" opacity="0.85"/>
+
+          <circle cx="340" cy="168" r="5" fill="var(--violet)" stroke="var(--violet)" stroke-width="0.5"/>
+          <circle cx="340" cy="184" r="5" fill="var(--violet)" stroke="var(--violet)" stroke-width="0.5"/>
+          <circle cx="340" cy="200" r="5" fill="var(--violet)" stroke="var(--violet)" stroke-width="0.5"/>
+          <circle cx="340" cy="216" r="5" fill="var(--violet)" stroke="var(--violet)" stroke-width="0.5"/>
+          <circle cx="340" cy="232" r="5" fill="var(--violet)" stroke="var(--violet)" stroke-width="0.5"/>
+
+          <rect x="399" y="149" width="46" height="46" rx="4" fill="var(--teal)" stroke="var(--teal)" stroke-width="0.5" opacity="0.3"/>
+          <rect x="406" y="156" width="46" height="46" rx="4" fill="var(--teal)" stroke="var(--teal)" stroke-width="0.5" opacity="0.42"/>
+          <rect x="413" y="163" width="46" height="46" rx="4" fill="var(--teal)" stroke="var(--teal)" stroke-width="0.5" opacity="0.55"/>
+          <rect x="420" y="170" width="46" height="46" rx="4" fill="var(--teal)" stroke="var(--teal)" stroke-width="0.5" opacity="0.68"/>
+          <rect x="427" y="177" width="46" height="46" rx="4" fill="var(--teal)" stroke="var(--teal)" stroke-width="0.5" opacity="0.85"/>
+
+          <rect x="528" y="144" width="80" height="80" rx="4" fill="var(--ink-dim)" stroke="var(--ink-dim)" stroke-width="0.5" opacity="0.35"/>
+          <rect x="536" y="152" width="80" height="80" rx="4" fill="var(--ink-dim)" stroke="var(--ink-dim)" stroke-width="0.5" opacity="0.5"/>
+          <rect x="544" y="160" width="80" height="80" rx="4" fill="var(--ink-dim)" stroke="var(--ink-dim)" stroke-width="0.5" opacity="0.65"/>
+
+          <text x="163" y="76" text-anchor="middle" font-size="14" font-weight="500" fill="var(--ink)">Encoder</text>
+          <text x="163" y="94" text-anchor="middle" font-size="12" fill="var(--ink-dim)">4 conv layers · 1 FC head</text>
+          <text x="340" y="140" text-anchor="middle" font-size="14" font-weight="500" fill="var(--ink)">Latent vector</text>
+          <text x="517" y="76" text-anchor="middle" font-size="14" font-weight="500" fill="var(--ink)">Decoder</text>
+          <text x="517" y="94" text-anchor="middle" font-size="12" fill="var(--ink-dim)">1 FC head · 4 conv layers</text>
+
+          <text x="96" y="320" text-anchor="middle" font-size="12" fill="var(--ink-dim)">96×96×3 photo</text>
+          <text x="230" y="320" text-anchor="middle" font-size="12" fill="var(--ink-dim)">conv, 96px→6px</text>
+          <text x="340" y="320" text-anchor="middle" font-size="12" fill="var(--ink-dim)">256 numbers</text>
+          <text x="450" y="320" text-anchor="middle" font-size="12" fill="var(--ink-dim)">conv, 6px→96px</text>
+          <text x="584" y="320" text-anchor="middle" font-size="12" fill="var(--ink-dim)">96×96×3 photo</text>
+        </svg>
+        <p style="margin-top:18px; font-size:0.85rem;">The gray blocks are actual photo pixels. Coral
+        is the encoder, which only ever existed on the training machine. Teal is the decoder — the
+        exact same one, unchanged, that just ran in your browser. Violet is the 256-number latent
+        vector: the entire "impression" your photo gets reduced to before the decoder rebuilds it.</p>
+      </div>
+    </div>
+  </details>
+
+  <div id="debugPanel" class="panel">
+    <h2>Debug: reference latent check</h2>
+    <p>Loaded via <code>?debugLatent=reference</code>. The two images below should match
+    pixel-for-pixel — if they don't, the JavaScript decoder has diverged from the exported weights.</p>
+    <div class="result-grid">
+      <div class="result-col">
+        <canvas id="debugCanvas" width="96" height="96"></canvas>
+        <div class="result-label">computed in this browser</div>
+      </div>
+      <div class="result-col">
+        <img src="training/reference_output.png" alt="reference output">
+        <div class="result-label">training/reference_output.png</div>
+      </div>
+    </div>
+  </div>
+
+  <hr class="divider">
+</main>
+
+<footer>
+  <div class="wrap">
+    Afterimage runs entirely in your browser — no photo is uploaded to a server.
+    Part of <a href="/lab/">The Lab</a> by <a href="/">Michael Krauklis</a>.
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@4.22.0/dist/tf-backend-wasm.min.js"></script>
+<script>
+(async function(){
+  // The WebGL backend can silently run at 16-bit float precision on some GPUs/drivers,
+  // which underflows the small gradient values this optimization relies on over 1500
+  // steps -- brightness/color still roughly converges but fine spatial detail never
+  // resolves. WASM guarantees real float32 math, at some speed cost.
+  tf.wasm.setWasmPaths('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@4.22.0/dist/');
+  try {
+    await tf.setBackend('wasm');
+  } catch (e) {
+    console.warn('wasm backend unavailable, falling back to webgl', e);
+    await tf.setBackend('webgl');
+  }
+  await tf.ready();
+
+  // ---------- Hero decorative canvas ----------
+  function drawHero(){
+    const c = document.getElementById('heroCanvas');
+    const dpr = window.devicePixelRatio || 1;
+    const w = c.clientWidth, h = c.clientHeight;
+    c.width = w*dpr; c.height = h*dpr;
+    const ctx = c.getContext('2d');
+    ctx.scale(dpr,dpr);
+    ctx.clearRect(0,0,w,h);
+    const cols = 14, rows = 6;
+    for (let i=0;i<cols;i++){
+      for (let j=0;j<rows;j++){
+        const t = (Math.sin(i*0.7+j*1.3)+1)/2;
+        ctx.fillStyle = `rgba(155,140,217,${0.05+t*0.18})`;
+        const cw = w/cols, ch = h/rows;
+        ctx.fillRect(i*cw+2, j*ch+2, cw-4, ch-4);
+      }
+    }
+  }
+  window.addEventListener('resize', drawHero);
+  drawHero();
+
+  // ---------- Decoder: loads exported weights, mirrors training/model.py's decode() ----------
+  let decoderPromise = null;
+  async function loadDecoder(){
+    const manifest = await fetch('decoder-manifest.json').then(r => r.json());
+    const arrays = {};
+    for (const [name, info] of Object.entries(manifest)){
+      if (!info || !info.file) continue;
+      const buf = await fetch(info.file).then(r => r.arrayBuffer());
+      arrays[name] = tf.tensor(new Float32Array(buf), info.shape);
+    }
+    return { manifest, arrays };
+  }
+  function getDecoder(){
+    if (!decoderPromise) decoderPromise = loadDecoder();
+    return decoderPromise;
+  }
+
+  // latent: (1,256) tensor -> (1,96,96,3) tensor, values in [0,1]
+  function decode(latent, decoder){
+    const { manifest, arrays } = decoder;
+    return tf.tidy(() => {
+      let x = tf.add(tf.matMul(latent, arrays.dec_fc_weight), arrays.dec_fc_bias);
+      // flat output is channel-major (matches torch's view(256,6,6)) -- reshape to
+      // that order FIRST, then transpose to NHWC. See export_decoder.py's note.
+      x = tf.reshape(x, [1, 256, 6, 6]);
+      x = tf.transpose(x, [0, 2, 3, 1]);
+      for (const layer of manifest.layers){
+        if (layer.type !== 'conv2dTranspose') continue;
+        const w = arrays[layer.weight], b = arrays[layer.bias];
+        const outH = x.shape[1]*2, outW = x.shape[2]*2, outC = w.shape[2];
+        x = tf.conv2dTranspose(x, w, [1, outH, outW, outC], layer.stride, layer.padding);
+        x = tf.add(x, b);
+        x = layer.activation === 'relu' ? tf.relu(x) : tf.sigmoid(x);
+      }
+      return x;
+    });
+  }
+
+  async function renderTensorToCanvas(tensor, canvas){
+    const data = await tensor.data(); // (96*96*3) float32, HWC, [0,1]
+    const ctx = canvas.getContext('2d');
+    const imgData = ctx.createImageData(96, 96);
+    for (let i=0,j=0; i<data.length; i+=3,j+=4){
+      imgData.data[j]   = Math.round(Math.max(0,Math.min(1,data[i]))*255);
+      imgData.data[j+1] = Math.round(Math.max(0,Math.min(1,data[i+1]))*255);
+      imgData.data[j+2] = Math.round(Math.max(0,Math.min(1,data[i+2]))*255);
+      imgData.data[j+3] = 255;
+    }
+    ctx.putImageData(imgData, 0, 0);
+  }
+
+  // ---------- Upload ----------
+  const dropzone = document.getElementById('dropzone');
+  const fileInput = document.getElementById('fileInput');
+  dropzone.addEventListener('click', ()=> fileInput.click());
+  dropzone.addEventListener('dragover', e=>{ e.preventDefault(); dropzone.classList.add('drag'); });
+  dropzone.addEventListener('dragleave', ()=> dropzone.classList.remove('drag'));
+  dropzone.addEventListener('drop', e=>{
+    e.preventDefault(); dropzone.classList.remove('drag');
+    if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', e=>{
+    if (e.target.files[0]) loadFile(e.target.files[0]);
+  });
+
+  const state = { img:null, cropBox:null, cropDisplayScale:1, croppedPixels:null };
+
+  function loadFile(file){
+    const reader = new FileReader();
+    reader.onload = ev =>{
+      const img = new Image();
+      img.onload = ()=>{
+        state.img = img;
+        document.getElementById('cropSection').style.display = 'block';
+        setupCrop();
+        document.getElementById('cropSection').scrollIntoView({behavior:'smooth', block:'start'});
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // ---------- Square crop ----------
+  const cropCanvas = document.getElementById('cropCanvas');
+  const cropSizeSlider = document.getElementById('cropSizeSlider');
+  const cropSizeVal = document.getElementById('cropSizeVal');
+
+  function setupCrop(){
+    const img = state.img;
+    const maxW = 560;
+    const scale = Math.min(1, maxW/img.width);
+    const dw = Math.round(img.width*scale), dh = Math.round(img.height*scale);
+    cropCanvas.width = dw; cropCanvas.height = dh;
+    state.cropDisplayScale = scale;
+
+    const minSide = Math.min(dw, dh);
+    state.cropBox = { size: minSide, x: (dw-minSide)/2, y: (dh-minSide)/2 };
+    cropSizeSlider.value = 100;
+    cropSizeVal.textContent = '100%';
+    drawCrop();
+  }
+
+  function drawCrop(){
+    const ctx = cropCanvas.getContext('2d');
+    const img = state.img;
+    ctx.clearRect(0,0,cropCanvas.width,cropCanvas.height);
+    ctx.drawImage(img, 0, 0, cropCanvas.width, cropCanvas.height);
+    const box = state.cropBox;
+    ctx.fillStyle = 'rgba(16,19,26,0.55)';
+    ctx.fillRect(0,0,cropCanvas.width,box.y);
+    ctx.fillRect(0,box.y+box.size,cropCanvas.width,cropCanvas.height-box.y-box.size);
+    ctx.fillRect(0,box.y,box.x,box.size);
+    ctx.fillRect(box.x+box.size,box.y,cropCanvas.width-box.x-box.size,box.size);
+    ctx.strokeStyle = '#9b8cd9';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(box.x, box.y, box.size, box.size);
+  }
+
+  cropSizeSlider.addEventListener('input', ()=>{
+    const pct = parseInt(cropSizeSlider.value,10);
+    cropSizeVal.textContent = pct+'%';
+    const box = state.cropBox;
+    const maxSide = Math.min(cropCanvas.width, cropCanvas.height);
+    const cx = box.x+box.size/2, cy = box.y+box.size/2;
+    box.size = Math.max(20, maxSide*pct/100);
+    box.x = Math.min(Math.max(0, cx-box.size/2), cropCanvas.width-box.size);
+    box.y = Math.min(Math.max(0, cy-box.size/2), cropCanvas.height-box.size);
+    drawCrop();
+  });
+
+  let dragging = false, dragOffset = {x:0,y:0};
+  cropCanvas.addEventListener('mousedown', e=>{
+    const rect = cropCanvas.getBoundingClientRect();
+    const sx = cropCanvas.width/rect.width, sy = cropCanvas.height/rect.height;
+    const mx = (e.clientX-rect.left)*sx, my = (e.clientY-rect.top)*sy;
+    const box = state.cropBox;
+    if (mx>=box.x && mx<=box.x+box.size && my>=box.y && my<=box.y+box.size){
+      dragging = true; dragOffset = { x: mx-box.x, y: my-box.y };
+    }
+  });
+  window.addEventListener('mousemove', e=>{
+    if (!dragging) return;
+    const rect = cropCanvas.getBoundingClientRect();
+    const sx = cropCanvas.width/rect.width, sy = cropCanvas.height/rect.height;
+    const mx = (e.clientX-rect.left)*sx, my = (e.clientY-rect.top)*sy;
+    const box = state.cropBox;
+    box.x = Math.min(Math.max(0, mx-dragOffset.x), cropCanvas.width-box.size);
+    box.y = Math.min(Math.max(0, my-dragOffset.y), cropCanvas.height-box.size);
+    drawCrop();
+  });
+  window.addEventListener('mouseup', ()=> dragging = false);
+
+  document.getElementById('useCropBtn').addEventListener('click', ()=>{
+    const box = state.cropBox;
+    const s = 1/state.cropDisplayScale; // display px -> source-image px
+    const sx = box.x*s, sy = box.y*s, ssize = box.size*s;
+
+    const previewCanvas = document.getElementById('cropPreviewCanvas');
+    const ctx = previewCanvas.getContext('2d');
+    ctx.drawImage(state.img, sx, sy, ssize, ssize, 0, 0, 96, 96);
+    const { data } = ctx.getImageData(0,0,96,96);
+    const pixels = new Float32Array(96*96*3);
+    for (let i=0,j=0; i<data.length; i+=4,j+=3){
+      pixels[j]=data[i]/255; pixels[j+1]=data[i+1]/255; pixels[j+2]=data[i+2]/255;
+    }
+    state.croppedPixels = pixels;
+
+    document.getElementById('reconstructSection').style.display = 'block';
+    document.getElementById('reconstructSection').scrollIntoView({behavior:'smooth', block:'start'});
+    getDecoder(); // kick off weight loading now so it's warm by the time Start is clicked
+  });
+
+  // ---------- Reconstruction (latent search) ----------
+  const startBtn = document.getElementById('startBtn');
+  const reconStatus = document.getElementById('reconStatus');
+  const progressFill = document.getElementById('progressFill');
+  const reconCanvas = document.getElementById('reconCanvas');
+
+  startBtn.addEventListener('click', async ()=>{
+    startBtn.disabled = true;
+    reconStatus.textContent = 'loading decoder…';
+    const decoder = await getDecoder();
+
+    reconStatus.textContent = 'searching…';
+    const target = tf.tensor(state.croppedPixels, [1,96,96,3]);
+    const latent = tf.variable(tf.zeros([1,256]));
+    const optimizer = tf.train.adam(0.05);
+    const iters = 1500, batch = 15;
+
+    let lastLoss = null;
+    for (let i=0; i<iters; i+=batch){
+      for (let j=0; j<batch && i+j<iters; j++){
+        optimizer.minimize(() => {
+          const out = decode(latent, decoder);
+          return tf.losses.meanSquaredError(target, out);
+        }, false, [latent]);
+      }
+      const pct = Math.min(100, Math.round(100*(i+batch)/iters));
+      progressFill.style.width = pct+'%';
+      const lossTensor = tf.tidy(()=> tf.losses.meanSquaredError(target, decode(latent, decoder)));
+      lastLoss = (await lossTensor.data())[0];
+      lossTensor.dispose();
+      reconStatus.textContent = `searching… ${pct}% (mse ${lastLoss.toFixed(4)})`;
+      const preview = tf.tidy(()=> decode(latent, decoder));
+      await renderTensorToCanvas(preview, reconCanvas);
+      preview.dispose();
+      await new Promise(r=>setTimeout(r,0));
+    }
+    console.log('final loss', lastLoss, 'numTensors', tf.memory().numTensors);
+
+    target.dispose();
+    latent.dispose();
+    reconStatus.textContent = 'done';
+    document.getElementById('reconLabel').textContent = "the network's impression — done";
+    document.getElementById('learnSection').style.display = 'block';
+    startBtn.disabled = false;
+  });
+
+  // ---------- Debug harness: ?debugLatent=reference ----------
+  (async function debugHook(){
+    const params = new URLSearchParams(location.search);
+    if (params.get('debugLatent') !== 'reference') return;
+    document.getElementById('debugPanel').style.display = 'block';
+    const decoder = await getDecoder();
+    const ref = await fetch('training/reference_latent.json').then(r=>r.json());
+    const latent = tf.tensor(ref.latent, [1,256]);
+    const out = decode(latent, decoder);
+    await renderTensorToCanvas(out, document.getElementById('debugCanvas'));
+    out.dispose(); latent.dispose();
+  })();
+
+})();
+</script>
+</body>
+</html>

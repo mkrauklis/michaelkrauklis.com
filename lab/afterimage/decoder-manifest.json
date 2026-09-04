@@ -1,0 +1,124 @@
+{
+  "latent_dim": 256,
+  "res": 96,
+  "channels": 3,
+  "layers": [
+    {
+      "type": "dense",
+      "weight": "dec_fc_weight",
+      "bias": "dec_fc_bias",
+      "activation": "none",
+      "reshape_chw": [
+        256,
+        6,
+        6
+      ],
+      "reshape_note": "flat output is channel-major (matches torch's view(256,6,6)) -- reshape to [256,6,6] THEN transpose to HWC [6,6,256], never reshape straight to [6,6,256] or channels get scrambled"
+    },
+    {
+      "type": "conv2dTranspose",
+      "weight": "convT1_weight",
+      "bias": "convT1_bias",
+      "stride": 2,
+      "padding": 1,
+      "activation": "relu"
+    },
+    {
+      "type": "conv2dTranspose",
+      "weight": "convT2_weight",
+      "bias": "convT2_bias",
+      "stride": 2,
+      "padding": 1,
+      "activation": "relu"
+    },
+    {
+      "type": "conv2dTranspose",
+      "weight": "convT3_weight",
+      "bias": "convT3_bias",
+      "stride": 2,
+      "padding": 1,
+      "activation": "relu"
+    },
+    {
+      "type": "conv2dTranspose",
+      "weight": "convT4_weight",
+      "bias": "convT4_bias",
+      "stride": 2,
+      "padding": 1,
+      "activation": "sigmoid"
+    }
+  ],
+  "dec_fc_weight": {
+    "shape": [
+      256,
+      9216
+    ],
+    "file": "weights/dec_fc_weight.bin"
+  },
+  "dec_fc_bias": {
+    "shape": [
+      9216
+    ],
+    "file": "weights/dec_fc_bias.bin"
+  },
+  "convT1_weight": {
+    "shape": [
+      4,
+      4,
+      128,
+      256
+    ],
+    "file": "weights/convT1_weight.bin"
+  },
+  "convT1_bias": {
+    "shape": [
+      128
+    ],
+    "file": "weights/convT1_bias.bin"
+  },
+  "convT2_weight": {
+    "shape": [
+      4,
+      4,
+      64,
+      128
+    ],
+    "file": "weights/convT2_weight.bin"
+  },
+  "convT2_bias": {
+    "shape": [
+      64
+    ],
+    "file": "weights/convT2_bias.bin"
+  },
+  "convT3_weight": {
+    "shape": [
+      4,
+      4,
+      32,
+      64
+    ],
+    "file": "weights/convT3_weight.bin"
+  },
+  "convT3_bias": {
+    "shape": [
+      32
+    ],
+    "file": "weights/convT3_bias.bin"
+  },
+  "convT4_weight": {
+    "shape": [
+      4,
+      4,
+      3,
+      32
+    ],
+    "file": "weights/convT4_weight.bin"
+  },
+  "convT4_bias": {
+    "shape": [
+      3
+    ],
+    "file": "weights/convT4_bias.bin"
+  }
+}
