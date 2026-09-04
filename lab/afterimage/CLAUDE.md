@@ -59,23 +59,38 @@ Cost: this doubles the shipped weight size (~12MB decoder + ~12MB encoder =
 
 ## The personalization adapter ("head")
 
-After the latent-only search plateaus, a second phase optimizes four small
-per-channel vectors layered onto the decoder's *last* transposed-conv layer
-only:
+After the latent-only search plateaus, a second phase optimizes per-channel
+scale/shift vectors layered onto the input of the decoder's **last three**
+transposed-conv layers (channels 128, 64, 32 -- see `training/model.py`),
+plus the very last layer's output:
 
 ```
-xIn  = x * scaleIn  + shiftIn    (scaleIn, shiftIn: 32 numbers each -- applied
-                                   to the last layer's input channels)
-y    = convTranspose4(xIn)
-y    = y * scaleOut + shiftOut   (scaleOut, shiftOut: 3 numbers each -- applied
-                                   to the final RGB output channels)
+for each of the last 3 conv-transpose layers:
+  xIn = x * scaleIn_k + shiftIn_k   (one scaleIn/shiftIn pair per layer,
+                                      sized to that layer's input channels)
+  x   = convTranspose_k(xIn)
+y = x * scaleOut + shiftOut         (scaleOut, shiftOut: 3 numbers each --
+                                      applied only after the final layer)
 ```
 
-70 numbers total (32+32+3+3), initialized to the identity (`scale=1,
-shift=0`) so phase 2 starts exactly where phase 1 left off and only
-diverges as far as it actually helps. This is a small per-photo artifact,
-genuinely distinct from the latent vector — it gets its own QR code (see
-"Sharing" below).
+454 numbers total (`(128+64+32)*2 + 3*2`), initialized to the identity
+(`scale=1, shift=0`) so phase 2 starts exactly where phase 1 left off and
+only diverges as far as it actually helps. This is a small per-photo
+artifact, genuinely distinct from the latent vector — it gets its own QR
+code (see "Sharing" below).
+
+**One layer wasn't enough.** An earlier version of this adapter touched only
+the last layer (70 numbers) and the effect was real but barely visible —
+measured error improvement was consistently under 30%, and by eye the two
+images looked almost identical. Spreading the same kind of adjustment across
+the last three layers instead of one (measured improvement jumped to
+50-70%+ in testing) gave it enough surface area to actually matter, without
+changing the underlying trick at all — still pure input-side FiLM, just
+applied more times. If you're tuning this further, `ADAPTER_LAYER_CHANNELS`
+in `index.html` is the single place that controls how many layers and which
+ones; extending it further back toward the latent vector should keep
+working the same way, since nothing about the technique depends on being
+near the output.
 
 **This is a FiLM-style affine reparameterization, not a LoRA-style delta to
 the conv weight matrix — that distinction is load-bearing, not stylistic.**
@@ -87,11 +102,13 @@ train A and B that way throws mid-search, silently, inside a promise if you
 aren't watching for it (found this the hard way — it happened deep into
 phase 2, past the point where a cursory smoke test would catch it). The
 scale/shift adapter never uses a tensor as a *filter* argument — the actual
-conv weight (`arrays.convT4_weight`) stays a constant array the whole time —
-so every gradient it needs is with respect to *inputs*, the same kind of
-gradient the latent search already relies on successfully on every backend.
-If you're tempted to make the adapter more expressive (e.g. a real weight
-delta), confirm first that whatever backend you're targeting actually
+conv weights (`arrays.convT2_weight` through `convT4_weight`, whichever
+layers `ADAPTER_LAYER_CHANNELS` targets) stay constant arrays the whole
+time — so every gradient it needs is with respect to *inputs*, the same
+kind of gradient the latent search already relies on successfully on every
+backend, no matter how many layers it's spread across. If you're tempted to
+make the adapter more expressive (e.g. a real weight delta), confirm first
+that whatever backend you're targeting actually
 implements the backward kernels involved, on real target hardware, not just
 in a quick single-iteration test — the failure mode is late and silent.
 
@@ -103,7 +120,8 @@ Encoder (shipped, forward-only warm start): 4 conv layers (stride 2 each,
 Decoder (shipped, optimized against per-photo): 1 dense head + 4 transposed-conv
   layers (stride 2 each, 6px -> 96px, 256 -> 128 -> 64 -> 32 -> 3 channels)
 Adapter (computed per-photo, phase 2 only, never trained offline): scale/shift
-  on the last conv layer's input (32+32) and output (3+3) -- see above
+  on the last 3 conv layers' inputs (128+128, 64+64, 32+32) and the final
+  output (3+3) -- 454 numbers total, see above
 ```
 
 Every conv/conv-transpose layer is followed by BatchNorm2d + ReLU except the
@@ -187,7 +205,7 @@ round-trip through a QR code and a URL:
 - **latent vector** (256 numbers) → quantized to 256 bytes (int8, clipped to
   ±4 — chosen empirically as generous headroom for optimized latents, not a
   hard mathematical bound) → Base45-encoded → `?z=...`
-- **adapter** (70 numbers, stored as deltas from identity) → quantized to 70
+- **adapter** (454 numbers, stored as deltas from identity) → quantized to 454
   bytes (int8, clipped to ±1.5) → Base45-encoded → `?h=...`
 
 Both live in the same URL when both exist (`?z=...&h=...`); the latent alone
@@ -248,14 +266,17 @@ channels. If you add a new visualization, default to the grayscale scale unless 
 
 ## The head fingerprint (`renderHeadFingerprint`)
 
-The adapter's 70 numbers are plotted in polar coordinates, not a flat grid — 32 spokes around a
-circle (angle = which input channel, length = that channel's gain delta, a dot at the tip = its
-shift delta), plus 3 colored accent marks near the rim for the RGB output-channel adjustments.
-This isn't decorative: every visual property maps to one specific number, deterministically, so
-two different photos' adapters never look alike and the same photo always looks the same. It
-reads as a mandala/sunburst, which was the point — it's meant to be worth printing and asking
-about, not just informative. If you change `ADAPTER_IN`/`ADAPTER_OUT`, the spoke count and accent
-placement need updating alongside it (hardcoded to 32 and 3 respectively).
+The adapter's numbers are plotted in polar coordinates, not a flat grid — **3 concentric rings**,
+one per personalized decoder layer (innermost = the layer closest to the latent vector, outermost
+= the layer closest to the final image, in `ADAPTER_LAYER_CHANNELS` order), each ring made of
+spokes (angle = which channel within that layer, length = that channel's gain delta, a dot at the
+tip = its shift delta), plus 3 colored accent marks past the outer ring for the RGB output-channel
+adjustments. This isn't decorative: every visual property maps to one specific number,
+deterministically, so two different photos' adapters never look alike and the same photo always
+looks the same. It reads as a mandala/sunburst, which was the point — it's meant to be worth
+printing and asking about, not just informative. If you change `ADAPTER_LAYER_CHANNELS`, the ring
+count/radii and per-ring spoke count follow automatically (`rings` is derived from it); only
+`ADAPTER_OUT`'s accent placement is still hardcoded to 3.
 
 ## Proving the head matters (`showHeadProof`)
 
@@ -273,7 +294,7 @@ before/after is easy to eyeball as "basically the same" even when it isn't; the 
 `checkpoint()` records `{iteration, mse}` at every progress update into `lossHistory` and redraws
 the chart each time — this is the literal gradient descent, not a decorative progress bar. A
 dashed vertical line marks `phase1End` (where phase 2, the personalization pass, begins), which is
-usually visible as a small upward jump in the curve: phase 2 adds 70 new free parameters, so the
+usually visible as a small upward jump in the curve: phase 2 adds 454 new free parameters, so the
 loss briefly gets *worse* right at the transition before dropping again as they're fit. That jump
 is expected and worth leaving visible, not smoothing away — it's honest evidence that two separate
 optimizations are happening, not one continuous one.
@@ -291,17 +312,52 @@ multiple files in one drop (or sequential drops across separate visits to the pa
 than requiring the user to say which slot a scan belongs to; it re-renders through the normal
 `loadFromParams()` path as soon as a latent is available, upgrading in place if a matching adapter
 arrives later. If you change the QR payload format, all three QR variants (latent-only,
-adapter-only, combined) need to stay parseable by `parseShareText()`.
+adapter-only, combined) need to stay parseable by `parseShareText()`. Each of the three QR cards
+in the "save & share" section sits directly next to a live re-render of exactly what it carries
+(`shareEssenceLatentCanvas`, `shareKeyHeadCanvas`, `shareBothLatentCanvas`+`shareBothHeadCanvas`)
+so the claim "this code carries these numbers" is something you can see, not just prose asserting
+it — `buildShareArtifacts()` renders all of them from the same `latentArr`/`adapterArrs` it QR-
+encodes. The key/both rows (plus their `<hr>` dividers, `shareKeyDivider`/`shareBothDivider`) are
+hidden together as a unit when there's no adapter — don't toggle the QR canvas's own `.col` without
+also toggling its paired visualization `.col`, or you'll end up with an orphaned viz next to
+nothing.
+
+The "prove the head matters" comparison (above, in the training section) also gets a third image
+when it can: `proofOriginalCol`/`proofOriginalCanvas` show the actual downsampled source photo
+next to the with/without-head renders, but only for a live training run — a loaded shared
+impression has no source photo to show (by design, nothing was ever uploaded anywhere for it), so
+that column stays hidden in that path.
 
 ## The latent explorer (`setupExplore`)
 
-Not a single global "wander distance" — click cells in the interactive latent grid to select
-specific dimensions (shift-click for a range), then one slider moves *only* the selected
-dimensions, together, as a delta from the value the search actually found. Selecting nothing and
-moving the slider does nothing, by design: `currentLatent()` only ever touches indices in
-`selected`. This is deliberately different from the read-only heatmap in the reconstruct section
-above it — that one shows the live search; this one is a separate, user-driven copy that starts
-from the same numbers once the search is done.
+The slider is an **absolute position** on the same -4..+4 scale the grids are colored on (styled
+with a literal black-to-white CSS gradient background so it visually doubles as that axis) — not a
+delta from wherever a dimension happened to land. Every selected cell gets set to exactly that one
+value, together (`currentLatent()`: `arr[i] = currentPosition()` for `i in selected`). This
+replaced an earlier delta-based design where the slider *added* to each cell's base value — which
+was genuinely confusing, because dragging to the slider's minimum didn't reliably produce black:
+a cell already sitting near the top of its range would land somewhere in the middle after a
+uniform "-4" offset, not at the scale's true minimum. Absolute positioning fixes that by
+construction: drag to -4, everything selected *is* -4, full stop.
+
+Selection is click-and-drag box-select on the grid (`onGridDown`/`onWindowMove`/`onWindowUp`,
+mirroring the crop-box dragger's window-level-listener pattern elsewhere in this file) — a single
+click is just a zero-movement 1x1 drag. Plain drag replaces the selection with the dragged box;
+shift-drag unions a second box onto the existing selection instead of replacing it; a plain click
+(no drag, no shift) on a cell that was already the *entire* prior selection toggles it off, so
+quick single-cell selection still feels like clicking a toggle. Because `setupExplore()` can be
+called repeatedly across one page session (train → share → load a different impression → explore
+again), the window-level `mousemove`/`mouseup` listeners are cleaned up explicitly via
+`exploreDragCleanup` at the top of each call — the clone-and-replace trick used for the other
+controls doesn't reach listeners attached to `window` itself, only to elements that get replaced.
+
+Changing the selected region calls `syncSliderToSelection()`, which snaps the slider to the
+*average* of the newly-selected cells' original base values — so selecting a different region
+never makes the image jump; it just shows you where that region already sits before you've dragged
+anything. `currentDistance()` is no longer a closed-form `delta * sqrt(n)` (that only worked when
+every selected cell moved by the same *offset*) — now that different cells can sit different
+distances from an absolute target position, it's a real per-dimension sum:
+`sqrt(sum((position - base[i])^2))` over the selected set.
 
 ## Modifying the network (retraining, changing the architecture)
 
@@ -334,9 +390,11 @@ hand-written mirror of `training/model.py`, not something that reads the
 architecture generically from its manifest. The manifests mainly exist to
 hand shapes and array names between Python and JS, not to make the JS side
 architecture-agnostic. Changing the adapter's shape additionally requires
-updating `ADAPTER_IN`/`ADAPTER_OUT`/`ADAPTER_CLIP`/`ADAPTER_LEN` and the
-quantize/dequantize functions together — they all assume the current 70-number
-layout.
+updating `ADAPTER_LAYER_CHANNELS` (which `ADAPTER_IN` and `ADAPTER_LEN`
+derive from automatically), `ADAPTER_OUT`/`ADAPTER_CLIP`, and `decodeFull()`'s
+`startLi` slicing logic together with the quantize/dequantize functions and
+`renderHeadFingerprint()`'s ring layout — they all assume the current
+454-number, 3-layer structure.
 
 ## Testing changes
 
@@ -356,9 +414,17 @@ the resulting `?z=` URL and confirm it reproduces the same image
 deterministically → in the "load a shared impression" box, drop the
 latent-only and adapter-only QR images in separately (either order) and
 confirm it renders the blurrier version after the first and upgrades after
-the second → try selecting cells and moving the slider in the explore
-section and confirm the live canvas updates and the distance readout tracks
-`delta * sqrt(selected.size)`. Watch the browser console for errors during
-the *personalizing* phase specifically — that's where a
+the second → in the explore section, drag-select a region on the grid,
+confirm shift-drag adds a second region instead of replacing the first, and
+confirm a plain click on an already-fully-selected single cell toggles it
+off → drag the position slider to its minimum with something selected and
+confirm the selected cells render as actual black (`rgb(8,8,8)`), not some
+partial value — this is the exact bug the absolute-positioning redesign
+fixed, so it's the one regression test that matters most in this section →
+train a second photo in the same page session afterward and confirm the
+explore section still works (catches window-listener leaks from
+`exploreDragCleanup` not firing). Watch the browser console for errors
+during the *personalizing* phase specifically — that's where a
 backend-kernel-support regression (see "The personalization adapter" above)
-would surface.
+would surface, and it's more likely to show up now that personalization
+touches three layers instead of one.

@@ -38,6 +38,9 @@
   h1{ font-size: clamp(2rem, 5vw, 3.4rem); font-weight: 600; }
   h2{ font-size: 1.5rem; }
   p{ color: var(--ink-dim); max-width: 62ch; }
+  /* a lead paragraph sitting directly above a full-width panel shouldn't stop 2/3 of the way
+     across it -- let just that paragraph run the panel's full width instead of capping at 62ch */
+  p:has(+ .panel){ max-width: none; }
   a{ color: var(--violet); }
 
   .wrap{ max-width: 1080px; margin: 0 auto; padding: 0 24px; }
@@ -315,11 +318,11 @@
     <span class="step-tag">03 — train</span>
     <h2>Watch it learn your photo</h2>
     <p>The big network — the decoder — was already trained, once, offline, and is frozen for
-    good. What trains now, live, right here, is much smaller: 256 numbers (and later, 70 more)
+    good. What trains now, live, right here, is much smaller: 256 numbers (and later, 454 more)
     getting nudged by gradient descent, over and over, until the frozen decoder's output matches
     your photo as closely as it can. First an instant forward pass gives those 256 numbers a
     rough starting point; then a few hundred training steps refine them, and a few hundred more
-    train a small personalization on top — usually 20-90 seconds total. Every pixel below is the
+    train a small personalization on top — usually 30-120 seconds total. Every pixel below is the
     network's actual output at that point in training, not a lookup or a filter, and the chart
     tracks the error dropping step by step so you can watch the descent itself, not just its
     result.</p>
@@ -355,10 +358,10 @@
         </div>
         <div class="result-col">
           <canvas id="headHeatmapCanvas" width="320" height="320"></canvas>
-          <div class="result-label">personalized head — 70 numbers, plotted live</div>
-          <div class="result-desc">A small adjustment fitted to your photo alone, layered onto the
-          decoder's last step — everyone else's browser uses the same decoder, but nobody else has
-          this.</div>
+          <div class="result-label">personalized head — 3 layers, 454 numbers, plotted live</div>
+          <div class="result-desc">An adjustment fitted to your photo alone, layered onto the
+          decoder's last three layers — everyone else's browser uses the same decoder, but nobody
+          else has this.</div>
           <div class="actions" style="margin-top:8px;">
             <button class="secondary" id="downloadHeadBtn" style="padding:6px 14px; font-size:0.82rem;">Download</button>
           </div>
@@ -381,8 +384,14 @@
         <div class="col" style="text-align:center;">
           <canvas id="proofWithHeadCanvas" width="96" height="96" style="max-width:200px; margin:0 auto;"></canvas>
           <div class="result-label">latent + personalized head</div>
-          <div class="result-desc" id="proofWithHeadDesc">The same 256 numbers, through the 70-number
+          <div class="result-desc" id="proofWithHeadDesc">The same 256 numbers, through the 454-number
           adjustment trained just now.</div>
+        </div>
+        <div class="col" id="proofOriginalCol" style="text-align:center; display:none;">
+          <canvas id="proofOriginalCanvas" width="96" height="96" style="max-width:200px; margin:0 auto;"></canvas>
+          <div class="result-label">your original, downsampled</div>
+          <div class="result-desc">What the network was actually working from — not a lookup, the
+          real target.</div>
         </div>
       </div>
       <p id="headProofNote" class="result-desc" style="display:none; margin-top:10px;"></p>
@@ -396,34 +405,63 @@
     same frozen decoder anyone else on this page has. The first two split into a matched pair on
     purpose: think of it like a locket that comes in two halves. The essence, on its own, is
     already a complete little impression — soft, but real. The key, on its own, is nothing at all
-    — just 70 meaningless numbers with no photo to apply them to. Give one half to one person and
+    — just 454 meaningless numbers with no photo to apply them to. Give one half to one person and
     the other half to someone else, and only together do the two scans reveal the sharper,
     truer version. The third code just carries both halves at once, for a single keepsake.</p>
-    <div class="panel row">
-      <div class="col" style="text-align:center;">
-        <canvas id="qrLatentCanvas"></canvas>
-        <div class="result-label">the essence</div>
-        <div class="result-desc">Whole on its own — a soft impression, scannable by itself.</div>
-        <div class="actions" style="margin-top:8px; justify-content:center;">
-          <button class="secondary" id="downloadQrLatentBtn" style="padding:6px 14px; font-size:0.82rem;">Download</button>
+    <div class="panel">
+      <div class="row" style="align-items:center;">
+        <div class="col" style="text-align:center; max-width:240px;">
+          <canvas id="qrLatentCanvas"></canvas>
+          <div class="result-label">the essence</div>
+          <div class="result-desc">Whole on its own — a soft impression, scannable by itself.</div>
+          <div class="actions" style="margin-top:8px; justify-content:center;">
+            <button class="secondary" id="downloadQrLatentBtn" style="padding:6px 14px; font-size:0.82rem;">Download</button>
+          </div>
+        </div>
+        <div class="col" style="text-align:center; max-width:240px;">
+          <canvas id="shareEssenceLatentCanvas" width="320" height="320"></canvas>
+          <div class="result-label">what it carries: the latent vector</div>
+          <div class="result-desc">The 256 numbers inside this exact QR code — brightness = value,
+          same scale as everywhere else on this page.</div>
         </div>
       </div>
-      <div class="col" style="text-align:center;">
-        <canvas id="qrHeadOnlyCanvas"></canvas>
-        <div class="result-label">the key</div>
-        <div class="result-desc">Meaningless alone — unlocks the sharp version only when paired
-        with the essence above.</div>
-        <div class="actions" style="margin-top:8px; justify-content:center;">
-          <button class="secondary" id="downloadQrHeadOnlyBtn" style="padding:6px 14px; font-size:0.82rem;">Download</button>
+      <hr class="divider" id="shareKeyDivider">
+      <div class="row" id="shareKeyRow" style="align-items:center;">
+        <div class="col" style="text-align:center; max-width:240px;">
+          <canvas id="qrHeadOnlyCanvas"></canvas>
+          <div class="result-label">the key</div>
+          <div class="result-desc">Meaningless alone — unlocks the sharp version only when paired
+          with the essence above.</div>
+          <div class="actions" style="margin-top:8px; justify-content:center;">
+            <button class="secondary" id="downloadQrHeadOnlyBtn" style="padding:6px 14px; font-size:0.82rem;">Download</button>
+          </div>
+        </div>
+        <div class="col" style="text-align:center; max-width:240px;">
+          <canvas id="shareKeyHeadCanvas" width="320" height="320"></canvas>
+          <div class="result-label">what it carries: the personalized head</div>
+          <div class="result-desc">The 454 numbers inside this exact QR code — on its own, this
+          plot describes nothing decodable.</div>
         </div>
       </div>
-      <div class="col" style="text-align:center;">
-        <canvas id="qrFullCanvas"></canvas>
-        <div class="result-label">both together</div>
-        <div class="result-desc">Essence and key in one code — the full sharp version, for keeping
-        instead of splitting.</div>
-        <div class="actions" style="margin-top:8px; justify-content:center;">
-          <button class="secondary" id="downloadQrFullBtn" style="padding:6px 14px; font-size:0.82rem;">Download</button>
+      <hr class="divider" id="shareBothDivider">
+      <div class="row" id="shareBothRow" style="align-items:center;">
+        <div class="col" style="text-align:center; max-width:240px;">
+          <canvas id="qrFullCanvas"></canvas>
+          <div class="result-label">both together</div>
+          <div class="result-desc">Essence and key in one code — the full sharp version, for keeping
+          instead of splitting.</div>
+          <div class="actions" style="margin-top:8px; justify-content:center;">
+            <button class="secondary" id="downloadQrFullBtn" style="padding:6px 14px; font-size:0.82rem;">Download</button>
+          </div>
+        </div>
+        <div class="col" style="text-align:center; max-width:240px;">
+          <div style="display:flex; gap:12px; justify-content:center;">
+            <canvas id="shareBothLatentCanvas" width="180" height="180" style="width:50%;"></canvas>
+            <canvas id="shareBothHeadCanvas" width="180" height="180" style="width:50%;"></canvas>
+          </div>
+          <div class="result-label">what it carries: both</div>
+          <div class="result-desc">The same two number-sets side by side — everything needed for
+          the sharp version, in one scan.</div>
         </div>
       </div>
     </div>
@@ -491,16 +529,18 @@
     Every nearby point decodes to something too — a plausible image the network can imagine,
     blending smoothly into whatever's next to it. This section lets you leave that point on
     purpose and see what's nearby.</p>
-    <p>The grid below is the same 256 numbers as the live heatmap above — this copy is yours to
-    move. Click one or more cells to select them (shift-click for a range), then drag the slider
-    to push just those numbers, together, away from where your photo landed. Everything unselected
-    stays exactly where the search left it.</p>
+    <p>The grid below is the same 256 numbers as the live heatmap above, plotted on the exact same
+    black-to-white scale — black is this scale's minimum, white is its maximum, and that's the
+    entire axis every dimension lives on. Drag across the grid to select a region (a single click
+    selects one cell; shift-drag adds a second region without losing the first). Then drag the
+    slider — styled as that same black-to-white scale, on purpose — to set exactly where the
+    selected cells sit on it. Everything unselected stays exactly where the search left it.</p>
     <div class="panel">
       <div class="result-grid">
         <div class="result-col" style="max-width:140px;">
           <canvas id="exploreBaseCanvas" width="96" height="96"></canvas>
           <div class="result-label">your trained photo</div>
-          <div class="result-desc">Fixed reference — delta 0.00, nothing selected. Compare
+          <div class="result-desc">Fixed reference — nothing selected, nothing moved. Compare
           everything else to this.</div>
         </div>
         <div class="result-col">
@@ -510,17 +550,22 @@
           selected.</div>
         </div>
         <div class="result-col">
-          <canvas id="exploreLatentCanvas" width="320" height="320" style="cursor:pointer;"></canvas>
-          <div class="result-label" id="exploreSelLabel">click cells to select them</div>
-          <div class="result-desc">Same brightness = value coding as above — the highlighted
-          cells are the ones the slider currently moves.</div>
+          <canvas id="exploreLatentCanvas" width="320" height="320" style="cursor:crosshair;"></canvas>
+          <div class="result-label" id="exploreSelLabel">drag to select a region</div>
+          <div class="result-desc">Same brightness = value coding as above — the outlined cells
+          are the ones the slider currently controls.</div>
         </div>
       </div>
-      <label class="field">Move selected — <span class="field-value" id="exploreDeltaVal">0.00</span></label>
-      <input type="range" id="exploreDeltaSlider" min="-400" max="400" value="0">
-      <p class="result-desc">This doesn't edit your photo — it changes position. Dragging walks the
-      selected dimensions away from the exact coordinates your photo landed on and asks the frozen
-      decoder what exists at the new point instead. 0.00 is always exactly your trained photo.</p>
+      <label class="field">Position of selected on the scale below — <span class="field-value" id="explorePositionVal">0.00</span></label>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <span class="result-desc" style="flex-shrink:0;">−4 black</span>
+        <input type="range" id="explorePositionSlider" min="-400" max="400" value="0" style="background: linear-gradient(to right, #000, #fff); border-radius:4px;">
+        <span class="result-desc" style="flex-shrink:0;">white +4</span>
+      </div>
+      <p class="result-desc">This is an absolute position, not a nudge: dragging sets every
+      selected cell to this exact point on the black-to-white scale, all at once. Selecting a new
+      region snaps the slider to show where that region already sits, so nothing jumps until you
+      actually drag it.</p>
       <div style="margin-top:10px;">
         <span class="result-desc" id="exploreDistanceLabel">distance from your trained photo: 0.00</span>
         <div class="gauge-track"><div class="gauge-fill" id="exploreDistanceGauge"></div></div>
@@ -548,8 +593,8 @@
         instantly, purely to get the search started somewhere reasonable instead of from nothing.
         Every pixel of the actual answer comes from the decoder being nudged, step by step, toward
         your photo — a slower process, but one that measurably beats trusting the encoder's one-shot
-        guess. The last stretch of that search also fits 70 extra numbers — a small personalization
-        layered onto just the decoder's last layer — which is why the image kept sharpening even
+        guess. The last stretch of that search also fits 454 extra numbers — a personalization
+        layered onto the decoder's last three layers — which is why the image kept sharpening even
         after the main shape had already settled.</p>
         <svg width="100%" viewBox="0 0 680 350" role="img" style="margin-top:18px;">
           <title>Afterimage's autoencoder as an hourglass of shrinking, deepening image blocks</title>
@@ -586,10 +631,10 @@
           <rect x="536" y="152" width="80" height="80" rx="4" fill="var(--ink-dim)" stroke="var(--ink-dim)" stroke-width="0.5" opacity="0.5"/>
           <rect x="544" y="160" width="80" height="80" rx="4" fill="var(--ink-dim)" stroke="var(--ink-dim)" stroke-width="0.5" opacity="0.65"/>
 
-          <rect x="422" y="172" width="56" height="56" rx="6" fill="none" stroke="var(--amber)" stroke-width="1.5" stroke-dasharray="4 3"/>
-          <text x="450" y="120" text-anchor="middle" font-size="11.5" font-weight="600" fill="var(--amber)">personalized head</text>
-          <text x="450" y="133" text-anchor="middle" font-size="10" fill="var(--amber)" opacity="0.85">unique to your photo — 70 numbers</text>
-          <path d="M450,136 L450,170" stroke="var(--amber)" stroke-width="1" stroke-dasharray="2 2"/>
+          <rect x="402" y="152" width="82" height="82" rx="8" fill="none" stroke="var(--amber)" stroke-width="1.5" stroke-dasharray="4 3"/>
+          <text x="450" y="112" text-anchor="middle" font-size="11.5" font-weight="600" fill="var(--amber)">personalized head</text>
+          <text x="450" y="125" text-anchor="middle" font-size="10" fill="var(--amber)" opacity="0.85">unique to your photo — 454 numbers, 3 layers deep</text>
+          <path d="M450,128 L450,150" stroke="var(--amber)" stroke-width="1" stroke-dasharray="2 2"/>
 
           <text x="163" y="76" text-anchor="middle" font-size="14" font-weight="500" fill="var(--ink)">Encoder</text>
           <text x="163" y="94" text-anchor="middle" font-size="12" fill="var(--ink-dim)">4 conv layers · 1 FC head</text>
@@ -609,8 +654,8 @@
         unchanged, that everyone else's browser also uses. Violet is the 256-number latent vector,
         the "impression" your photo gets reduced to. The dashed amber box is the personalized head
         — the one piece of this whole diagram that isn't shared. Everything else, top to bottom, is
-        identical no matter whose browser is running it; the amber box is 70 numbers that exist
-        only because of your specific photo, layered onto just the decoder's very last step. It's
+        identical no matter whose browser is running it; the amber box is 454 numbers that exist
+        only because of your specific photo, layered onto the decoder's last three steps. It's
         also the only part that gets trained live, twice over — first the 256 numbers alone, then
         this head fitted on top of them. You already saw what difference it makes in the "latent
         only" vs. "latent + head" comparison back in the training step — that gap is entirely this
@@ -734,18 +779,26 @@
     });
   }
 
-  const ADAPTER_IN = 32, ADAPTER_OUT = 3;
+  // The personalization spans the input channels of the LAST THREE of the decoder's four
+  // conv-transpose layers (channel counts 128, 64, 32 -- see training/model.py), plus the
+  // final RGB output. One layer alone turned out to be too little headroom to matter
+  // visibly; three gives it real capacity while staying entirely within input-side FiLM
+  // (see the comment on decodeFull below for why that constraint exists at all).
+  const ADAPTER_LAYER_CHANNELS = [128, 64, 32];
+  const ADAPTER_IN = ADAPTER_LAYER_CHANNELS.reduce((a,b)=>a+b, 0); // 224
+  const ADAPTER_OUT = 3;
 
   // latent: (1,256) tensor, adapter: {scaleIn,shiftIn,scaleOut,shiftOut} tensors or null ->
-  // (1,96,96,3) tensor, [0,1].
+  // (1,96,96,3) tensor, [0,1]. scaleIn/shiftIn are flat (224,) vectors, one segment per
+  // personalized layer in ADAPTER_LAYER_CHANNELS order (earliest layer first, last layer last).
   //
-  // The adapter is a per-channel affine reparameterization (FiLM-style) of the decoder's last
-  // layer's input and output -- NOT a delta to the conv weight itself. That's a deliberate choice,
-  // not just a simpler one: a low-rank delta applied to the conv filter needs gradients with
-  // respect to that filter (Conv2DBackpropFilter), which TFJS's WASM backend doesn't implement --
-  // optimizing it throws mid-search. Scale/shift only ever needs gradients with respect to
-  // *inputs*, the same path the latent search already uses successfully, so it works on every
-  // backend. It's also a smaller, well-established technique (feature-wise linear modulation).
+  // The adapter is a per-channel affine reparameterization (FiLM-style) of each personalized
+  // layer's input, plus the last layer's output -- NOT a delta to any conv weight itself.
+  // That's a deliberate choice, not just a simpler one: a low-rank delta applied to a conv
+  // filter needs gradients with respect to that filter (Conv2DBackpropFilter), which TFJS's
+  // WASM backend doesn't implement -- optimizing it throws mid-search. Scale/shift only ever
+  // needs gradients with respect to *inputs*, the same path the latent search already uses
+  // successfully, so it works on every backend, no matter how many layers it's applied to.
   function decodeFull(latent, decoder, adapter){
     const { manifest, arrays } = decoder;
     return tf.tidy(() => {
@@ -753,13 +806,18 @@
       x = tf.reshape(x, [1, 256, 6, 6]);
       x = tf.transpose(x, [0, 2, 3, 1]);
       const convLayers = manifest.layers.filter(l => l.type === 'conv2dTranspose');
+      const n = convLayers.length;
+      const startLi = n - ADAPTER_LAYER_CHANNELS.length; // personalize the last K layers only
+      let inOffset = 0;
       convLayers.forEach((layer, li) => {
-        const isLast = li === convLayers.length - 1;
+        const isLast = li === n - 1;
         let xIn = x;
-        if (isLast && adapter){
-          xIn = tf.add(
-            tf.mul(x, tf.reshape(adapter.scaleIn, [1, 1, 1, ADAPTER_IN])),
-            tf.reshape(adapter.shiftIn, [1, 1, 1, ADAPTER_IN]));
+        if (adapter && li >= startLi){
+          const ch = ADAPTER_LAYER_CHANNELS[li - startLi];
+          const scaleSlice = tf.reshape(tf.slice(adapter.scaleIn, [inOffset], [ch]), [1,1,1,ch]);
+          const shiftSlice = tf.reshape(tf.slice(adapter.shiftIn, [inOffset], [ch]), [1,1,1,ch]);
+          xIn = tf.add(tf.mul(x, scaleSlice), shiftSlice);
+          inOffset += ch;
         }
         const w = arrays[layer.weight], b = arrays[layer.bias];
         const outputShape = [1, xIn.shape[1]*2, xIn.shape[2]*2, w.shape[2]];
@@ -887,12 +945,14 @@
   }
   function renderLatentHeatmap(latentArr, canvas){ renderGridHeatmap(latentArr, LATENT_CLIP, 16, 16, canvas); }
 
-  // The head fingerprint is a literal polar plot of the adapter's 70 numbers -- not a
-  // decorative mandala, an actual coordinate mapping (angle = which of the 32 input
-  // channels, spoke length = how much its gain changed, dot at the tip = how much its
-  // bias shifted, the 3 outer marks = the RGB output-channel adjustments). Every photo's
-  // adapter is different, so every fingerprint is different -- deterministically, from
-  // the same 70 numbers that get QR-encoded.
+  // The head fingerprint is a literal polar plot of the adapter's numbers -- not a decorative
+  // mandala, an actual coordinate mapping. It's now 3 concentric rings, one per personalized
+  // decoder layer (innermost = the layer closest to the latent vector, outermost = the layer
+  // closest to the final image, matching ADAPTER_LAYER_CHANNELS' order) -- angle = which
+  // channel within that layer, spoke length = how much its gain changed, dot at the tip = how
+  // much its bias shifted. The 3 marks past the outer ring are the RGB output-channel
+  // adjustments. Every photo's adapter is different, so every fingerprint is different --
+  // deterministically, from the same numbers that get QR-encoded.
   function renderHeadFingerprint(adapterArrs, canvas){
     const ctx = canvas.getContext('2d');
     const W = canvas.width, H = canvas.height;
@@ -900,9 +960,13 @@
     if (!adapterArrs) return;
 
     const cx = W/2, cy = H/2;
-    const baseR = Math.min(W,H)*0.26;
-    const maxExtra = Math.min(W,H)*0.16;
-    const n = ADAPTER_IN;
+    const maxR = Math.min(W,H)*0.46;
+    const rings = ADAPTER_LAYER_CHANNELS.map((ch, i) => ({
+      channels: ch,
+      baseR: maxR * (0.30 + i*0.24),
+      band: maxR * 0.15,
+    }));
+
     // Spokes and dots use the same black-to-white scale as the heatmaps above -- sign is
     // already encoded geometrically (spoke length grows outward for positive, shrinks inward
     // for negative), so a second, arbitrary color coding here would only add noise. The 3
@@ -914,32 +978,39 @@
       return `${g},${g},${g}`;
     }
 
-    ctx.strokeStyle = 'rgba(233,231,222,0.12)';
-    ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.arc(cx,cy,baseR,0,Math.PI*2); ctx.stroke();
+    let offset = 0;
+    rings.forEach(ring => {
+      const n = ring.channels;
+      ctx.strokeStyle = 'rgba(233,231,222,0.10)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(cx,cy,ring.baseR,0,Math.PI*2); ctx.stroke();
 
-    for (let i=0;i<n;i++){
-      const angle = (i/n)*Math.PI*2 - Math.PI/2;
-      const cos = Math.cos(angle), sin = Math.sin(angle);
-      const scaleDelta = adapterArrs.scaleIn[i]-1; // typically within ±1.5
-      const len = baseR + Math.max(-baseR*0.75, Math.min(maxExtra, (scaleDelta/1.5)*maxExtra));
-      const x1 = cx+cos*baseR*0.35, y1 = cy+sin*baseR*0.35;
-      const x2 = cx+cos*len, y2 = cy+sin*len;
-      ctx.strokeStyle = `rgba(${grayFor(scaleDelta,1.5)},0.85)`;
-      ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+      for (let i=0;i<n;i++){
+        const angle = (i/n)*Math.PI*2 - Math.PI/2;
+        const cos = Math.cos(angle), sin = Math.sin(angle);
+        const scaleDelta = adapterArrs.scaleIn[offset+i]-1; // typically within ±1.5
+        const len = ring.baseR + Math.max(-ring.band*0.9, Math.min(ring.band, (scaleDelta/1.5)*ring.band));
+        const x1 = cx+cos*ring.baseR*0.96, y1 = cy+sin*ring.baseR*0.96;
+        const x2 = cx+cos*len, y2 = cy+sin*len;
+        ctx.strokeStyle = `rgba(${grayFor(scaleDelta,1.5)},0.85)`;
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
 
-      const shiftVal = adapterArrs.shiftIn[i];
-      const dotR = 1.5 + Math.min(3.5, Math.abs(shiftVal)*2.5);
-      ctx.fillStyle = `rgba(${grayFor(shiftVal,1.5)},0.95)`;
-      ctx.beginPath(); ctx.arc(x2,y2,dotR,0,Math.PI*2); ctx.fill();
-    }
+        const shiftVal = adapterArrs.shiftIn[offset+i];
+        const dotR = 0.9 + Math.min(2.4, Math.abs(shiftVal)*1.8);
+        ctx.fillStyle = `rgba(${grayFor(shiftVal,1.5)},0.95)`;
+        ctx.beginPath(); ctx.arc(x2,y2,dotR,0,Math.PI*2); ctx.fill();
+      }
+      offset += n;
+    });
 
     const outColors = ['217,90,90', '130,196,120', '110,150,224']; // R, G, B accents
+    const outerRing = rings[rings.length-1];
+    const outR = outerRing.baseR + outerRing.band*1.4;
     for (let k=0;k<3;k++){
-      const angle = (k/3)*Math.PI*2 - Math.PI/2 + Math.PI/n;
+      const angle = (k/3)*Math.PI*2 - Math.PI/2 + Math.PI/12;
       const scaleDelta = adapterArrs.scaleOut[k]-1, shiftDelta = adapterArrs.shiftOut[k];
-      const r = baseR + maxExtra*1.25 + (scaleDelta/1.5)*maxExtra*0.8;
+      const r = outR + (scaleDelta/1.5)*outerRing.band*0.6;
       const x = cx+Math.cos(angle)*r, y = cy+Math.sin(angle)*r;
       const s = 5 + Math.min(6, Math.abs(shiftDelta)*5);
       ctx.fillStyle = `rgba(${outColors[k]},0.9)`;
@@ -1027,12 +1098,10 @@
     downloadCanvas(document.getElementById('headHeatmapCanvas'), 'afterimage-head.png');
     downloadCanvas(document.getElementById('lossCurveCanvas'), 'afterimage-training-curve.png');
     downloadCanvas(document.getElementById('qrLatentCanvas'), 'afterimage-qr-essence.png');
-    const headOnlyCol = document.getElementById('qrHeadOnlyCanvas').parentElement;
-    if (headOnlyCol.style.display !== 'none')
+    if (document.getElementById('shareKeyRow').style.display !== 'none'){
       downloadCanvas(document.getElementById('qrHeadOnlyCanvas'), 'afterimage-qr-key.png');
-    const fullCol = document.getElementById('qrFullCanvas').parentElement;
-    if (fullCol.style.display !== 'none')
       downloadCanvas(document.getElementById('qrFullCanvas'), 'afterimage-qr-both.png');
+    }
   });
 
   // ---------- Upload ----------
@@ -1208,11 +1277,20 @@
   async function showHeadProof(latent, adapter, decoder, target){
     const row = document.getElementById('headProofRow');
     const note = document.getElementById('headProofNote');
-    if (!adapter){ row.style.display = 'none'; note.style.display = 'none'; return; }
+    const originalCol = document.getElementById('proofOriginalCol');
+    if (!adapter){ row.style.display = 'none'; note.style.display = 'none'; originalCol.style.display = 'none'; return; }
     const outNo = tf.tidy(()=> decodeFull(latent, decoder, null));
     const outWith = tf.tidy(()=> decodeFull(latent, decoder, adapter));
     await renderTensorToCanvas(outNo, document.getElementById('proofNoHeadCanvas'));
     await renderTensorToCanvas(outWith, document.getElementById('proofWithHeadCanvas'));
+    // the original is only ever available for a live training run -- a loaded shared
+    // impression has no source photo to show, by design (it was never uploaded anywhere)
+    if (target){
+      await renderTensorToCanvas(target, document.getElementById('proofOriginalCanvas'));
+      originalCol.style.display = '';
+    } else {
+      originalCol.style.display = 'none';
+    }
     const noHeadDesc = document.getElementById('proofNoHeadDesc');
     const withHeadDesc = document.getElementById('proofWithHeadDesc');
     if (target){
@@ -1222,7 +1300,7 @@
       mseNoT.dispose(); mseWithT.dispose();
       const pct = mseNo > 0 ? Math.round((1 - mseWith/mseNo)*100) : 0;
       noHeadDesc.textContent = `What the shared decoder alone produces from your 256 numbers (error ${mseNo.toFixed(4)}).`;
-      withHeadDesc.textContent = `The same 256 numbers, through the 70-number adjustment trained just now (error ${mseWith.toFixed(4)}).`;
+      withHeadDesc.textContent = `The same 256 numbers, through the 454-number adjustment trained just now (error ${mseWith.toFixed(4)}).`;
       note.textContent = pct > 0
         ? `The personalized head cut the error by about ${pct}% versus the latent alone — a measured difference, not just a visual one.`
         : `On this photo the personalized head made little measurable difference — the latent alone was already close.`;
@@ -1251,7 +1329,10 @@
     document.getElementById('headProofRow').style.display = 'none';
     document.getElementById('headProofNote').style.display = 'none';
 
-    const N1 = 500, N2 = 400, BATCH = 10;
+    // N2 is larger than N1's proportion might suggest: the head now has 454 free parameters
+    // (up from 70, spanning 3 layers instead of 1), and needs more steps to actually settle
+    // into them rather than just nudging the same single layer it used to.
+    const N1 = 500, N2 = 600, BATCH = 10;
     await runSearch(latent, decoder, null, null, target, N1, BATCH, 0.05, 'training', 0, N1+N2);
     phase1End = N1;
 
@@ -1309,20 +1390,28 @@
     const zParam = encodeURIComponent(bytesToBase45Url(quantizeLatent(latentArr)));
     const latentUrl = `${base}?z=${zParam}`;
     drawQr(latentUrl, document.getElementById('qrLatentCanvas'));
+    // each QR sits directly next to a live render of exactly what it carries, so the
+    // connection between "this code" and "this data" is visible, not just asserted in prose
+    renderLatentHeatmap(latentArr, document.getElementById('shareEssenceLatentCanvas'));
 
-    const fullCanvas = document.getElementById('qrFullCanvas');
-    const headOnlyCanvas = document.getElementById('qrHeadOnlyCanvas');
+    const keyRow = document.getElementById('shareKeyRow');
+    const keyDivider = document.getElementById('shareKeyDivider');
+    const bothRow = document.getElementById('shareBothRow');
+    const bothDivider = document.getElementById('shareBothDivider');
     if (adapterArrs){
       const hParam = encodeURIComponent(bytesToBase45Url(quantizeAdapter(
         adapterArrs.scaleIn, adapterArrs.shiftIn, adapterArrs.scaleOut, adapterArrs.shiftOut)));
-      drawQr(`${base}?z=${zParam}&h=${hParam}`, fullCanvas);
+      drawQr(`${base}?z=${zParam}&h=${hParam}`, document.getElementById('qrFullCanvas'));
       // the key, deliberately, has no z -- it can't decode to anything by itself
-      drawQr(`${base}?h=${hParam}`, headOnlyCanvas);
-      fullCanvas.parentElement.style.display = '';
-      headOnlyCanvas.parentElement.style.display = '';
+      drawQr(`${base}?h=${hParam}`, document.getElementById('qrHeadOnlyCanvas'));
+      renderHeadFingerprint(adapterArrs, document.getElementById('shareKeyHeadCanvas'));
+      renderLatentHeatmap(latentArr, document.getElementById('shareBothLatentCanvas'));
+      renderHeadFingerprint(adapterArrs, document.getElementById('shareBothHeadCanvas'));
+      keyRow.style.display = ''; keyDivider.style.display = '';
+      bothRow.style.display = ''; bothDivider.style.display = '';
     } else {
-      fullCanvas.parentElement.style.display = 'none';
-      headOnlyCanvas.parentElement.style.display = 'none';
+      keyRow.style.display = 'none'; keyDivider.style.display = 'none';
+      bothRow.style.display = 'none'; bothDivider.style.display = 'none';
     }
     document.getElementById('shareSection').style.display = 'block';
   }
@@ -1433,11 +1522,13 @@
   }
 
   // ---------- Explore nearby: click cells to select dimensions, drag to move just those ----------
+  let exploreDragCleanup = null; // removes the previous call's window-level drag listeners
+
   function setupExplore(baseLatentArr, adapterArrs, decoder){
     const section = document.getElementById('exploreSection');
     const previewCanvas = document.getElementById('exploreCanvas');
     const gridCanvas = document.getElementById('exploreLatentCanvas');
-    const deltaVal = document.getElementById('exploreDeltaVal');
+    const positionVal = document.getElementById('explorePositionVal');
     const selLabel = document.getElementById('exploreSelLabel');
     const adapter = adapterArrs ? {
       scaleIn: tf.tensor(adapterArrs.scaleIn, [ADAPTER_IN]),
@@ -1447,11 +1538,12 @@
     } : null;
     const COLS = 16, ROWS = 16;
     let selected = new Set();
-    let lastClicked = null;
+
+    if (exploreDragCleanup) exploreDragCleanup();
 
     // clone-and-replace every interactive element to drop listeners from a previous call
-    const slider = document.getElementById('exploreDeltaSlider').cloneNode(true);
-    document.getElementById('exploreDeltaSlider').replaceWith(slider);
+    const slider = document.getElementById('explorePositionSlider').cloneNode(true);
+    document.getElementById('explorePositionSlider').replaceWith(slider);
     const freshGrid = gridCanvas.cloneNode(true);
     gridCanvas.replaceWith(freshGrid);
     const clearBtn = document.getElementById('exploreClearBtn').cloneNode(true);
@@ -1473,20 +1565,37 @@
     const distanceGauge = document.getElementById('exploreDistanceGauge');
     const DISTANCE_CAP = 12; // gauge scale, not a hard limit -- just what fills the bar
 
-    function currentDelta(){ return parseInt(slider.value,10)/100; }
-    // all selected dims move by the same delta, so straight-line distance from the base point
-    // is just delta * sqrt(how many dims are selected) -- Pythagoras, one axis per dimension
-    function currentDistance(){ return Math.abs(currentDelta()) * Math.sqrt(selected.size); }
+    // The slider is an ABSOLUTE position on the same -4..+4 scale the grids are colored on --
+    // not a delta from wherever a dimension started. Every selected cell gets set to exactly
+    // this value, together. That's what makes "drag to white" reliably mean white: there's no
+    // hidden per-cell offset left over from where the photo happened to land.
+    function currentPosition(){ return parseInt(slider.value,10)/100; }
+    function currentDistance(){
+      const pos = currentPosition();
+      let sum = 0;
+      for (const i of selected){ const d = pos - baseLatentArr[i]; sum += d*d; }
+      return Math.sqrt(sum);
+    }
     function currentLatent(){
       const arr = baseLatentArr.slice();
-      const delta = currentDelta();
-      for (const i of selected) arr[i] = baseLatentArr[i] + delta;
+      const pos = currentPosition();
+      for (const i of selected) arr[i] = pos;
       return arr;
+    }
+    // Selecting a different region shouldn't make the image jump -- snap the slider to show
+    // where that region already sits (its average base value) before you've dragged anything.
+    function syncSliderToSelection(){
+      if (selected.size === 0){ slider.value = 0; positionVal.textContent = '0.00'; return; }
+      let sum = 0;
+      for (const i of selected) sum += baseLatentArr[i];
+      const avg = Math.max(-LATENT_CLIP, Math.min(LATENT_CLIP, sum/selected.size));
+      slider.value = Math.round(avg*100);
+      positionVal.textContent = avg.toFixed(2);
     }
     function updateSelLabel(){
       selLabel.textContent = selected.size === 0
-        ? 'click cells to select them'
-        : `${selected.size} selected (shift-click for a range)`;
+        ? 'drag to select a region'
+        : `${selected.size} selected (shift-drag to add another region)`;
     }
 
     function drawGrid(){
@@ -1518,45 +1627,81 @@
       latent.dispose(); out.dispose();
     }
 
-    freshGrid.addEventListener('click', e=>{
+    // ---- click-and-drag region select (a single click is just a 1x1 drag) ----
+    function cellFromEvent(e){
       const rect = freshGrid.getBoundingClientRect();
       const sx = freshGrid.width/rect.width, sy = freshGrid.height/rect.height;
       const col = Math.floor((e.clientX-rect.left)*sx / (freshGrid.width/COLS));
       const row = Math.floor((e.clientY-rect.top)*sy / (freshGrid.height/ROWS));
-      const idx = row*COLS+col;
-      if (idx < 0 || idx > 255) return;
-      if (e.shiftKey && lastClicked !== null){
-        const [lo,hi] = idx < lastClicked ? [idx,lastClicked] : [lastClicked,idx];
-        for (let i=lo;i<=hi;i++) selected.add(i);
-      } else {
-        if (selected.has(idx)) selected.delete(idx); else selected.add(idx);
-        lastClicked = idx;
+      if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return null;
+      return { row, col, idx: row*COLS+col };
+    }
+    function boxSet(a, b){
+      const r0 = Math.min(a.row,b.row), r1 = Math.max(a.row,b.row);
+      const c0 = Math.min(a.col,b.col), c1 = Math.max(a.col,b.col);
+      const out = new Set();
+      for (let r=r0;r<=r1;r++) for (let c=c0;c<=c1;c++) out.add(r*COLS+c);
+      return out;
+    }
+    let dragStart = null, dragMoved = false, dragUnion = false, preDragSelected = null;
+    function applyDragBox(endCell){
+      const box = boxSet(dragStart, endCell);
+      selected = dragUnion ? new Set([...preDragSelected, ...box]) : box;
+    }
+    function onGridDown(e){
+      const cell = cellFromEvent(e);
+      if (!cell) return;
+      dragStart = cell; dragMoved = false; dragUnion = e.shiftKey;
+      preDragSelected = new Set(selected);
+      applyDragBox(cell);
+      syncSliderToSelection(); updateSelLabel(); render();
+    }
+    function onWindowMove(e){
+      if (!dragStart) return;
+      const cell = cellFromEvent(e);
+      if (!cell) return;
+      if (cell.idx !== dragStart.idx) dragMoved = true;
+      applyDragBox(cell);
+      syncSliderToSelection(); updateSelLabel(); render();
+    }
+    function onWindowUp(){
+      if (!dragStart) return;
+      // a plain click (no drag, no shift) on a cell that was already the WHOLE selection
+      // toggles it off, instead of just re-selecting the same single cell
+      if (!dragMoved && !dragUnion && preDragSelected.size === 1 && preDragSelected.has(dragStart.idx)){
+        selected = new Set();
+        syncSliderToSelection(); updateSelLabel(); render();
       }
-      updateSelLabel();
-      render();
-    });
+      dragStart = null;
+    }
+    freshGrid.addEventListener('mousedown', onGridDown);
+    window.addEventListener('mousemove', onWindowMove);
+    window.addEventListener('mouseup', onWindowUp);
+    exploreDragCleanup = () => {
+      window.removeEventListener('mousemove', onWindowMove);
+      window.removeEventListener('mouseup', onWindowUp);
+    };
+
     slider.addEventListener('input', ()=>{
-      deltaVal.textContent = currentDelta().toFixed(2);
+      positionVal.textContent = currentPosition().toFixed(2);
       render();
     });
     clearBtn.addEventListener('click', ()=>{
-      selected.clear(); lastClicked = null;
-      slider.value = 0; deltaVal.textContent = '0.00';
-      updateSelLabel(); render();
+      selected = new Set();
+      syncSliderToSelection(); updateSelLabel(); render();
     });
     resetBtn.addEventListener('click', ()=>{
-      selected.clear(); lastClicked = null;
-      slider.value = 0; deltaVal.textContent = '0.00';
-      updateSelLabel(); render();
+      selected = new Set();
+      syncSliderToSelection(); updateSelLabel(); render();
     });
     randomBtn.addEventListener('click', ()=>{
-      selected.clear();
-      while (selected.size < 8) selected.add(Math.floor(Math.random()*256));
-      lastClicked = null;
-      updateSelLabel(); render();
+      const s = new Set();
+      while (s.size < 8) s.add(Math.floor(Math.random()*256));
+      selected = s;
+      syncSliderToSelection(); updateSelLabel(); render();
     });
 
-    slider.value = 0; deltaVal.textContent = '0.00';
+    slider.value = 0; positionVal.textContent = '0.00';
     updateSelLabel();
     section.style.display = 'block';
     render();
