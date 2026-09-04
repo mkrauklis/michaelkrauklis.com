@@ -15,4 +15,6 @@ lab/afterimage/training/cnn_recon_preview.png
 lab/afterimage/training/latent_search_result.png
 lab/afterimage/training/weights/
 lab/afterimage/training/decoder-manifest.json
+lab/afterimage/training/encoder-weights/
+lab/afterimage/training/encoder-manifest.json
 lab/afterimage/test-upload.jpg

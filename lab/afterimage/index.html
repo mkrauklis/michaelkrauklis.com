@@ -178,10 +178,11 @@
   <section id="reconstructSection" style="display:none;">
     <span class="step-tag">03 — reconstruct</span>
     <h2>Watch it rebuild your photo</h2>
-    <p>The network starts from nothing and nudges its impression a little closer to your photo,
-    about 1500 times in a row — usually 30 seconds to two minutes, depending on your device.
-    Nothing here is a lookup or a filter — every pixel below is the network's own output at that
-    point in the process.</p>
+    <p>First, one instant forward pass through the encoder gives a rough starting guess. Then the
+    network spends a few hundred steps refining that guess, and a few hundred more personalizing
+    just its last layer to your specific photo — usually 20-90 seconds total, depending on your
+    device. Every pixel below is the network's own output at that point in the process, not a
+    lookup or a filter.</p>
     <div class="panel">
       <div class="actions">
         <button class="primary" id="startBtn">Start reconstruction</button>
@@ -197,12 +198,72 @@
           <canvas id="reconCanvas" width="96" height="96"></canvas>
           <div class="result-label" id="reconLabel">the network's impression</div>
         </div>
+        <div class="result-col">
+          <canvas id="latentHeatmapCanvas" width="128" height="128"></canvas>
+          <div class="result-label">latent vector — 256 numbers, live</div>
+        </div>
+        <div class="result-col">
+          <canvas id="headHeatmapCanvas" width="128" height="128"></canvas>
+          <div class="result-label">personalized head — starts blank, live</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="shareSection" style="display:none;">
+    <span class="step-tag">04 — save &amp; share</span>
+    <h2>Take the impression with you</h2>
+    <p>Neither QR code contains your photo — only the numbers needed to rebuild an impression of
+    it through the same decoder anyone else on this page has. Scan one, or open its link, and this
+    page reconstructs it fresh, right there.</p>
+    <div class="panel row">
+      <div class="col" style="text-align:center;">
+        <canvas id="qrLatentCanvas"></canvas>
+        <div class="result-label">latent only — works with just the shared decoder</div>
+      </div>
+      <div class="col" style="text-align:center;">
+        <canvas id="qrFullCanvas"></canvas>
+        <div class="result-label">latent + personalized head — the sharper version above</div>
+      </div>
+    </div>
+    <details class="disclosure">
+      <summary>Load a shared impression instead</summary>
+      <div class="disclosure-body">
+        <p style="font-size:0.85rem;">Upload a photo of either QR code above (someone else's, or one
+        you saved) to load that impression without uploading a photo of your own.</p>
+        <div class="dropzone" id="qrDropzone" style="padding:24px;">
+          <input type="file" id="qrFileInput" accept="image/*">
+          <div><span class="cta">Choose a QR code image</span> or drag one here</div>
+        </div>
+        <span class="status" id="qrReadStatus"></span>
+      </div>
+    </details>
+  </section>
+
+  <section id="exploreSection" style="display:none;">
+    <span class="step-tag">05 — explore nearby</span>
+    <h2>Wander around this point in latent space</h2>
+    <p>Every point near your photo's 256 numbers is also a valid input to the decoder — most of
+    them just don't correspond to any photo you've seen. Nudge it and watch what the decoder
+    imagines nearby.</p>
+    <div class="panel">
+      <div class="result-grid">
+        <div class="result-col">
+          <canvas id="exploreCanvas" width="96" height="96"></canvas>
+          <div class="result-label">live</div>
+        </div>
+      </div>
+      <label class="field">Wander distance — <span class="field-value" id="perturbAmountVal">0.3</span></label>
+      <input type="range" id="perturbAmountSlider" min="0" max="100" value="30">
+      <div class="actions">
+        <button class="secondary" id="perturbBtn">Nudge it</button>
+        <button class="secondary" id="perturbResetBtn">Reset to your photo</button>
       </div>
     </div>
   </section>
 
   <details id="learnSection" class="disclosure advanced" style="display:none;">
-    <summary>How this actually works <span class="adv-sub">— the two-phase architecture, explained</span></summary>
+    <summary>How this actually works <span class="adv-sub">— training vs. rendering, explained</span></summary>
     <div class="disclosure-body">
       <div class="panel">
         <p>There are two completely separate phases here, and only one of them ever touches your
@@ -211,11 +272,14 @@
         13,000 ordinary photos of animals, vehicles, and people — never yours. A pair of networks,
         an encoder and a decoder, learned together to compress a photo down to 256 numbers and
         rebuild it from just those numbers.</p>
-        <p><b style="color:var(--ink)">Rendering</b> is what happens in your browser just now.
-        Only the decoder came along for the ride — the encoder was left behind entirely, because it
-        turns out a decoder on its own, searching for the best 256 numbers for a specific new photo,
-        reconstructs better than the encoder's one-shot guess ever could. That search is the
-        progress bar you just watched.</p>
+        <p><b style="color:var(--ink)">Rendering</b> is what happens in your browser just now. Both
+        networks came along, but only one of them touches your final result: the encoder runs once,
+        instantly, purely to get the search started somewhere reasonable instead of from nothing.
+        Every pixel of the actual answer comes from the decoder being nudged, step by step, toward
+        your photo — a slower process, but one that measurably beats trusting the encoder's one-shot
+        guess. The last stretch of that search also fits 70 extra numbers — a small personalization
+        layered onto just the decoder's last layer — which is why the image kept sharpening even
+        after the main shape had already settled.</p>
         <svg width="100%" viewBox="0 0 680 350" role="img" style="margin-top:18px;">
           <title>Afterimage's autoencoder as an hourglass of shrinking, deepening image blocks</title>
           <desc>A photo enters as a wide, shallow block on the left. Four convolutional encoder
@@ -264,9 +328,12 @@
           <text x="584" y="320" text-anchor="middle" font-size="12" fill="var(--ink-dim)">96×96×3 photo</text>
         </svg>
         <p style="margin-top:18px; font-size:0.85rem;">The gray blocks are actual photo pixels. Coral
-        is the encoder, which only ever existed on the training machine. Teal is the decoder — the
-        exact same one, unchanged, that just ran in your browser. Violet is the 256-number latent
-        vector: the entire "impression" your photo gets reduced to before the decoder rebuilds it.</p>
+        is the encoder — it does run in your browser now, but only once, for that instant first
+        guess. Teal is the decoder, the thing actually doing the work: the exact same weights,
+        unchanged, that everyone else's browser also uses. Violet is the 256-number latent vector,
+        the "impression" your photo gets reduced to. Not pictured: the small 70-number
+        personalization that gets fitted to just the decoder's last layer during the second half of
+        the search — it's specific to your photo alone, unlike everything else here.</p>
       </div>
     </div>
   </details>
@@ -299,20 +366,35 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@4.22.0/dist/tf-backend-wasm.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 <script>
 (async function(){
-  // The WebGL backend can silently run at 16-bit float precision on some GPUs/drivers,
-  // which underflows the small gradient values this optimization relies on over 1500
-  // steps -- brightness/color still roughly converges but fine spatial detail never
-  // resolves. WASM guarantees real float32 math, at some speed cost.
+  // WebGL can silently run at 16-bit float precision on some GPUs/drivers, which
+  // underflows the small gradient values this optimization relies on -- brightness/color
+  // still roughly converges but fine spatial detail never resolves. Prefer WebGL for
+  // speed, but only if it actually delivers real float32; fall back to WASM otherwise.
   tf.wasm.setWasmPaths('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@4.22.0/dist/');
-  try {
-    await tf.setBackend('wasm');
-  } catch (e) {
-    console.warn('wasm backend unavailable, falling back to webgl', e);
-    await tf.setBackend('webgl');
+  async function chooseBackend(){
+    try {
+      await tf.setBackend('webgl');
+      await tf.ready();
+      const precision = tf.backend().floatPrecision ? tf.backend().floatPrecision() : 32;
+      if (precision >= 32) return 'webgl';
+    } catch (e) { console.warn('webgl unavailable', e); }
+    try {
+      await tf.setBackend('wasm');
+      await tf.ready();
+      return 'wasm';
+    } catch (e) {
+      console.warn('wasm unavailable, falling back to cpu', e);
+      await tf.setBackend('cpu');
+      await tf.ready();
+      return 'cpu';
+    }
   }
-  await tf.ready();
+  const backendUsed = await chooseBackend();
+  console.log('backend:', backendUsed, 'floatPrecision:', tf.backend().floatPrecision ? tf.backend().floatPrecision() : 'n/a');
 
   // ---------- Hero decorative canvas ----------
   function drawHero(){
@@ -336,10 +418,9 @@
   window.addEventListener('resize', drawHero);
   drawHero();
 
-  // ---------- Decoder: loads exported weights, mirrors training/model.py's decode() ----------
-  let decoderPromise = null;
-  async function loadDecoder(){
-    const manifest = await fetch('decoder-manifest.json').then(r => r.json());
+  // ---------- Decoder + encoder: load exported weights, mirror training/model.py ----------
+  async function loadNetwork(manifestUrl){
+    const manifest = await fetch(manifestUrl).then(r => r.json());
     const arrays = {};
     for (const [name, info] of Object.entries(manifest)){
       if (!info || !info.file) continue;
@@ -348,28 +429,67 @@
     }
     return { manifest, arrays };
   }
-  function getDecoder(){
-    if (!decoderPromise) decoderPromise = loadDecoder();
-    return decoderPromise;
+  let decoderPromise = null, encoderPromise = null;
+  function getDecoder(){ return decoderPromise || (decoderPromise = loadNetwork('decoder-manifest.json')); }
+  function getEncoder(){ return encoderPromise || (encoderPromise = loadNetwork('encoder-manifest.json')); }
+
+  // img: (1,96,96,3) tensor, [0,1] -> latent (1,256) tensor. A fast one-shot guess ONLY --
+  // see CLAUDE.md for why this is a warm start for the search below, never the final answer.
+  function encode(img, encoder){
+    const { manifest, arrays } = encoder;
+    return tf.tidy(() => {
+      let x = img;
+      for (const layer of manifest.layers){
+        if (layer.type !== 'conv2d') continue;
+        const w = arrays[layer.weight], b = arrays[layer.bias];
+        x = tf.add(tf.conv2d(x, w, layer.stride, layer.padding), b);
+        x = tf.relu(x);
+      }
+      // NHWC -> NCHW-equivalent BEFORE flattening -- torch's h.view(N,-1) on the conv
+      // output is channel-major. See export_encoder.py's note.
+      x = tf.transpose(x, [0, 3, 1, 2]);
+      x = tf.reshape(x, [1, 256 * 6 * 6]);
+      return tf.add(tf.matMul(x, arrays.enc_fc_weight), arrays.enc_fc_bias);
+    });
   }
 
-  // latent: (1,256) tensor -> (1,96,96,3) tensor, values in [0,1]
-  function decode(latent, decoder){
+  const ADAPTER_IN = 32, ADAPTER_OUT = 3;
+
+  // latent: (1,256) tensor, adapter: {scaleIn,shiftIn,scaleOut,shiftOut} tensors or null ->
+  // (1,96,96,3) tensor, [0,1].
+  //
+  // The adapter is a per-channel affine reparameterization (FiLM-style) of the decoder's last
+  // layer's input and output -- NOT a delta to the conv weight itself. That's a deliberate choice,
+  // not just a simpler one: a low-rank delta applied to the conv filter needs gradients with
+  // respect to that filter (Conv2DBackpropFilter), which TFJS's WASM backend doesn't implement --
+  // optimizing it throws mid-search. Scale/shift only ever needs gradients with respect to
+  // *inputs*, the same path the latent search already uses successfully, so it works on every
+  // backend. It's also a smaller, well-established technique (feature-wise linear modulation).
+  function decodeFull(latent, decoder, adapter){
     const { manifest, arrays } = decoder;
     return tf.tidy(() => {
       let x = tf.add(tf.matMul(latent, arrays.dec_fc_weight), arrays.dec_fc_bias);
-      // flat output is channel-major (matches torch's view(256,6,6)) -- reshape to
-      // that order FIRST, then transpose to NHWC. See export_decoder.py's note.
       x = tf.reshape(x, [1, 256, 6, 6]);
       x = tf.transpose(x, [0, 2, 3, 1]);
-      for (const layer of manifest.layers){
-        if (layer.type !== 'conv2dTranspose') continue;
+      const convLayers = manifest.layers.filter(l => l.type === 'conv2dTranspose');
+      convLayers.forEach((layer, li) => {
+        const isLast = li === convLayers.length - 1;
+        let xIn = x;
+        if (isLast && adapter){
+          xIn = tf.add(
+            tf.mul(x, tf.reshape(adapter.scaleIn, [1, 1, 1, ADAPTER_IN])),
+            tf.reshape(adapter.shiftIn, [1, 1, 1, ADAPTER_IN]));
+        }
         const w = arrays[layer.weight], b = arrays[layer.bias];
-        const outH = x.shape[1]*2, outW = x.shape[2]*2, outC = w.shape[2];
-        x = tf.conv2dTranspose(x, w, [1, outH, outW, outC], layer.stride, layer.padding);
-        x = tf.add(x, b);
-        x = layer.activation === 'relu' ? tf.relu(x) : tf.sigmoid(x);
-      }
+        const outputShape = [1, xIn.shape[1]*2, xIn.shape[2]*2, w.shape[2]];
+        let y = tf.add(tf.conv2dTranspose(xIn, w, outputShape, layer.stride, layer.padding), b);
+        if (isLast && adapter){
+          y = tf.add(
+            tf.mul(y, tf.reshape(adapter.scaleOut, [1, 1, 1, ADAPTER_OUT])),
+            tf.reshape(adapter.shiftOut, [1, 1, 1, ADAPTER_OUT]));
+        }
+        x = isLast ? tf.sigmoid(y) : tf.relu(y);
+      });
       return x;
     });
   }
@@ -385,6 +505,114 @@
       imgData.data[j+3] = 255;
     }
     ctx.putImageData(imgData, 0, 0);
+  }
+
+  // ---------- Base45 (RFC 9285) -- its alphabet is exactly QR's alphanumeric-mode charset,
+  // so encoding binary payloads this way (rather than base64) keeps the QR codes smaller ----------
+  const B45 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:";
+  function base45Encode(bytes){
+    let out = '';
+    for (let i=0; i<bytes.length; i+=2){
+      if (i+1 < bytes.length){
+        let n = bytes[i]*256 + bytes[i+1];
+        const c = n%45; n=(n-c)/45; const d = n%45; n=(n-d)/45; const e = n%45;
+        out += B45[c]+B45[d]+B45[e];
+      } else {
+        let n = bytes[i];
+        const c = n%45; n=(n-c)/45; const d = n%45;
+        out += B45[c]+B45[d];
+      }
+    }
+    return out;
+  }
+  function base45Decode(str){
+    const bytes = [];
+    for (let i=0; i<str.length; i+=3){
+      if (i+2 < str.length){
+        const c=B45.indexOf(str[i]), d=B45.indexOf(str[i+1]), e=B45.indexOf(str[i+2]);
+        if (c<0||d<0||e<0) throw new Error('invalid base45');
+        const n = c + d*45 + e*45*45;
+        bytes.push(Math.floor(n/256), n%256);
+      } else {
+        const c=B45.indexOf(str[i]), d=B45.indexOf(str[i+1]);
+        if (c<0||d<0) throw new Error('invalid base45');
+        bytes.push(c + d*45);
+      }
+    }
+    return new Uint8Array(bytes);
+  }
+
+  // ---------- Quantization: float32 arrays -> small int8 payloads for QR codes ----------
+  const LATENT_CLIP = 4.0;
+  function quantizeLatent(f32){
+    const out = new Uint8Array(256);
+    for (let i=0;i<256;i++){
+      const v = Math.max(-LATENT_CLIP, Math.min(LATENT_CLIP, f32[i]));
+      out[i] = Math.round((v+LATENT_CLIP)/(2*LATENT_CLIP)*255);
+    }
+    return out;
+  }
+  function dequantizeLatent(bytes){
+    const out = new Float32Array(256);
+    for (let i=0;i<256;i++) out[i] = (bytes[i]/255)*(2*LATENT_CLIP) - LATENT_CLIP;
+    return out;
+  }
+  // Adapter payload stores DELTAS from identity (scale-1, shift-0), all in one clip range --
+  // so an all-zero payload is exactly a no-op adapter, matching how it's initialized in phase 2.
+  const ADAPTER_CLIP = 1.5, ADAPTER_LEN = ADAPTER_IN*2 + ADAPTER_OUT*2;
+  function quantizeAdapter(scaleIn, shiftIn, scaleOut, shiftOut){ // plain Float32Arrays
+    const flat = new Float32Array(ADAPTER_LEN);
+    for (let i=0;i<ADAPTER_IN;i++) flat[i] = scaleIn[i]-1;
+    flat.set(shiftIn, ADAPTER_IN);
+    for (let i=0;i<ADAPTER_OUT;i++) flat[ADAPTER_IN*2+i] = scaleOut[i]-1;
+    flat.set(shiftOut, ADAPTER_IN*2+ADAPTER_OUT);
+    const out = new Uint8Array(ADAPTER_LEN);
+    for (let i=0;i<ADAPTER_LEN;i++){
+      const v = Math.max(-ADAPTER_CLIP, Math.min(ADAPTER_CLIP, flat[i]));
+      out[i] = Math.round((v+ADAPTER_CLIP)/(2*ADAPTER_CLIP)*255);
+    }
+    return out;
+  }
+  function dequantizeAdapter(bytes){
+    const flat = new Float32Array(ADAPTER_LEN);
+    for (let i=0;i<ADAPTER_LEN;i++) flat[i] = (bytes[i]/255)*(2*ADAPTER_CLIP) - ADAPTER_CLIP;
+    const scaleIn = flat.slice(0, ADAPTER_IN).map(v=>v+1);
+    const shiftIn = flat.slice(ADAPTER_IN, ADAPTER_IN*2);
+    const scaleOut = flat.slice(ADAPTER_IN*2, ADAPTER_IN*2+ADAPTER_OUT).map(v=>v+1);
+    const shiftOut = flat.slice(ADAPTER_IN*2+ADAPTER_OUT, ADAPTER_LEN);
+    return { scaleIn, shiftIn, scaleOut, shiftOut };
+  }
+
+  function bytesToBase45Url(bytes){ return base45Encode(bytes); }
+
+  // ---------- Heatmaps ----------
+  function valueToColor(v, clip){ // v in [-clip,clip] -> teal(neg) .. ink-dim(0) .. amber(pos)
+    const t = Math.max(-1, Math.min(1, v/clip));
+    if (t >= 0) return `rgba(224,165,76,${0.15+Math.abs(t)*0.85})`;   // amber
+    return `rgba(94,176,164,${0.15+Math.abs(t)*0.85})`;               // teal
+  }
+  function renderGridHeatmap(values, clip, cols, rows, canvas){
+    const ctx = canvas.getContext('2d');
+    const cw = canvas.width/cols, ch = canvas.height/rows;
+    ctx.fillStyle = '#0c0e13';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    for (let i=0;i<values.length && i<cols*rows;i++){
+      const col = i%cols, row = Math.floor(i/cols);
+      ctx.fillStyle = valueToColor(values[i], clip);
+      ctx.fillRect(col*cw, row*ch, Math.ceil(cw), Math.ceil(ch));
+    }
+  }
+  function renderLatentHeatmap(latentArr, canvas){ renderGridHeatmap(latentArr, LATENT_CLIP, 16, 16, canvas); }
+  function renderHeadHeatmap(adapterArrs, canvas){
+    if (!adapterArrs){
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#0c0e13'; ctx.fillRect(0,0,canvas.width,canvas.height);
+      return;
+    }
+    // the 32 per-channel gain deltas applied to the last layer's input -- which of the
+    // decoder's internal features got emphasized or suppressed to fit this specific photo
+    const deltas = Array.from(adapterArrs.scaleIn, v => v-1);
+    renderGridHeatmap(deltas, ADAPTER_CLIP, 8, 4, canvas);
   }
 
   // ---------- Upload ----------
@@ -505,54 +733,254 @@
 
     document.getElementById('reconstructSection').style.display = 'block';
     document.getElementById('reconstructSection').scrollIntoView({behavior:'smooth', block:'start'});
-    getDecoder(); // kick off weight loading now so it's warm by the time Start is clicked
+    getDecoder(); getEncoder(); // kick off weight loading now so it's warm by the time Start is clicked
   });
 
-  // ---------- Reconstruction (latent search) ----------
+  // ---------- Reconstruction: encoder warm-start -> latent search -> head personalization ----------
   const startBtn = document.getElementById('startBtn');
   const reconStatus = document.getElementById('reconStatus');
   const progressFill = document.getElementById('progressFill');
   const reconCanvas = document.getElementById('reconCanvas');
+  const latentHeatmapCanvas = document.getElementById('latentHeatmapCanvas');
+  const headHeatmapCanvas = document.getElementById('headHeatmapCanvas');
 
-  startBtn.addEventListener('click', async ()=>{
-    startBtn.disabled = true;
-    reconStatus.textContent = 'loading decoder…';
-    const decoder = await getDecoder();
+  async function checkpoint(done, total, phaseLabel, latent, decoder, adapter, target){
+    const pct = Math.min(100, Math.round(100*done/total));
+    progressFill.style.width = pct+'%';
+    const out = tf.tidy(()=> decodeFull(latent, decoder, adapter));
+    const lossTensor = tf.tidy(()=> tf.losses.meanSquaredError(target, out));
+    const loss = (await lossTensor.data())[0];
+    lossTensor.dispose();
+    reconStatus.textContent = `${phaseLabel}… ${pct}% (mse ${loss.toFixed(4)})`;
+    await renderTensorToCanvas(out, reconCanvas);
+    out.dispose();
+    const latentArr = await latent.data();
+    renderLatentHeatmap(latentArr, latentHeatmapCanvas);
+    if (adapter){
+      const [scaleIn,shiftIn,scaleOut,shiftOut] = await Promise.all(
+        [adapter.scaleIn.data(), adapter.shiftIn.data(), adapter.scaleOut.data(), adapter.shiftOut.data()]);
+      renderHeadHeatmap({scaleIn,shiftIn,scaleOut,shiftOut}, headHeatmapCanvas);
+    }
+    await new Promise(r=>setTimeout(r,0));
+  }
 
-    reconStatus.textContent = 'searching…';
-    const target = tf.tensor(state.croppedPixels, [1,96,96,3]);
-    const latent = tf.variable(tf.zeros([1,256]));
-    const optimizer = tf.train.adam(0.05);
-    const iters = 1500, batch = 15;
-
-    let lastLoss = null;
+  async function runSearch(latent, decoder, adapter, adapterVars, target, iters, batch, lr, phaseLabel, doneSoFar, totalIters){
+    const optimizer = tf.train.adam(lr);
+    const varList = adapterVars ? [latent, ...adapterVars] : [latent];
     for (let i=0; i<iters; i+=batch){
       for (let j=0; j<batch && i+j<iters; j++){
         optimizer.minimize(() => {
-          const out = decode(latent, decoder);
+          const out = decodeFull(latent, decoder, adapter);
           return tf.losses.meanSquaredError(target, out);
-        }, false, [latent]);
+        }, false, varList);
       }
-      const pct = Math.min(100, Math.round(100*(i+batch)/iters));
-      progressFill.style.width = pct+'%';
-      const lossTensor = tf.tidy(()=> tf.losses.meanSquaredError(target, decode(latent, decoder)));
-      lastLoss = (await lossTensor.data())[0];
-      lossTensor.dispose();
-      reconStatus.textContent = `searching… ${pct}% (mse ${lastLoss.toFixed(4)})`;
-      const preview = tf.tidy(()=> decode(latent, decoder));
-      await renderTensorToCanvas(preview, reconCanvas);
-      preview.dispose();
-      await new Promise(r=>setTimeout(r,0));
+      await checkpoint(doneSoFar+i+batch, totalIters, phaseLabel, latent, decoder, adapter, target);
     }
-    console.log('final loss', lastLoss, 'numTensors', tf.memory().numTensors);
+  }
 
-    target.dispose();
-    latent.dispose();
+  async function reconstruct(){
+    startBtn.disabled = true;
+    reconStatus.textContent = 'loading decoder + encoder…';
+    const [decoder, encoder] = await Promise.all([getDecoder(), getEncoder()]);
+
+    const target = tf.tensor(state.croppedPixels, [1,96,96,3]);
+    reconStatus.textContent = 'getting a starting point…';
+    const initLatent = tf.tidy(()=> encode(target, encoder));
+    const latent = tf.variable(initLatent);
+    initLatent.dispose();
+    renderHeadHeatmap(null, headHeatmapCanvas);
+
+    const N1 = 500, N2 = 400, BATCH = 10;
+    await runSearch(latent, decoder, null, null, target, N1, BATCH, 0.05, 'refining', 0, N1+N2);
+
+    // identity-initialized: phase 2 starts exactly where phase 1 left off, then diverges
+    // only as far as it actually helps
+    const scaleIn = tf.variable(tf.ones([ADAPTER_IN]));
+    const shiftIn = tf.variable(tf.zeros([ADAPTER_IN]));
+    const scaleOut = tf.variable(tf.ones([ADAPTER_OUT]));
+    const shiftOut = tf.variable(tf.zeros([ADAPTER_OUT]));
+    const adapter = { scaleIn, shiftIn, scaleOut, shiftOut };
+    await runSearch(latent, decoder, adapter, [scaleIn,shiftIn,scaleOut,shiftOut], target, N2, BATCH, 0.02, 'personalizing', N1, N1+N2);
+
+    const finalLatent = await latent.data();
+    const finalAdapter = {
+      scaleIn: await scaleIn.data(), shiftIn: await shiftIn.data(),
+      scaleOut: await scaleOut.data(), shiftOut: await shiftOut.data(),
+    };
+    target.dispose(); latent.dispose();
+    scaleIn.dispose(); shiftIn.dispose(); scaleOut.dispose(); shiftOut.dispose();
+
     reconStatus.textContent = 'done';
     document.getElementById('reconLabel').textContent = "the network's impression — done";
     document.getElementById('learnSection').style.display = 'block';
+    buildShareArtifacts(finalLatent, finalAdapter);
+    setupExplore(finalLatent, finalAdapter, decoder);
     startBtn.disabled = false;
-  });
+  }
+  startBtn.addEventListener('click', reconstruct);
+
+  // ---------- Save & share: QR codes for the latent (and latent+head) payloads ----------
+  function drawQr(text, canvas){
+    // the payload itself is alphanumeric-mode-safe (Base45's whole point), but the URL
+    // wrapper around it (domain, path, lowercase) isn't -- let the library auto-detect
+    // rather than force a mode the full string doesn't actually satisfy.
+    const qr = qrcode(0, 'M');
+    qr.addData(text);
+    qr.make();
+    const n = qr.getModuleCount();
+    const cell = Math.max(2, Math.floor(280/n));
+    canvas.width = canvas.height = n*cell;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#e9e7de'; ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle = '#10131a';
+    for (let r=0;r<n;r++) for (let c=0;c<n;c++) if (qr.isDark(r,c)) ctx.fillRect(c*cell, r*cell, cell, cell);
+  }
+
+  function buildShareArtifacts(latentArr, adapterArrs){
+    const base = location.origin + location.pathname;
+    // Base45's alphabet includes %, +, /, : -- URL-unsafe as raw characters (a "%" followed
+    // by two hex-looking base45 chars would get silently percent-decoded and corrupted by
+    // any URLSearchParams-based reader downstream, found via jsQR round-trip testing).
+    // encodeURIComponent makes the URL longer but correct; URLSearchParams.get() reverses
+    // it automatically on the reading end, so no change needed there.
+    const zParam = encodeURIComponent(bytesToBase45Url(quantizeLatent(latentArr)));
+    const latentUrl = `${base}?z=${zParam}`;
+    drawQr(latentUrl, document.getElementById('qrLatentCanvas'));
+
+    const fullCanvas = document.getElementById('qrFullCanvas');
+    if (adapterArrs){
+      const hParam = encodeURIComponent(bytesToBase45Url(quantizeAdapter(
+        adapterArrs.scaleIn, adapterArrs.shiftIn, adapterArrs.scaleOut, adapterArrs.shiftOut)));
+      drawQr(`${base}?z=${zParam}&h=${hParam}`, fullCanvas);
+      fullCanvas.parentElement.style.display = '';
+    } else {
+      fullCanvas.parentElement.style.display = 'none';
+    }
+    document.getElementById('shareSection').style.display = 'block';
+  }
+
+  // ---------- Load a shared impression from a URL, or from a photo of a QR code ----------
+  async function loadFromParams(zParam, hParam){
+    const decoder = await getDecoder();
+    const latentArr = dequantizeLatent(base45Decode(zParam));
+    const latent = tf.tensor(latentArr, [1,256]);
+    let adapter = null, adapterArrs = null;
+    if (hParam){
+      adapterArrs = dequantizeAdapter(base45Decode(hParam));
+      adapter = {
+        scaleIn: tf.tensor(adapterArrs.scaleIn, [ADAPTER_IN]),
+        shiftIn: tf.tensor(adapterArrs.shiftIn, [ADAPTER_IN]),
+        scaleOut: tf.tensor(adapterArrs.scaleOut, [ADAPTER_OUT]),
+        shiftOut: tf.tensor(adapterArrs.shiftOut, [ADAPTER_OUT]),
+      };
+    }
+    const out = decodeFull(latent, decoder, adapter);
+    document.getElementById('reconstructSection').style.display = 'block';
+    document.getElementById('cropPreviewCanvas').getContext('2d').clearRect(0,0,96,96);
+    document.getElementById('reconLabel').textContent = 'loaded from a shared impression';
+    await renderTensorToCanvas(out, reconCanvas);
+    renderLatentHeatmap(latentArr, latentHeatmapCanvas);
+    renderHeadHeatmap(adapterArrs, headHeatmapCanvas);
+    document.getElementById('learnSection').style.display = 'block';
+    buildShareArtifacts(latentArr, adapterArrs);
+    setupExplore(latentArr, adapterArrs, decoder);
+    out.dispose(); latent.dispose();
+    if (adapter){ adapter.scaleIn.dispose(); adapter.shiftIn.dispose(); adapter.scaleOut.dispose(); adapter.shiftOut.dispose(); }
+    document.getElementById('reconstructSection').scrollIntoView({behavior:'smooth', block:'start'});
+  }
+
+  function parseShareText(text){
+    // accept either a full URL (?z=...&h=...) or a bare "z=...&h=..." fragment
+    const qIndex = text.indexOf('?');
+    const qs = qIndex >= 0 ? text.slice(qIndex+1) : text;
+    const params = new URLSearchParams(qs);
+    return { z: params.get('z'), h: params.get('h') };
+  }
+
+  const qrDropzone = document.getElementById('qrDropzone');
+  const qrFileInput = document.getElementById('qrFileInput');
+  const qrReadStatus = document.getElementById('qrReadStatus');
+  qrDropzone.addEventListener('click', ()=> qrFileInput.click());
+  qrDropzone.addEventListener('dragover', e=>{ e.preventDefault(); qrDropzone.classList.add('drag'); });
+  qrDropzone.addEventListener('dragleave', ()=> qrDropzone.classList.remove('drag'));
+  qrDropzone.addEventListener('drop', e=>{ e.preventDefault(); qrDropzone.classList.remove('drag'); if (e.dataTransfer.files[0]) readQrImage(e.dataTransfer.files[0]); });
+  qrFileInput.addEventListener('change', e=>{ if (e.target.files[0]) readQrImage(e.target.files[0]); });
+
+  function readQrImage(file){
+    qrReadStatus.textContent = 'reading…';
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const img = new Image();
+      img.onload = async () => {
+        const c = document.createElement('canvas');
+        c.width = img.width; c.height = img.height;
+        const ctx = c.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        const { data } = ctx.getImageData(0,0,c.width,c.height);
+        const result = jsQR(data, c.width, c.height);
+        if (!result){ qrReadStatus.textContent = "couldn't find a QR code in that image"; return; }
+        try {
+          const { z, h } = parseShareText(result.data);
+          if (!z) throw new Error('no latent data found');
+          qrReadStatus.textContent = 'loaded';
+          await loadFromParams(z, h);
+        } catch (e){
+          qrReadStatus.textContent = "found a QR code, but couldn't read Afterimage data from it";
+        }
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // ---------- Explore nearby: perturb the latent and re-decode instantly (no search needed) ----------
+  function setupExplore(baseLatentArr, adapterArrs, decoder){
+    const section = document.getElementById('exploreSection');
+    const canvas = document.getElementById('exploreCanvas');
+    const amountLabel = document.getElementById('perturbAmountVal');
+    const slider = document.getElementById('perturbAmountSlider');
+    const adapter = adapterArrs ? {
+      scaleIn: tf.tensor(adapterArrs.scaleIn, [ADAPTER_IN]),
+      shiftIn: tf.tensor(adapterArrs.shiftIn, [ADAPTER_IN]),
+      scaleOut: tf.tensor(adapterArrs.scaleOut, [ADAPTER_OUT]),
+      shiftOut: tf.tensor(adapterArrs.shiftOut, [ADAPTER_OUT]),
+    } : null;
+    let current = baseLatentArr.slice();
+
+    async function render(){
+      const latent = tf.tensor(current, [1,256]);
+      const out = decodeFull(latent, decoder, adapter);
+      await renderTensorToCanvas(out, canvas);
+      latent.dispose(); out.dispose();
+    }
+
+    // clone-and-replace to drop any listeners from a previous reconstruct()/loadFromParams() call
+    const freshSlider = slider.cloneNode(true);
+    slider.parentNode.replaceChild(freshSlider, slider);
+    const perturbBtn = document.getElementById('perturbBtn');
+    const freshPerturbBtn = perturbBtn.cloneNode(true);
+    perturbBtn.parentNode.replaceChild(freshPerturbBtn, perturbBtn);
+    const resetBtn = document.getElementById('perturbResetBtn');
+    const freshResetBtn = resetBtn.cloneNode(true);
+    resetBtn.parentNode.replaceChild(freshResetBtn, resetBtn);
+
+    freshSlider.addEventListener('input', ()=>{
+      amountLabel.textContent = (freshSlider.value/100).toFixed(2);
+    });
+    freshPerturbBtn.addEventListener('click', ()=>{
+      const amount = freshSlider.value/100;
+      const next = new Float32Array(256);
+      for (let i=0;i<256;i++) next[i] = current[i] + (Math.random()*2-1)*amount;
+      current = next;
+      render();
+    });
+    freshResetBtn.addEventListener('click', ()=>{
+      current = baseLatentArr.slice();
+      render();
+    });
+    section.style.display = 'block';
+    render();
+  }
 
   // ---------- Debug harness: ?debugLatent=reference ----------
   (async function debugHook(){
@@ -562,9 +990,17 @@
     const decoder = await getDecoder();
     const ref = await fetch('training/reference_latent.json').then(r=>r.json());
     const latent = tf.tensor(ref.latent, [1,256]);
-    const out = decode(latent, decoder);
+    const out = decodeFull(latent, decoder, null);
     await renderTensorToCanvas(out, document.getElementById('debugCanvas'));
     out.dispose(); latent.dispose();
+  })();
+
+  // ---------- Load a shared impression directly from the URL ----------
+  (function urlParamHook(){
+    const params = new URLSearchParams(location.search);
+    const z = params.get('z');
+    if (!z) return;
+    loadFromParams(z, params.get('h'));
   })();
 
 })();

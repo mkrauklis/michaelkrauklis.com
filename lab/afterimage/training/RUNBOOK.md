@@ -76,33 +76,46 @@ search vs. from the paired encoder, and saves `latent_search_result.png`
 at or below the encoder's error on most images -- if it's now consistently
 *worse*, treat that as a regression and investigate before exporting.
 
-## 4. Export the frozen decoder for the browser
+## 4. Export the frozen decoder and encoder for the browser
 
 ```bash
 python export_decoder.py
+python export_encoder.py
 ```
 
-This fuses every ConvTranspose2d + BatchNorm2d pair into a single affine
-transform, permutes every array from PyTorch's layout into TensorFlow.js's,
-and writes:
+**Decoder** (the part that matters -- ships as the permanent, unchanging
+asset everyone's reconstruction runs through): fuses every
+ConvTranspose2d + BatchNorm2d pair into a single affine transform, permutes
+every array from PyTorch's layout into TensorFlow.js's, and writes:
 
 - `../decoder-manifest.json` -- layer order, shapes, activations
 - `../weights/*.bin` -- raw float32 arrays referenced by the manifest
 - `reference_latent.json` + `reference_output.png` -- a fixed latent vector
   and its known-correct decoder output, for sanity-checking the JS port
 
-The script re-runs the exported (fused, permuted) weights through a plain
-NumPy forward pass and asserts the output matches the original model's
-`decode()` almost exactly (max abs diff < 1e-4) before it lets you finish.
-If that assertion fails, do not proceed to update the site -- something in
-the fusion math or the layout permutes is wrong, and the exported weights
-would silently produce different reconstructions in the browser than what
+**Encoder** (only ever used client-side as a fast warm-start for the latent
+search -- never the final answer, see `../CLAUDE.md`): same fusion/permute
+approach, writes `../encoder-manifest.json` + `../encoder-weights/*.bin`.
+
+Both scripts re-run their exported (fused, permuted) weights through a plain
+NumPy forward pass and assert the output matches the original PyTorch
+model's `encode()`/`decode()` almost exactly (max abs diff < 1e-4 for the
+decoder, < 1e-3 for the encoder) before letting you finish. If either
+assertion fails, do not proceed to update the site -- something in the
+fusion math or the layout permutes is wrong, and the exported weights would
+silently produce different results in the browser than what
 `verify_latent_search.py` just validated.
 
 ## 5. Update the site
 
-Copy `decoder-manifest.json` and `weights/` into `lab/afterimage/` (already
-their default location if you ran the scripts from `training/` as shown
-above). Open `lab/afterimage/index.html` locally and confirm the reference
-case still matches `reference_output.png` before considering the retrain
-done -- see the "developer check" note in `../CLAUDE.md`.
+Copy `decoder-manifest.json`, `weights/`, `encoder-manifest.json`, and
+`encoder-weights/` into `lab/afterimage/` (already their default location if
+you ran the scripts from `training/` as shown above -- about 24MB total).
+Open `lab/afterimage/index.html?debugLatent=reference` locally and confirm
+the two images shown match before considering the retrain done -- see the
+"developer check" note in `../CLAUDE.md`. That check only covers the
+decoder's forward pass; it does not exercise the encoder or the adapter
+optimization, so also do one real upload-through-reconstruction pass and
+confirm the result still looks like the source photo, not a blurred blob
+(the WASM-vs-WebGL precision issue documented in `../CLAUDE.md` would show
+up exactly that way if it ever regressed).

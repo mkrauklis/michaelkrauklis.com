@@ -1,0 +1,117 @@
+{
+  "latent_dim": 256,
+  "layers": [
+    {
+      "type": "conv2d",
+      "weight": "conv1_weight",
+      "bias": "conv1_bias",
+      "stride": 2,
+      "padding": 1,
+      "activation": "relu"
+    },
+    {
+      "type": "conv2d",
+      "weight": "conv2_weight",
+      "bias": "conv2_bias",
+      "stride": 2,
+      "padding": 1,
+      "activation": "relu"
+    },
+    {
+      "type": "conv2d",
+      "weight": "conv3_weight",
+      "bias": "conv3_bias",
+      "stride": 2,
+      "padding": 1,
+      "activation": "relu"
+    },
+    {
+      "type": "conv2d",
+      "weight": "conv4_weight",
+      "bias": "conv4_bias",
+      "stride": 2,
+      "padding": 1,
+      "activation": "relu"
+    },
+    {
+      "type": "dense",
+      "weight": "enc_fc_weight",
+      "bias": "enc_fc_bias",
+      "activation": "none",
+      "flatten_note": "input must be transposed NHWC->NCHW-equivalent [N,C,H,W] BEFORE flattening -- torch's h.view(N,-1) on the conv output is channel-major"
+    }
+  ],
+  "conv1_weight": {
+    "shape": [
+      4,
+      4,
+      3,
+      32
+    ],
+    "file": "encoder-weights/conv1_weight.bin"
+  },
+  "conv1_bias": {
+    "shape": [
+      32
+    ],
+    "file": "encoder-weights/conv1_bias.bin"
+  },
+  "conv2_weight": {
+    "shape": [
+      4,
+      4,
+      32,
+      64
+    ],
+    "file": "encoder-weights/conv2_weight.bin"
+  },
+  "conv2_bias": {
+    "shape": [
+      64
+    ],
+    "file": "encoder-weights/conv2_bias.bin"
+  },
+  "conv3_weight": {
+    "shape": [
+      4,
+      4,
+      64,
+      128
+    ],
+    "file": "encoder-weights/conv3_weight.bin"
+  },
+  "conv3_bias": {
+    "shape": [
+      128
+    ],
+    "file": "encoder-weights/conv3_bias.bin"
+  },
+  "conv4_weight": {
+    "shape": [
+      4,
+      4,
+      128,
+      256
+    ],
+    "file": "encoder-weights/conv4_weight.bin"
+  },
+  "conv4_bias": {
+    "shape": [
+      256
+    ],
+    "file": "encoder-weights/conv4_bias.bin"
+  },
+  "enc_fc_weight": {
+    "shape": [
+      9216,
+      256
+    ],
+    "file": "encoder-weights/enc_fc_weight.bin"
+  },
+  "enc_fc_bias": {
+    "shape": [
+      256
+    ],
+    "file": "encoder-weights/enc_fc_bias.bin"
+  }
+}
