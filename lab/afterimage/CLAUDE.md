@@ -230,6 +230,27 @@ QR image both funnel through `loadFromParams()`, which also regenerates that
 loaded impression's own QR codes via `buildShareArtifacts()` — so a shared
 impression can always be re-shared, not just viewed once.
 
+## The head fingerprint (`renderHeadFingerprint`)
+
+The adapter's 70 numbers are plotted in polar coordinates, not a flat grid — 32 spokes around a
+circle (angle = which input channel, length = that channel's gain delta, a dot at the tip = its
+shift delta), plus 3 colored accent marks near the rim for the RGB output-channel adjustments.
+This isn't decorative: every visual property maps to one specific number, deterministically, so
+two different photos' adapters never look alike and the same photo always looks the same. It
+reads as a mandala/sunburst, which was the point — it's meant to be worth printing and asking
+about, not just informative. If you change `ADAPTER_IN`/`ADAPTER_OUT`, the spoke count and accent
+placement need updating alongside it (hardcoded to 32 and 3 respectively).
+
+## The latent explorer (`setupExplore`)
+
+Not a single global "wander distance" — click cells in the interactive latent grid to select
+specific dimensions (shift-click for a range), then one slider moves *only* the selected
+dimensions, together, as a delta from the value the search actually found. Selecting nothing and
+moving the slider does nothing, by design: `currentLatent()` only ever touches indices in
+`selected`. This is deliberately different from the read-only heatmap in the reconstruct section
+above it — that one shows the live search; this one is a separate, user-driven copy that starts
+from the same numbers once the search is done.
+
 ## Modifying the network (retraining, changing the architecture)
 
 Follow `training/RUNBOOK.md` exactly, in order. The critical step is that
