@@ -5,103 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="google-adsense-account" content="ca-pub-5936916546458743">
 <title>Afterimage — Reconstructing photos from a trace</title>
+<link rel="stylesheet" href="/theme.css">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap');
-
-  :root{
-    --bg: #10131a;
-    --bg-panel: #171b24;
-    --bg-panel-2: #1d2230;
-    --line: #2a3040;
-    --ink: #e9e7de;
-    --ink-dim: #9aa0ae;
-    --amber: #e0a54c;
-    --teal: #5eb0a4;
-    --violet: #9b8cd9;
-    --danger: #d97a6c;
-  }
-
-  *{ box-sizing:border-box; }
-  html,body{ margin:0; padding:0; }
-  body{
-    background: var(--bg);
-    color: var(--ink);
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    line-height: 1.55;
-  }
-  h1,h2,h3{
-    font-family: 'Fraunces', Georgia, serif;
-    font-weight: 500;
-    letter-spacing: -0.01em;
-    margin: 0 0 0.4em 0;
-  }
-  h1{ font-size: clamp(2rem, 5vw, 3.4rem); font-weight: 600; }
-  h2{ font-size: 1.5rem; }
-  p{ color: var(--ink-dim); max-width: 62ch; }
-  /* a lead paragraph sitting directly above a full-width panel shouldn't stop 2/3 of the way
-     across it -- let just that paragraph run the panel's full width instead of capping at 62ch */
-  p:has(+ .panel){ max-width: none; }
-  a{ color: var(--violet); }
+  :root{ --accent: var(--violet); --accent-dim: var(--violet-dim); }
 
   .wrap{ max-width: 1080px; margin: 0 auto; padding: 0 24px; }
-
-  header.hero{ padding: 64px 0 40px; border-bottom: 1px solid var(--line); }
-  .hero-grid{ display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 40px; align-items: center; }
-  @media (max-width: 800px){ .hero-grid{ grid-template-columns: 1fr; } }
-  .hero-line{ color: var(--violet); font-size: 0.95rem; margin-bottom: 14px; display: block; }
-  #heroCanvas{
-    width: 100%; height: 220px; display: block;
-    background: linear-gradient(180deg, #161a24 0%, #10131a 100%);
-    border: 1px solid var(--line); border-radius: 6px;
-  }
-
-  main{ padding: 48px 0 96px; }
-  section{ margin-bottom: 56px; }
-  .step-tag{
-    color: var(--teal); font-size: 0.85rem; font-family: 'Inter', sans-serif;
-    font-weight: 600; margin-bottom: 6px; display:block;
-  }
-
-  .panel{ background: var(--bg-panel); border: 1px solid var(--line); border-radius: 8px; padding: 28px; }
-
-  .dropzone{
-    border: 1.5px dashed var(--line); border-radius: 8px; padding: 48px 24px;
-    text-align: center; cursor: pointer; transition: border-color .15s ease, background .15s ease;
-  }
-  .dropzone:hover, .dropzone.drag{ border-color: var(--violet); background: rgba(155,140,217,0.04); }
-  .dropzone input{ display:none; }
-  .dropzone .cta{ color: var(--violet); font-weight: 600; }
-
-  .row{ display:flex; gap: 24px; flex-wrap: wrap; }
-  .col{ flex: 1; min-width: 260px; }
-
-  canvas.stage{
-    width: 100%; max-width: 100%; display:block; background: #0c0e13;
-    border: 1px solid var(--line); border-radius: 6px; cursor: grab;
-  }
-  canvas.stage:active{ cursor: grabbing; }
-
-  label.field{ display:block; font-size: 0.85rem; color: var(--ink-dim); margin: 18px 0 6px; }
-  input[type=range]{ width: 100%; accent-color: var(--violet); }
-  .field-value{ color: var(--ink); font-weight: 600; }
-
-  button.primary{
-    background: var(--violet); color: #10131a; border: none; padding: 12px 22px;
-    border-radius: 6px; font-weight: 600; font-size: 0.95rem; cursor: pointer; font-family: 'Inter', sans-serif;
-  }
-  button.primary:disabled{ background: #4a4560; color: #6b6b6b; cursor: not-allowed; }
-  button.secondary{
-    background: transparent; border: 1px solid var(--line); color: var(--ink);
-    padding: 12px 22px; border-radius: 6px; font-weight: 500; cursor: pointer; font-family: 'Inter', sans-serif;
-  }
-  .actions{ display:flex; gap: 12px; margin-top: 20px; flex-wrap: wrap; align-items:center; }
-  .status{ color: var(--ink-dim); font-size: 0.85rem; }
 
   .progress-track{
     width: 100%; height: 8px; background: var(--bg-panel-2); border-radius: 4px;
     overflow: hidden; margin-top: 14px;
   }
-  .progress-fill{ height: 100%; background: var(--violet); width: 0%; transition: width .15s ease; }
+  .progress-fill{ height: 100%; background: var(--accent); width: 0%; transition: width .15s ease; }
 
   .result-grid{ display:flex; gap: 20px; flex-wrap: wrap; margin-top: 20px; }
   .result-col{ flex: 1; min-width: 200px; max-width: 320px; }
@@ -111,27 +25,7 @@
   .result-label{ font-size: 0.8rem; color: var(--ink-dim); margin-top: 8px; }
   .result-desc{ font-size: 0.78rem; color: var(--ink-dim); opacity: 0.85; margin: 2px 0 0; max-width: none; }
   .gauge-track{ width:100%; height:6px; background:var(--bg-panel-2); border-radius:3px; overflow:hidden; margin-top:6px; }
-  .gauge-fill{ height:100%; background:var(--violet); width:0%; transition:width .1s ease; }
-
-  .divider{ border: none; border-top: 1px solid var(--line); margin: 40px 0; }
-
-  footer{ border-top: 1px solid var(--line); padding: 28px 0; color: var(--ink-dim); font-size: 0.82rem; }
-
-  details.disclosure{ margin-top: 18px; }
-  details.disclosure > summary{
-    cursor: pointer; color: var(--ink-dim); font-size: 0.85rem; font-weight: 600;
-    list-style: none; display: inline-flex; align-items: center; gap: 7px; user-select: none;
-  }
-  details.disclosure > summary::-webkit-details-marker{ display:none; }
-  details.disclosure > summary::before{
-    content: '▸'; color: var(--violet); display: inline-block; transition: transform .15s ease;
-  }
-  details.disclosure[open] > summary::before{ transform: rotate(90deg); }
-  details.disclosure > summary:hover{ color: var(--ink); }
-  details.disclosure .disclosure-body{ margin-top: 16px; }
-  details.advanced{ border-top: 1px solid var(--line); padding-top: 24px; }
-  details.advanced > summary{ font-size: 0.95rem; }
-  details.advanced > summary .adv-sub{ color: var(--ink-dim); font-weight: 400; font-size: 0.82rem; }
+  .gauge-fill{ height:100%; background:var(--accent); width:0%; transition:width .1s ease; }
 
   #debugPanel{ display:none; }
 </style>
@@ -176,7 +70,7 @@
   works" section further down, once you've seen it do something.</p>
 
   <div class="panel" style="margin-top:32px;">
-    <span class="step-tag" style="color:var(--violet);">tl;dr on the jargon</span>
+    <span class="step-tag" style="color:var(--accent);">tl;dr on the jargon</span>
     <p style="margin:0;">A neural network is just a pile of adjustable numbers that gets tuned
     until it's good at some task. A <b style="color:var(--ink);">CNN</b> — convolutional neural
     network — is the flavor built for images: it slides small pattern-detectors across the
@@ -631,10 +525,11 @@
           <rect x="536" y="152" width="80" height="80" rx="4" fill="var(--ink-dim)" stroke="var(--ink-dim)" stroke-width="0.5" opacity="0.5"/>
           <rect x="544" y="160" width="80" height="80" rx="4" fill="var(--ink-dim)" stroke="var(--ink-dim)" stroke-width="0.5" opacity="0.65"/>
 
-          <rect x="402" y="152" width="82" height="82" rx="8" fill="none" stroke="var(--amber)" stroke-width="1.5" stroke-dasharray="4 3"/>
-          <text x="450" y="112" text-anchor="middle" font-size="11.5" font-weight="600" fill="var(--amber)">personalized head</text>
-          <text x="450" y="125" text-anchor="middle" font-size="10" fill="var(--amber)" opacity="0.85">unique to your photo — 454 numbers, 3 layers deep</text>
-          <path d="M450,128 L450,150" stroke="var(--amber)" stroke-width="1" stroke-dasharray="2 2"/>
+          <rect x="399" y="149" width="85" height="85" rx="10" fill="var(--amber)" fill-opacity="0.12" stroke="var(--amber)" stroke-width="2.5" stroke-dasharray="5 4"/>
+          <rect x="378" y="100" width="145" height="30" rx="15" fill="var(--amber)"/>
+          <text x="450.5" y="120.5" text-anchor="middle" font-size="12" font-weight="700" fill="#10131a">★ UNIQUE TO YOU</text>
+          <path d="M441,130 L410,149" stroke="var(--amber)" stroke-width="1.5"/>
+          <path d="M460,130 L473,149" stroke="var(--amber)" stroke-width="1.5"/>
 
           <text x="163" y="76" text-anchor="middle" font-size="14" font-weight="500" fill="var(--ink)">Encoder</text>
           <text x="163" y="94" text-anchor="middle" font-size="12" fill="var(--ink-dim)">4 conv layers · 1 FC head</text>
@@ -648,18 +543,33 @@
           <text x="450" y="320" text-anchor="middle" font-size="12" fill="var(--ink-dim)">conv, 6px→96px</text>
           <text x="584" y="320" text-anchor="middle" font-size="12" fill="var(--ink-dim)">96×96×3 photo</text>
         </svg>
+        <div style="display:flex; gap:24px; flex-wrap:wrap; margin-top:14px; padding:12px 16px; background:var(--bg-panel-2); border-radius:6px;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="display:flex; gap:2px;">
+              <span style="width:10px; height:10px; border-radius:2px; background:var(--ink-dim); display:inline-block;"></span>
+              <span style="width:10px; height:10px; border-radius:2px; background:var(--danger); display:inline-block;"></span>
+              <span style="width:10px; height:10px; border-radius:2px; background:var(--violet); display:inline-block;"></span>
+              <span style="width:10px; height:10px; border-radius:2px; background:var(--teal); display:inline-block;"></span>
+            </span>
+            <span style="font-size:0.82rem; color:var(--ink-dim);"><b style="color:var(--ink);">Shared</b> — identical bytes, every browser, forever frozen</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="width:10px; height:10px; border-radius:2px; background:var(--amber); display:inline-block;"></span>
+            <span style="font-size:0.82rem; color:var(--ink-dim);"><b style="color:var(--amber);">Unique to you</b> — exists only because of your photo, computed just now</span>
+          </div>
+        </div>
         <p style="margin-top:18px; font-size:0.85rem;">The gray blocks are actual photo pixels. Coral
         is the encoder — it does run in your browser now, but only once, for that instant first
         guess. Teal is the decoder, the thing actually doing the work: the exact same weights,
         unchanged, that everyone else's browser also uses. Violet is the 256-number latent vector,
-        the "impression" your photo gets reduced to. The dashed amber box is the personalized head
-        — the one piece of this whole diagram that isn't shared. Everything else, top to bottom, is
-        identical no matter whose browser is running it; the amber box is 454 numbers that exist
-        only because of your specific photo, layered onto the decoder's last three steps. It's
-        also the only part that gets trained live, twice over — first the 256 numbers alone, then
-        this head fitted on top of them. You already saw what difference it makes in the "latent
-        only" vs. "latent + head" comparison back in the training step — that gap is entirely this
-        amber box.</p>
+        the "impression" your photo gets reduced to. All three of those — every gray, coral, violet,
+        and teal pixel in this diagram — are byte-for-byte identical no matter whose browser is
+        running it. The <b style="color:var(--amber);">★ UNIQUE TO YOU</b> badge is the one exception:
+        454 numbers that exist only because of your specific photo, layered onto the decoder's last
+        three steps, fitted live in your browser and nowhere else. It's also the only part that gets
+        trained twice over — first the 256 numbers alone, then this head fitted on top of them. You
+        already saw what difference it makes in the "latent only" vs. "latent + head" comparison back
+        in the training step — that gap is entirely this one amber piece.</p>
       </div>
     </div>
   </details>

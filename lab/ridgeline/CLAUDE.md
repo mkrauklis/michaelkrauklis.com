@@ -6,13 +6,23 @@ step-by-step reconstruction.
 
 ## Architecture
 
-Single self-contained file: `index.html`. No build step, no bundler, no external JS
-dependencies — inline `<style>` and `<script>` blocks only. Everything runs client-side
-in the browser; no photo is ever uploaded to a server (this is stated in the page
-footer — keep it true).
+`index.html`, plus two site-wide shared files it links rather than duplicates: `/nav.js` (the
+breadcrumb header) and `/theme.css` (palette, base typography, and the panel/dropzone/button/
+hero styles shared with Afterimage — see the root `CLAUDE.md`'s "Site-wide shared files"
+section). Ridgeline's own `<style>` block only holds what's actually specific to it: `.wrap`'s
+max-width, the step/merch-picker visualization CSS (`.toggle-group`, `#gridOutput`, `.step-row`
+and friends, `.style-cards`, `.swatch-row`). No build step, no bundler, no external JS
+dependencies beyond that — everything else is inline `<script>`. Everything runs client-side in
+the browser; no photo is ever uploaded to a server (this is stated in the page footer — keep it
+true).
 
-External resources loaded: Google Fonts (Fraunces, Inter) and the AdSense script tag.
-That's the entire dependency surface.
+Ridgeline doesn't override `--accent` — amber is `theme.css`'s default, and Ridgeline is the
+page that default was written for. If a future tool wants a different brand color (Afterimage
+uses violet), override `--accent`/`--accent-dim` in that page's own `<style>` block, after the
+`<link>` tag.
+
+External resources loaded: Google Fonts (Fraunces, Inter, via `theme.css`) and the AdSense
+script tag. That's the entire dependency surface.
 
 ## Pipeline (in order)
 
@@ -58,8 +68,10 @@ That's the entire dependency surface.
 
 ## Testing changes
 
-No test suite — this is a static page. Verify changes by opening `index.html` directly
-(or via a local static server) and running the golden path: upload a photo → check the
-auto-extracted outline looks right → render steps/video → download. Check both the
-"Line" and "Stack" merch styles, and both video styles (sequential summation, epicycle
-arms), since they share the reconstruction math but have separate drawing code paths.
+No test suite — this is a static page. Verify changes via a local static server (root-relative
+`/nav.js` and `/theme.css` links mean opening `index.html` directly over `file://` won't pick
+them up — serve the repo root, e.g. `python -m http.server`, and browse to `/lab/ridgeline/`).
+Run the golden path: upload a photo → check the auto-extracted outline looks right → render
+steps/video → download. Check both the "Line" and "Stack" merch styles, and both video styles
+(sequential summation, epicycle arms), since they share the reconstruction math but have
+separate drawing code paths.

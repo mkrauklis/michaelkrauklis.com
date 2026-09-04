@@ -159,6 +159,15 @@ lab/afterimage/
       being copied up to the shipped location above; don't confuse the two
 ```
 
+`index.html` links two root-level shared files rather than duplicating their contents:
+`/nav.js` (breadcrumb header) and `/theme.css` (palette, base typography, and the panel/
+dropzone/button/hero styles shared with Ridgeline — see the root `CLAUDE.md`). Afterimage's own
+`<style>` block overrides `--accent`/`--accent-dim` to violet (theme.css's default is amber) and
+otherwise holds only what's genuinely specific to this page: `.wrap`'s max-width, the
+progress bar, the result-grid/gauge styles, `#debugPanel`. Because those links are root-relative,
+opening `index.html` directly over `file://` won't pick them up — test through a local static
+server serving the repo root instead (see "Testing changes" below).
+
 ## Why TensorFlow.js and not ONNX Runtime Web / Transformers.js
 
 The rendering phase needs backpropagation through the decoder with respect

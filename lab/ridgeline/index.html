@@ -5,130 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="google-adsense-account" content="ca-pub-5936916546458743">
 <title>Ridgeline — Fourier Mountain Reconstruction</title>
+<link rel="stylesheet" href="/theme.css">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap');
-
-  :root{
-    --bg: #10131a;
-    --bg-panel: #171b24;
-    --bg-panel-2: #1d2230;
-    --line: #2a3040;
-    --ink: #e9e7de;
-    --ink-dim: #9aa0ae;
-    --amber: #e0a54c;
-    --amber-dim: #7a5f34;
-    --teal: #5eb0a4;
-    --danger: #d97a6c;
-  }
-
-  *{ box-sizing:border-box; }
-  html,body{ margin:0; padding:0; }
-  body{
-    background: var(--bg);
-    color: var(--ink);
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    line-height: 1.55;
-  }
-  h1,h2,h3{
-    font-family: 'Fraunces', Georgia, serif;
-    font-weight: 500;
-    letter-spacing: -0.01em;
-    margin: 0 0 0.4em 0;
-  }
-  h1{ font-size: clamp(2rem, 5vw, 3.4rem); font-weight: 600; }
-  h2{ font-size: 1.5rem; }
-  p{ color: var(--ink-dim); max-width: 62ch; }
-  a{ color: var(--amber); }
-
   .wrap{ max-width: 1080px; margin: 0 auto; padding: 0 24px; }
-
-  header.hero{
-    padding: 64px 0 40px;
-    border-bottom: 1px solid var(--line);
-  }
-  .hero-grid{
-    display: grid;
-    grid-template-columns: 1.1fr 0.9fr;
-    gap: 40px;
-    align-items: center;
-  }
-  @media (max-width: 800px){ .hero-grid{ grid-template-columns: 1fr; } }
-
-  .hero-line{
-    color: var(--amber);
-    font-size: 0.95rem;
-    margin-bottom: 14px;
-    display: block;
-  }
-  #heroCanvas{
-    width: 100%;
-    height: 220px;
-    display: block;
-    background: linear-gradient(180deg, #161a24 0%, #10131a 100%);
-    border: 1px solid var(--line);
-    border-radius: 6px;
-  }
-
-  main{ padding: 48px 0 96px; }
-
-  section{ margin-bottom: 56px; }
-  .step-tag{
-    color: var(--teal);
-    font-size: 0.85rem;
-    font-family: 'Inter', sans-serif;
-    font-weight: 600;
-    margin-bottom: 6px;
-    display:block;
-  }
-
-  .panel{
-    background: var(--bg-panel);
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    padding: 28px;
-  }
-
-  .dropzone{
-    border: 1.5px dashed var(--line);
-    border-radius: 8px;
-    padding: 48px 24px;
-    text-align: center;
-    cursor: pointer;
-    transition: border-color .15s ease, background .15s ease;
-  }
-  .dropzone:hover, .dropzone.drag{
-    border-color: var(--amber);
-    background: rgba(224,165,76,0.04);
-  }
-  .dropzone input{ display:none; }
-  .dropzone .cta{
-    color: var(--amber);
-    font-weight: 600;
-  }
-
-  .row{ display:flex; gap: 24px; flex-wrap: wrap; }
-  .col{ flex: 1; min-width: 260px; }
-
-  canvas.stage{
-    width: 100%;
-    max-width: 100%;
-    display:block;
-    background: #0c0e13;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-  }
-
-  label.field{
-    display:block;
-    font-size: 0.85rem;
-    color: var(--ink-dim);
-    margin: 18px 0 6px;
-  }
-  input[type=range]{
-    width: 100%;
-    accent-color: var(--amber);
-  }
-  .field-value{ color: var(--ink); font-weight: 600; }
+  /* unlike Afterimage's crop tool, none of Ridgeline's .stage canvases are draggable */
+  canvas.stage{ cursor: default; }
 
   .toggle-group{
     display:flex;
@@ -152,36 +33,6 @@
     color: var(--amber);
     background: rgba(224,165,76,0.08);
   }
-
-  button.primary{
-    background: var(--amber);
-    color: #10131a;
-    border: none;
-    padding: 12px 22px;
-    border-radius: 6px;
-    font-weight: 600;
-    font-size: 0.95rem;
-    cursor: pointer;
-    font-family: 'Inter', sans-serif;
-  }
-  button.primary:disabled{
-    background: var(--amber-dim);
-    color: #6b6b6b;
-    cursor: not-allowed;
-  }
-  button.secondary{
-    background: transparent;
-    border: 1px solid var(--line);
-    color: var(--ink);
-    padding: 12px 22px;
-    border-radius: 6px;
-    font-weight: 500;
-    cursor: pointer;
-    font-family: 'Inter', sans-serif;
-  }
-
-  .actions{ display:flex; gap: 12px; margin-top: 20px; flex-wrap: wrap; align-items:center; }
-  .status{ color: var(--ink-dim); font-size: 0.85rem; }
 
   #gridOutput{
     display:flex;
@@ -230,53 +81,6 @@
     color: var(--ink-dim);
     padding: 0 2px;
     align-self: center;
-  }
-
-  .divider{
-    border: none;
-    border-top: 1px solid var(--line);
-    margin: 40px 0;
-  }
-
-  footer{
-    border-top: 1px solid var(--line);
-    padding: 28px 0;
-    color: var(--ink-dim);
-    font-size: 0.82rem;
-  }
-
-  details.disclosure{ margin-top: 18px; }
-  details.disclosure > summary{
-    cursor: pointer;
-    color: var(--ink-dim);
-    font-size: 0.85rem;
-    font-weight: 600;
-    list-style: none;
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    user-select: none;
-  }
-  details.disclosure > summary::-webkit-details-marker{ display:none; }
-  details.disclosure > summary::before{
-    content: '▸';
-    color: var(--amber);
-    display: inline-block;
-    transition: transform .15s ease;
-  }
-  details.disclosure[open] > summary::before{ transform: rotate(90deg); }
-  details.disclosure > summary:hover{ color: var(--ink); }
-  details.disclosure .disclosure-body{ margin-top: 16px; }
-
-  details.advanced{
-    border-top: 1px solid var(--line);
-    padding-top: 24px;
-  }
-  details.advanced > summary{ font-size: 0.95rem; }
-  details.advanced > summary .adv-sub{
-    color: var(--ink-dim);
-    font-weight: 400;
-    font-size: 0.82rem;
   }
 
   .style-cards{
