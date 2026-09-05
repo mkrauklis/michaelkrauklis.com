@@ -28,9 +28,23 @@ script tag. That's the entire dependency surface.
 
 1. **Upload** — drag/drop or file picker, read via `FileReader` → `Image`.
 2. **Silhouette extraction** — for each of `N` x-samples, scan down the column for the
-   sky/land boundary. Threshold auto-picked via Otsu's method; sky-vs-land polarity
-   auto-guessed by comparing top/bottom band luminance (`guessInvert`). Both are
-   user-adjustable via the "fine-tune" disclosure if the auto-guess is wrong.
+   sky/land boundary. The base threshold is auto-picked via Otsu's method over the whole
+   image, but the actual per-column decision shifts that threshold by how much *that
+   column's own* sky sample differs from the image-wide sky average (`bandLumRect` on a
+   small window around each column vs. the full top strip) — a single fixed threshold
+   assumes uniformly-lit sky, which sunsets, haze, and wide panoramas routinely violate,
+   producing a ridge line that drifts off the real silhouette on one side of the frame.
+   The shift is clamped to ±40 luminance units (`skyDelta`) — an earlier unclamped version
+   could, at an extreme local sample (a sun in frame, a very dark cloud), push the
+   threshold so far that no pixel in that column registered as land at all, dropping the
+   line to the bottom of the frame for that column. A transition also needs `CONFIRM`
+   (3) consecutive land-reading rows before it's accepted, and the whole elevation array
+   gets a 5-wide median filter (`medianSmooth`) afterward — both exist to reject
+   single-column noise (a bird, a lens artifact, a stray bright pixel) that a bare
+   per-pixel threshold test can't distinguish from a real, sharp ridge feature. Sky-vs-land
+   polarity is auto-guessed by comparing top/bottom band luminance (`guessInvert`).
+   Threshold, sample count, and invert are all still user-adjustable via the "fine-tune"
+   disclosure if the auto-guess is wrong.
 3. **Fourier decomposition** — the elevation profile is mirrored (`M = 2N`) to force
    periodicity, then run through a hand-rolled DFT (`dft()`). Components are sorted by
    amplitude, largest first, so reconstructions add the most structurally important
