@@ -308,6 +308,24 @@ loss briefly gets *worse* right at the transition before dropping again as they'
 is expected and worth leaving visible, not smoothing away — it's honest evidence that two separate
 optimizations are happening, not one continuous one.
 
+## Result-canvas spinners and the status ticker
+
+Each of the four canvases that only get real content partway through training (impression,
+latent heatmap, head fingerprint, loss curve) has a `.spinner` sibling inside a `.canvas-wrap`,
+shown by `resetSpinners()` at the start of `reconstruct()` and hidden individually the moment
+that specific canvas gets its first real paint — `hideSpinner('headSpinner')` only fires inside
+`checkpoint()`'s `if (adapter)` branch, for instance, so it correctly stays spinning through all
+of phase 1, since there's genuinely nothing to show there until phase 2 starts. `loadFromParams()`
+(no training, so no loss curve at all) hides all four immediately rather than leaving any of them
+spinning forever.
+
+`startStatusTicker()`/`stopStatusTicker()` cross-fade through `STATUS_MESSAGES`, a mix of
+plain-English explanation and lighter asides, under the progress bar — purely there so the
+several-second gaps between checkpoints have *something* happening, not a technical read-out.
+Keep additions to that list at the same tl;dr level (no jargon a first-time visitor wouldn't
+already have from the page copy above) and roughly the same tone mix (mostly plain explanation,
+a few genuinely light ones) rather than letting it drift toward either all-technical or all-jokes.
+
 ## Split-key sharing: essence, key, and both-together
 
 Beyond the two independent artifacts described below (latent, adapter), `buildShareArtifacts()`

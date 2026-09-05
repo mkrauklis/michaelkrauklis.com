@@ -16,6 +16,11 @@
     overflow: hidden; margin-top: 14px;
   }
   .progress-fill{ height: 100%; background: var(--accent); width: 0%; transition: width .15s ease; }
+  .status-ticker{
+    margin-top: 10px; min-height: 1.3em; font-size: 0.85rem; font-style: italic;
+    color: var(--ink-dim); opacity: 0; transition: opacity .3s ease;
+  }
+  .status-ticker.visible{ opacity: 1; }
 
   .result-grid{ display:flex; gap: 20px; flex-wrap: wrap; margin-top: 20px; }
   .result-col{ flex: 1; min-width: 200px; max-width: 320px; }
@@ -26,6 +31,17 @@
   .result-desc{ font-size: 0.78rem; color: var(--ink-dim); opacity: 0.85; margin: 2px 0 0; max-width: none; }
   .gauge-track{ width:100%; height:6px; background:var(--bg-panel-2); border-radius:3px; overflow:hidden; margin-top:6px; }
   .gauge-fill{ height:100%; background:var(--accent); width:0%; transition:width .1s ease; }
+
+  /* Shown over a result canvas until it has something real to display -- e.g. loading the
+     decoder/encoder, or waiting for phase 2 to start fitting the personalized head. */
+  .canvas-wrap{ position: relative; }
+  .spinner{
+    position: absolute; top: 50%; left: 50%; width: 28px; height: 28px;
+    margin: -14px 0 0 -14px; border-radius: 50%;
+    border: 3px solid var(--line); border-top-color: var(--accent);
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin{ to{ transform: rotate(360deg); } }
 
   #debugPanel{ display:none; }
 </style>
@@ -226,6 +242,7 @@
         <span class="status" id="reconStatus"></span>
       </div>
       <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="status-ticker" id="statusTicker"></div>
       <div class="result-grid">
         <div class="result-col">
           <canvas id="cropPreviewCanvas" width="96" height="96"></canvas>
@@ -233,7 +250,10 @@
           <div class="result-desc">What the network is being trained to reproduce.</div>
         </div>
         <div class="result-col">
-          <canvas id="reconCanvas" width="96" height="96"></canvas>
+          <div class="canvas-wrap">
+            <canvas id="reconCanvas" width="96" height="96"></canvas>
+            <div class="spinner" id="reconSpinner"></div>
+          </div>
           <div class="result-label" id="reconLabel">the network's impression</div>
           <div class="result-desc">The frozen decoder's current output — updates live as training
           runs.</div>
@@ -242,7 +262,10 @@
           </div>
         </div>
         <div class="result-col">
-          <canvas id="latentHeatmapCanvas" width="320" height="320"></canvas>
+          <div class="canvas-wrap">
+            <canvas id="latentHeatmapCanvas" width="320" height="320"></canvas>
+            <div class="spinner" id="latentSpinner"></div>
+          </div>
           <div class="result-label">latent vector — 256 numbers, live</div>
           <div class="result-desc">Every dimension the network is adjusting, brightness = value —
           brighter is a larger number, darker is a smaller (or negative) one.</div>
@@ -251,7 +274,10 @@
           </div>
         </div>
         <div class="result-col">
-          <canvas id="headHeatmapCanvas" width="320" height="320"></canvas>
+          <div class="canvas-wrap">
+            <canvas id="headHeatmapCanvas" width="320" height="320"></canvas>
+            <div class="spinner" id="headSpinner"></div>
+          </div>
           <div class="result-label">personalized head — 3 layers, 454 numbers, plotted live</div>
           <div class="result-desc">An adjustment fitted to your photo alone, layered onto the
           decoder's last three layers — everyone else's browser uses the same decoder, but nobody
@@ -261,7 +287,10 @@
           </div>
         </div>
         <div class="result-col">
-          <canvas id="lossCurveCanvas" width="320" height="320"></canvas>
+          <div class="canvas-wrap">
+            <canvas id="lossCurveCanvas" width="320" height="320"></canvas>
+            <div class="spinner" id="lossSpinner"></div>
+          </div>
           <div class="result-label">training error, over time</div>
           <div class="result-desc">The actual gradient descent — how far the output is from your
           photo, falling with every step. The jump partway across is where personalization
@@ -1145,6 +1174,57 @@
   const lossCurveCanvas = document.getElementById('lossCurveCanvas');
   let lossHistory = [], phase1End = null;
 
+  // Each result canvas has a spinner sibling shown until that canvas actually has something
+  // real painted into it -- e.g. the head's spinner deliberately stays up through all of phase
+  // 1, since there's genuinely nothing to show it until phase 2 starts fitting it.
+  function hideSpinner(id){ const el = document.getElementById(id); if (el) el.style.display = 'none'; }
+  function showSpinner(id){ const el = document.getElementById(id); if (el) el.style.display = 'block'; }
+  function resetSpinners(){ ['reconSpinner','latentSpinner','headSpinner','lossSpinner'].forEach(showSpinner); }
+
+  // A mix of plain-English explanation and lighter asides, cycling under the progress bar so
+  // the wait has *something* happening even during the several-second gaps between
+  // checkpoints. Deliberately tl;dr-level -- someone with zero ML background should get every
+  // one of these on a first read.
+  const STATUS_MESSAGES = [
+    "This is gradient descent: take a small step that makes the picture a little less wrong, then do it again.",
+    "Oh my gosh, you're training a machine learning model right in your browser!!!",
+    "The big network never changes here — only your own 256 numbers are moving.",
+    "We're nudging 256 numbers around until the picture they produce looks like yours.",
+    "It's the same trick behind DeepDream: freeze the network, train the input instead.",
+    "This is all math, all the way down.",
+    "Somewhere in a 256-dimensional space there's one exact spot that decodes to something like your photo. Looking for it now.",
+    "No GPU required for most of this — just a patient loop, running quietly in this tab.",
+    "A whole field of AI research, shrunk down to fit in a browser tab.",
+    "Each step: guess, check how wrong it is, adjust a little, repeat. That's most of machine learning, honestly.",
+    "This would've needed a research lab a decade ago. Now it's a tab you could close by accident.",
+    "256 numbers, one photo, and a lot of small, honest steps.",
+    "Machine learning, demystified: a pile of adjustable numbers, nudged until they're useful.",
+    "Up next: a personalized head, a little extra math fitted just to your photo.",
+    "Every step gets slightly less wrong. That's the whole strategy.",
+    "You're watching a computer learn something, one small step at a time.",
+  ];
+  let statusTickerTimer = null;
+  function startStatusTicker(){
+    const el = document.getElementById('statusTicker');
+    let i = Math.floor(Math.random() * STATUS_MESSAGES.length); // fresh order each run
+    function show(){
+      el.classList.remove('visible');
+      setTimeout(() => {
+        el.textContent = STATUS_MESSAGES[i % STATUS_MESSAGES.length];
+        i++;
+        el.classList.add('visible');
+      }, 250);
+    }
+    show();
+    statusTickerTimer = setInterval(show, 4200);
+  }
+  function stopStatusTicker(){
+    if (statusTickerTimer) clearInterval(statusTickerTimer);
+    statusTickerTimer = null;
+    const el = document.getElementById('statusTicker');
+    el.classList.remove('visible');
+  }
+
   async function checkpoint(done, total, phaseLabel, latent, decoder, adapter, target){
     const pct = Math.min(100, Math.round(100*done/total));
     progressFill.style.width = pct+'%';
@@ -1154,16 +1234,20 @@
     lossTensor.dispose();
     reconStatus.textContent = `${phaseLabel}… ${pct}% (mse ${loss.toFixed(4)})`;
     await renderTensorToCanvas(out, reconCanvas);
+    hideSpinner('reconSpinner');
     out.dispose();
     const latentArr = await latent.data();
     renderLatentHeatmap(latentArr, latentHeatmapCanvas);
+    hideSpinner('latentSpinner');
     if (adapter){
       const [scaleIn,shiftIn,scaleOut,shiftOut] = await Promise.all(
         [adapter.scaleIn.data(), adapter.shiftIn.data(), adapter.scaleOut.data(), adapter.shiftOut.data()]);
       renderHeadFingerprint({scaleIn,shiftIn,scaleOut,shiftOut}, headHeatmapCanvas);
+      hideSpinner('headSpinner');
     }
     lossHistory.push({ x: done, y: loss });
     renderLossCurve(lossHistory, phase1End, total, lossCurveCanvas);
+    if (lossHistory.length >= 2) hideSpinner('lossSpinner');
     await new Promise(r=>setTimeout(r,0));
   }
 
@@ -1226,6 +1310,8 @@
 
   async function reconstruct(){
     startBtn.disabled = true;
+    resetSpinners();
+    startStatusTicker();
     reconStatus.textContent = 'loading decoder + encoder…';
     const [decoder, encoder] = await Promise.all([getDecoder(), getEncoder()]);
 
@@ -1264,6 +1350,7 @@
     target.dispose(); latent.dispose();
     scaleIn.dispose(); shiftIn.dispose(); scaleOut.dispose(); shiftOut.dispose();
 
+    stopStatusTicker();
     reconStatus.textContent = 'trained';
     document.getElementById('reconLabel').textContent = "the network's impression — trained";
     document.getElementById('learnSection').style.display = 'block';
@@ -1346,8 +1433,13 @@
     document.getElementById('cropPreviewCanvas').getContext('2d').clearRect(0,0,96,96);
     document.getElementById('reconLabel').textContent = 'loaded from a shared impression';
     await renderTensorToCanvas(out, reconCanvas);
+    hideSpinner('reconSpinner');
     renderLatentHeatmap(latentArr, latentHeatmapCanvas);
+    hideSpinner('latentSpinner');
     renderHeadFingerprint(adapterArrs, headHeatmapCanvas);
+    hideSpinner('headSpinner');
+    // no training happens on this path, so there's no loss curve to wait for
+    hideSpinner('lossSpinner');
     document.getElementById('learnSection').style.display = 'block';
     buildShareArtifacts(latentArr, adapterArrs);
     setupExplore(latentArr, adapterArrs, decoder);
