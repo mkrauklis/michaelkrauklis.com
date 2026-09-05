@@ -187,7 +187,7 @@
           <input type="range" id="threshSlider" min="1" max="254" value="128">
           <label class="field">
             <input type="checkbox" id="invertCheck" style="accent-color: var(--amber); margin-right:6px;">
-            Flip it — the sky looks darker than the land in this photo
+            Flip it — trace the lower boundary instead of the upper one
           </label>
           <label class="field">Outline detail — <span class="field-value" id="sampleVal">160</span></label>
           <input type="range" id="sampleSlider" min="60" max="300" step="10" value="160">
@@ -515,19 +515,68 @@
     });
   });
 
-  // Otsu's method: picks the threshold that best splits the photo into two brightness
-  // groups (sky vs. land) — so most photos need zero manual tuning to get a clean outline
-  function otsuThreshold(data){
-    const hist = new Array(256).fill(0);
-    let total = 0;
-    for (let i = 0; i < data.length; i += 4){
-      const lum = Math.round(0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2]);
-      hist[lum]++; total++;
+  function autoTuneAndExtract(){
+    // The detector below doesn't need a brightness threshold or a polarity guess -- it looks
+    // for where the photo stops being internally consistent, not for a specific brightness
+    // relationship between sky and land. So "auto" is just: reset the fine-tune controls to
+    // their defaults and run it.
+    threshSlider.value = 128;
+    threshVal.textContent = 128;
+    invertCheck.checked = false;
+    sampleSlider.value = 220;
+    sampleVal.textContent = 220;
+
+    extractAndPreview();
+  }
+
+  // Builds a summed-area table (integral image) of luminance and luminance-squared, so the
+  // mean/variance of any rectangular region of the photo can be read back in O(1) instead of
+  // rescanning pixels -- extractAndPreview() below queries thousands of small rectangles per
+  // extraction, and this is what keeps that fast.
+  function buildIntegral(data, w, h){
+    const stride = w+1;
+    const sum = new Float64Array(stride*(h+1));
+    const sumSq = new Float64Array(stride*(h+1));
+    for (let y = 0; y < h; y++){
+      let rowSum = 0, rowSumSq = 0;
+      for (let x = 0; x < w; x++){
+        const idx = (y*w+x)*4;
+        const lum = 0.299*data[idx] + 0.587*data[idx+1] + 0.114*data[idx+2];
+        rowSum += lum; rowSumSq += lum*lum;
+        const i = (y+1)*stride + (x+1);
+        sum[i] = sum[i-stride] + rowSum;
+        sumSq[i] = sumSq[i-stride] + rowSumSq;
+      }
     }
+    return { sum, sumSq, w, h };
+  }
+
+  // Mean and variance of the rectangle [x0,x1) x [y0,y1) via the integral image above.
+  function rectStats(integral, x0, x1, y0, y1){
+    const { sum, sumSq, w } = integral;
+    const stride = w+1;
+    const s = sum[y1*stride+x1] - sum[y0*stride+x1] - sum[y1*stride+x0] + sum[y0*stride+x0];
+    const sq = sumSq[y1*stride+x1] - sumSq[y0*stride+x1] - sumSq[y1*stride+x0] + sumSq[y0*stride+x0];
+    const count = Math.max(1, (x1-x0)*(y1-y0));
+    const mean = s/count;
+    return { mean, variance: Math.max(0, sq/count - mean*mean) };
+  }
+
+  // Otsu's method, generalized from "split 256 brightness levels" to "split any set of
+  // non-negative numbers into a low group and a high group" -- used below to find a natural
+  // cutoff in the step-score distribution instead of assuming a fixed cutoff.
+  function otsuSplit(values, bins){
+    let max = 0;
+    for (const v of values) if (v > max) max = v;
+    if (max <= 0) return 0;
+    const hist = new Array(bins).fill(0);
+    const scale = (bins-1)/max;
+    for (const v of values) hist[Math.round(v*scale)]++;
+    const total = values.length;
     let sum = 0;
-    for (let t = 0; t < 256; t++) sum += t*hist[t];
-    let sumB = 0, wB = 0, best = 128, bestVar = -1;
-    for (let t = 0; t < 256; t++){
+    for (let t = 0; t < bins; t++) sum += t*hist[t];
+    let sumB = 0, wB = 0, best = 0, bestVar = -1;
+    for (let t = 0; t < bins; t++){
       wB += hist[t];
       if (wB === 0) continue;
       const wF = total - wB;
@@ -537,53 +586,7 @@
       const varBetween = wB*wF*(mB-mF)*(mB-mF);
       if (varBetween > bestVar){ bestVar = varBetween; best = t; }
     }
-    return best;
-  }
-
-  // guesses whether the photo needs "invert" checked by comparing the top strip of the
-  // frame (usually sky) against the bottom strip (usually land) — land is normally darker
-  function guessInvert(data, w, h){
-    function bandLum(y0, y1){
-      let s = 0, c = 0;
-      for (let y = y0; y < y1; y++) for (let x = 0; x < w; x++){
-        const idx = (y*w + x)*4;
-        s += 0.299*data[idx] + 0.587*data[idx+1] + 0.114*data[idx+2];
-        c++;
-      }
-      return c ? s/c : 0;
-    }
-    const topBand = bandLum(0, Math.max(1, Math.round(h*0.08)));
-    const bottomBand = bandLum(Math.round(h*0.92), h);
-    return bottomBand > topBand;
-  }
-
-  function autoTuneAndExtract(){
-    const ctx = sourceCanvas.getContext('2d');
-    const w = sourceCanvas.width, h = sourceCanvas.height;
-    const data = ctx.getImageData(0, 0, w, h).data;
-
-    const threshold = otsuThreshold(data);
-    const invert = guessInvert(data, w, h);
-
-    threshSlider.value = threshold;
-    threshVal.textContent = threshold;
-    invertCheck.checked = invert;
-    sampleSlider.value = 220;
-    sampleVal.textContent = 220;
-
-    extractAndPreview();
-  }
-
-  // Average luminance over a rectangular region -- used both for the whole-image sky sample
-  // and each column's own local sky sample below.
-  function bandLumRect(data, w, x0, x1, y0, y1){
-    let s = 0, c = 0;
-    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++){
-      const idx = (y*w + x)*4;
-      s += 0.299*data[idx] + 0.587*data[idx+1] + 0.114*data[idx+2];
-      c++;
-    }
-    return c ? s/c : 0;
+    return best/scale;
   }
 
   // Removes single-column spikes (a bird, a glint, a JPEG artifact) that a per-column
@@ -607,42 +610,70 @@
     const w = sourceCanvas.width, h = sourceCanvas.height;
     const data = ctx.getImageData(0,0,w,h).data;
     const N = parseInt(sampleSlider.value, 10);
-    const threshold = parseInt(threshSlider.value, 10);
-    const invert = invertCheck.checked;
+    const sensitivity = parseInt(threshSlider.value, 10); // repurposed, see below
+    const preferFarthest = invertCheck.checked;
     const elevations = new Array(N);
 
-    // A single whole-image threshold assumes a uniformly-lit sky, which sunsets, hazy
-    // horizons, and wide panoramas routinely violate -- the left side of the sky can be a
-    // clearly different brightness than the right. Instead of comparing every column against
-    // one fixed number, shift the threshold per column by how much THAT column's own sky
-    // sample differs from the image's average sky -- the slider still means the same thing,
-    // it just travels with the actual local sky brightness instead of assuming it's constant.
-    const skyRows = Math.max(3, Math.round(h*0.06));
-    const globalSkyLum = bandLumRect(data, w, 0, w, 0, skyRows);
+    // A brightness threshold assumes sky and land fall on opposite sides of some cutoff --
+    // true for a dark ridge on a bright sky, false for a snow-bright peak on a darker sky, and
+    // shaky for a hazy far ridge that's nearly the same brightness as the sky behind it. What's
+    // actually universal is a STEP: the region just above a real boundary and the region just
+    // below it have reliably different average brightness, regardless of which one is darker.
+    // So each candidate row gets a step score -- the gap between the row's above/below window
+    // means, scaled down when either window is internally noisy (a two-sample t-statistic) so
+    // a big gap that's just photo grain scores lower than the same-sized gap between two
+    // genuinely uniform regions. Otsu's method then finds where, across the WHOLE photo, that
+    // score distribution actually splits into "flat" and "edge" -- the same trick as the old
+    // brightness threshold, just applied to "how step-like is this" instead of "how bright is
+    // this," which is what makes it agnostic to which side is the bright one.
+    const integral = buildIntegral(data, w, h);
     const colSampleHalfWidth = Math.max(4, Math.round(w*0.03));
-    const CONFIRM = 3; // consecutive land-like rows required before accepting a transition
+    const winRows = Math.max(6, Math.round(h*0.035));
+    const yMin = Math.max(winRows, Math.round(h*0.02));
+    const yMax = Math.min(h-winRows, Math.round(h*0.96));
 
+    const scoreGrids = new Array(N);
+    const allScores = [];
     for (let i = 0; i < N; i++){
       const x = Math.min(w-1, Math.floor(i*w/N));
       const x0 = Math.max(0, x-colSampleHalfWidth), x1 = Math.min(w, x+colSampleHalfWidth);
-      const localSkyLum = bandLumRect(data, w, x0, x1, 0, skyRows);
-      // clamped so an extreme local sample (a sun in frame, a very dark cloud) can't push the
-      // threshold so far it stops matching anything at all in that column
-      const skyDelta = Math.max(-40, Math.min(40, localSkyLum - globalSkyLum));
-      const localThreshold = threshold + skyDelta;
-
-      let foundY = h-1, candidateY = -1, consec = 0;
-      for (let y = 0; y < h; y++){
-        const idx = (y*w + x)*4;
-        const lum = 0.299*data[idx] + 0.587*data[idx+1] + 0.114*data[idx+2];
-        const isLand = invert ? (lum > localThreshold) : (lum < localThreshold);
-        if (isLand){
-          if (consec === 0) candidateY = y;
-          consec++;
-          if (consec >= CONFIRM){ foundY = candidateY; break; }
-        } else {
-          consec = 0;
+      const scores = yMin <= yMax ? new Float64Array(h) : null;
+      if (scores){
+        for (let y = yMin; y <= yMax; y++){
+          const above = rectStats(integral, x0, x1, y-winRows, y);
+          const below = rectStats(integral, x0, x1, y, y+winRows);
+          const score = Math.abs(above.mean-below.mean) / Math.sqrt(above.variance+below.variance+16);
+          scores[y] = score;
+          allScores.push(score);
         }
+      }
+      scoreGrids[i] = scores;
+    }
+    // Sensitivity slider scales the data-driven cutoff directly: higher accepts a weaker,
+    // subtler edge; lower holds out for a stronger one.
+    const sensitivityScale = 1.3 - (sensitivity/254)*1.0; // 1.3 (strict) .. 0.3 (lenient)
+    const cutoff = otsuSplit(allScores, 256) * sensitivityScale;
+
+    for (let i = 0; i < N; i++){
+      const scores = scoreGrids[i];
+      let foundY = h-1;
+      if (scores){
+        // Scan from the sky side down (or, with "flip it" checked, from the ground side up)
+        // and take the first row clearing the cutoff -- "first" rather than "strongest overall"
+        // is what keeps this from latching onto a sharper but wrong edge further down the
+        // column, like a lake's reflection of the real ridge. A real edge's score rises and
+        // falls smoothly over the averaging window above (rather than spiking on one row the
+        // way raw per-pixel brightness can), so unlike the old threshold scan, this doesn't
+        // need a multi-row confirmation to reject noise.
+        let chosen = -1, bestY = yMin, bestScore = -1;
+        for (let step = 0; step <= yMax-yMin; step++){
+          const y = preferFarthest ? (yMax-step) : (yMin+step);
+          if (scores[y] > bestScore){ bestScore = scores[y]; bestY = y; }
+          if (scores[y] >= cutoff){ chosen = y; break; }
+        }
+        // Falling back to the single strongest row (rather than h-1) keeps a photo with no
+        // clearly-qualifying row from collapsing the whole line to the bottom of the frame.
+        foundY = chosen >= 0 ? chosen : bestY;
       }
       elevations[i] = foundY;
     }

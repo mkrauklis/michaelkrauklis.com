@@ -28,23 +28,44 @@ script tag. That's the entire dependency surface.
 
 1. **Upload** — drag/drop or file picker, read via `FileReader` → `Image`.
 2. **Silhouette extraction** — for each of `N` x-samples, scan down the column for the
-   sky/land boundary. The base threshold is auto-picked via Otsu's method over the whole
-   image, but the actual per-column decision shifts that threshold by how much *that
-   column's own* sky sample differs from the image-wide sky average (`bandLumRect` on a
-   small window around each column vs. the full top strip) — a single fixed threshold
-   assumes uniformly-lit sky, which sunsets, haze, and wide panoramas routinely violate,
-   producing a ridge line that drifts off the real silhouette on one side of the frame.
-   The shift is clamped to ±40 luminance units (`skyDelta`) — an earlier unclamped version
-   could, at an extreme local sample (a sun in frame, a very dark cloud), push the
-   threshold so far that no pixel in that column registered as land at all, dropping the
-   line to the bottom of the frame for that column. A transition also needs `CONFIRM`
-   (3) consecutive land-reading rows before it's accepted, and the whole elevation array
-   gets a 5-wide median filter (`medianSmooth`) afterward — both exist to reject
-   single-column noise (a bird, a lens artifact, a stray bright pixel) that a bare
-   per-pixel threshold test can't distinguish from a real, sharp ridge feature. Sky-vs-land
-   polarity is auto-guessed by comparing top/bottom band luminance (`guessInvert`).
-   Threshold, sample count, and invert are all still user-adjustable via the "fine-tune"
-   disclosure if the auto-guess is wrong.
+   sky/land boundary. This used to be a brightness threshold (with a per-column adaptive
+   shift), but that assumes sky and land fall on opposite sides of some cutoff — true for a
+   dark ridge on a bright sky, false for a snow-bright peak on a darker sky, and shaky for a
+   hazy far ridge that's nearly the same brightness as the sky behind it (all three showed up
+   as real failures: a distant hazy mountain rising above a much higher-contrast near
+   treeline, snow peaks brighter than a cloudy sky with a lake reflecting a second copy of
+   the same ridge lower in the frame, and a deep-blue-sky/white-peak photo where the same
+   column goes sky→bright snow→dark forest, i.e. two edges of opposite polarity stacked in
+   one column). What's actually universal is a *step*: the region just above a real boundary
+   and the region just below it have reliably different average brightness, regardless of
+   which one is darker. So each candidate row `y` in each column gets a step score —
+   `|meanAbove - meanBelow|` over two `winRows`-tall windows straddling `y`, divided by
+   `sqrt(varAbove + varBelow + 16)` (a two-sample t-statistic, via `rectStats`) so a big gap
+   that's just photo grain scores lower than the same-sized gap between two genuinely uniform
+   regions. `buildIntegral()` builds a summed-area table of luminance and luminance² once per
+   extraction so every window's mean/variance is an O(1) lookup (`rectStats`) instead of a
+   pixel rescan — there are `N × h` of these queries per extraction. Otsu's method
+   (`otsuSplit`, generalized from "split 256 brightness levels" to "split any set of
+   non-negative numbers") then finds where, across the *whole* photo's score distribution,
+   "flat" ends and "edge" begins — the same trick the old brightness threshold used, just
+   applied to "how step-like is this" instead of "how bright is this," which is what makes it
+   agnostic to which side is the bright one. Per column, the first row (scanning from the sky
+   side down) whose score clears that cutoff wins — "first" rather than "strongest overall"
+   is what keeps a photo from latching onto a sharper-but-wrong edge further down the column,
+   like the lake reflection case above; the mountain-above-treeline case is why it's "first"
+   rather than "only": a column can have a weak qualifying edge higher up and a much
+   stronger one lower down, and the weak one is usually the real ridge. The whole elevation
+   array still gets a 5-wide median filter (`medianSmooth`) afterward for single-column noise
+   (a bird, a lens artifact). The old brightness-threshold's `CONFIRM`-consecutive-rows check
+   isn't needed any more — a real edge's score rises and falls smoothly across the averaging
+   window rather than spiking on one row, unlike raw per-pixel brightness, so single-row
+   crossing is already stable. The "Sensitivity" slider now scales the Otsu cutoff directly
+   (higher accepts a weaker edge) instead of nudging a brightness level, and "Flip it" now
+   picks the *last* qualifying row instead of the first (scanning from the ground side up)
+   rather than assuming an inverted brightness polarity, since the detector no longer cares
+   which side is darker. Sample count, sensitivity, and flip are all still user-adjustable via
+   the "fine-tune" disclosure, but the goal of this rewrite was for the default, un-tuned
+   result to be right far more often.
 3. **Fourier decomposition** — the elevation profile is mirrored (`M = 2N`) to force
    periodicity, then run through a hand-rolled DFT (`dft()`). Components are sorted by
    amplitude, largest first, so reconstructions add the most structurally important
