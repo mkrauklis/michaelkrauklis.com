@@ -298,6 +298,24 @@ impression), it also reports the actual MSE for both, and the percentage the ada
 it — a real number, not just "does this look sharper to you." This exists because a purely visual
 before/after is easy to eyeball as "basically the same" even when it isn't; the number settles it.
 
+## The "how this actually works" architecture diagram
+
+The SVG hourglass diagram (in the `learnSection` disclosure) color-codes the encoder (coral),
+decoder (teal), latent vector (violet), and the personalization head (amber, dashed outline). Get
+this classification right, because it's easy to get backwards: **shared** means "identical bytes
+for every visitor, forever" — that's only true of the encoder's and decoder's *weights* (coral,
+teal), which were fitted once, offline, on photos that were never yours, and never change again.
+Everything else is **unique to you**, including the gray photo-pixel blocks (your actual photo, in
+and out), the violet latent vector (256 numbers *computed from your photo*, not shared — a
+previous version of this diagram wrongly grouped it with the shared weights), and the amber
+personalization head. The dashed amber box is drawn over the decoder's last three conv-transpose
+blocks because that's *where* the head gets fused in, not because those decoder weights themselves
+are unique — the prose below the diagram exists specifically to draw that distinction, so don't
+let a future edit collapse "the head is layered onto these weights" back into "these weights are
+unique." If you touch the legend or the prose here, keep the two groups exactly as: shared =
+network weights only (coral + teal); unique to you = whatever depends on your specific photo
+(gray + violet + amber).
+
 ## The loss curve (`renderLossCurve`)
 
 `checkpoint()` records `{iteration, mse}` at every progress update into `lossHistory` and redraws
@@ -308,16 +326,53 @@ loss briefly gets *worse* right at the transition before dropping again as they'
 is expected and worth leaving visible, not smoothing away — it's honest evidence that two separate
 optimizations are happening, not one continuous one.
 
+## The loss landscape (`renderLossLandscape`)
+
+The loss curve plots error against *time* — a single number falling, which is genuinely what
+gradient descent optimizes, but doesn't look like "descending a landscape" the way the name
+suggests, since the actual search happens in a 256-dimensional space the curve never shows.
+This plots error against *position* instead, as a 2D slice through that space: `checkpoint()`
+pushes a copy of the latent vector into `latentTrajectory` on every checkpoint (reset alongside
+`lossHistory` in `reconstruct()`), and once training finishes, `renderLossLandscape()` picks two
+directions out of that recorded path — direction 1 is start-to-finish net travel, direction 2 is
+whichever recorded point strayed furthest from that straight line (with its along-direction-1
+component removed), which is deliberately *where the path swerved hardest*, not an
+arbitrary or variance-maximizing axis. It then evaluates the frozen decoder's MSE against the
+target photo on a 22×22 grid spanning those two directions (`decodeFull(..., null)` — no
+adapter, since this is specifically the 256-dim latent landscape) and renders it as a heatmap
+with the actual path traced on top in white. A visible bend in that white line is a real,
+literal course-correction, not a metaphor. This is a supplementary visualization, not a
+replacement for the loss curve — don't change what the loss curve plots or how; add
+context here instead if the landscape needs adjusting.
+
+`decodeFull` gets called ~484 times (22×22) synchronously-ish with a `setTimeout(r,0)` yield
+between grid rows, which is why it's a `hideSpinner`-gated canvas like the others rather than
+appearing instantly — on a slower device this can take a few seconds after training itself
+finishes. It only runs on a live training run (needs both `latentTrajectory` and the target
+photo); `loadFromParams()` has neither, so it just hides the spinner and leaves the canvas
+blank, same as the loss curve does on that path.
+
 ## Result-canvas spinners and the status ticker
 
-Each of the four canvases that only get real content partway through training (impression,
-latent heatmap, head fingerprint, loss curve) has a `.spinner` sibling inside a `.canvas-wrap`,
-shown by `resetSpinners()` at the start of `reconstruct()` and hidden individually the moment
-that specific canvas gets its first real paint — `hideSpinner('headSpinner')` only fires inside
-`checkpoint()`'s `if (adapter)` branch, for instance, so it correctly stays spinning through all
-of phase 1, since there's genuinely nothing to show there until phase 2 starts. `loadFromParams()`
-(no training, so no loss curve at all) hides all four immediately rather than leaving any of them
-spinning forever.
+Each of the five canvases that only get real content partway through training (impression,
+latent heatmap, head fingerprint, loss curve, loss landscape) has a `.spinner` sibling inside a
+`.canvas-wrap`, shown by `resetSpinners()` at the start of `reconstruct()` and hidden individually
+the moment that specific canvas gets its first real paint — `hideSpinner('headSpinner')` only
+fires inside `checkpoint()`'s `if (adapter)` branch, for instance, so it correctly stays spinning
+through all of phase 1, since there's genuinely nothing to show there until phase 2 starts.
+`loadFromParams()` (no training, so no loss curve or descent path at all) hides all five
+immediately rather than leaving any of them spinning forever.
+
+The impression, latent, and head canvases also each have a Download button, and that button's
+row (`downloadReconRow`/`downloadLatentRow`/`downloadHeadRow`) starts `display:none` in the HTML
+and is only revealed by `hideSpinner()` itself, via the `SPINNER_DOWNLOAD_ROW` map — so a
+download button for a canvas can't appear before that canvas has anything real painted into it.
+The loss landscape's row (`downloadLandscapeRow`) isn't in that map, since `loadFromParams()`
+hides `landscapeSpinner` without ever drawing anything there; instead `reconstruct()` reveals it
+directly, only when `renderLossLandscape()` actually returns `true`. If a new result canvas gets
+a spinner and a download button in the future, wire it the same way — never leave a canvas's
+Download button visible while its spinner (or the section it's in) implies there's nothing there
+yet.
 
 `startStatusTicker()`/`stopStatusTicker()` cross-fade through `STATUS_MESSAGES`, a mix of
 plain-English explanation and lighter asides, under the progress bar — purely there so the
@@ -347,7 +402,11 @@ it — `buildShareArtifacts()` renders all of them from the same `latentArr`/`ad
 encodes. The key/both rows (plus their `<hr>` dividers, `shareKeyDivider`/`shareBothDivider`) are
 hidden together as a unit when there's no adapter — don't toggle the QR canvas's own `.col` without
 also toggling its paired visualization `.col`, or you'll end up with an orphaned viz next to
-nothing.
+nothing. Each of the four paired visualizations also has its own Download button
+(`downloadShareEssenceLatentBtn`/`downloadShareKeyHeadBtn`/`downloadShareBothLatentBtn`/
+`downloadShareBothHeadBtn`) — unlike the training-step canvases these don't need spinner-gating,
+since `buildShareArtifacts()` only ever runs once every canvas in `shareSection` is already
+painted, and the whole section is `display:none` until that call finishes.
 
 The "prove the head matters" comparison (above, in the training section) also gets a third image
 when it can: `proofOriginalCol`/`proofOriginalCanvas` show the actual downsampled source photo
@@ -454,4 +513,9 @@ explore section still works (catches window-listener leaks from
 during the *personalizing* phase specifically — that's where a
 backend-kernel-support regression (see "The personalization adapter" above)
 would surface, and it's more likely to show up now that personalization
-touches three layers instead of one.
+touches three layers instead of one. Also confirm each of the impression/
+latent/head Download buttons stays hidden until its canvas actually has
+something painted (reload and watch the training step closely — a button
+appearing before its spinner clears is the regression to catch), and that
+the loss-landscape canvas fills in with a visible bent path a few seconds
+after training completes, with its own Download button appearing only then.

@@ -257,7 +257,7 @@
           <div class="result-label" id="reconLabel">the network's impression</div>
           <div class="result-desc">The frozen decoder's current output — updates live as training
           runs.</div>
-          <div class="actions" style="margin-top:8px;">
+          <div class="actions" id="downloadReconRow" style="margin-top:8px; display:none;">
             <button class="secondary" id="downloadReconBtn" style="padding:6px 14px; font-size:0.82rem;">Download</button>
           </div>
         </div>
@@ -269,7 +269,7 @@
           <div class="result-label">latent vector — 256 numbers, live</div>
           <div class="result-desc">Every dimension the network is adjusting, brightness = value —
           brighter is a larger number, darker is a smaller (or negative) one.</div>
-          <div class="actions" style="margin-top:8px;">
+          <div class="actions" id="downloadLatentRow" style="margin-top:8px; display:none;">
             <button class="secondary" id="downloadLatentBtn" style="padding:6px 14px; font-size:0.82rem;">Download</button>
           </div>
         </div>
@@ -282,7 +282,7 @@
           <div class="result-desc">An adjustment fitted to your photo alone, layered onto the
           decoder's last three layers — everyone else's browser uses the same decoder, but nobody
           else has this.</div>
-          <div class="actions" style="margin-top:8px;">
+          <div class="actions" id="downloadHeadRow" style="margin-top:8px; display:none;">
             <button class="secondary" id="downloadHeadBtn" style="padding:6px 14px; font-size:0.82rem;">Download</button>
           </div>
         </div>
@@ -295,6 +295,22 @@
           <div class="result-desc">The actual gradient descent — how far the output is from your
           photo, falling with every step. The jump partway across is where personalization
           begins.</div>
+        </div>
+        <div class="result-col">
+          <div class="canvas-wrap">
+            <canvas id="lossLandscapeCanvas" width="320" height="320"></canvas>
+            <div class="spinner" id="landscapeSpinner"></div>
+          </div>
+          <div class="result-label">the descent, as a 2D slice of terrain</div>
+          <div class="result-desc" id="landscapeDesc">The curve on the left plots error against
+          time — one number, falling. This plots it against <i>position</i> instead: two
+          directions pulled out of your own descent path, so the actual multi-dimensional
+          terrain gradient descent is walking becomes visible as a landscape, with the white
+          line as the path your training actually walked. Where it bends, the network corrected
+          course.</div>
+          <div class="actions" id="downloadLandscapeRow" style="margin-top:8px; display:none;">
+            <button class="secondary" id="downloadLandscapeBtn" style="padding:6px 14px; font-size:0.82rem;">Download</button>
+          </div>
         </div>
       </div>
       <div id="headProofRow" class="row" style="margin-top:28px; display:none;">
@@ -346,6 +362,9 @@
           <div class="result-label">what it carries: the latent vector</div>
           <div class="result-desc">The 256 numbers inside this exact QR code — brightness = value,
           same scale as everywhere else on this page.</div>
+          <div class="actions" style="margin-top:8px; justify-content:center;">
+            <button class="secondary" id="downloadShareEssenceLatentBtn" style="padding:6px 14px; font-size:0.82rem;">Download</button>
+          </div>
         </div>
       </div>
       <hr class="divider" id="shareKeyDivider">
@@ -364,6 +383,9 @@
           <div class="result-label">what it carries: the personalized head</div>
           <div class="result-desc">The 454 numbers inside this exact QR code — on its own, this
           plot describes nothing decodable.</div>
+          <div class="actions" style="margin-top:8px; justify-content:center;">
+            <button class="secondary" id="downloadShareKeyHeadBtn" style="padding:6px 14px; font-size:0.82rem;">Download</button>
+          </div>
         </div>
       </div>
       <hr class="divider" id="shareBothDivider">
@@ -385,6 +407,10 @@
           <div class="result-label">what it carries: both</div>
           <div class="result-desc">The same two number-sets side by side — everything needed for
           the sharp version, in one scan.</div>
+          <div class="actions" style="margin-top:8px; justify-content:center;">
+            <button class="secondary" id="downloadShareBothLatentBtn" style="padding:6px 14px; font-size:0.82rem;">Download latent</button>
+            <button class="secondary" id="downloadShareBothHeadBtn" style="padding:6px 14px; font-size:0.82rem;">Download head</button>
+          </div>
         </div>
       </div>
     </div>
@@ -538,6 +564,7 @@
           <rect x="200" y="170" width="46" height="46" rx="4" fill="var(--danger)" stroke="var(--danger)" stroke-width="0.5" opacity="0.68"/>
           <rect x="207" y="177" width="46" height="46" rx="4" fill="var(--danger)" stroke="var(--danger)" stroke-width="0.5" opacity="0.85"/>
 
+          <rect x="322" y="155" width="36" height="90" rx="18" fill="var(--amber)" fill-opacity="0.12" stroke="var(--amber)" stroke-width="2.5" stroke-dasharray="5 4"/>
           <circle cx="340" cy="168" r="5" fill="var(--violet)" stroke="var(--violet)" stroke-width="0.5"/>
           <circle cx="340" cy="184" r="5" fill="var(--violet)" stroke="var(--violet)" stroke-width="0.5"/>
           <circle cx="340" cy="200" r="5" fill="var(--violet)" stroke="var(--violet)" stroke-width="0.5"/>
@@ -555,8 +582,9 @@
           <rect x="544" y="160" width="80" height="80" rx="4" fill="var(--ink-dim)" stroke="var(--ink-dim)" stroke-width="0.5" opacity="0.65"/>
 
           <rect x="399" y="149" width="85" height="85" rx="10" fill="var(--amber)" fill-opacity="0.12" stroke="var(--amber)" stroke-width="2.5" stroke-dasharray="5 4"/>
-          <rect x="378" y="100" width="145" height="30" rx="15" fill="var(--amber)"/>
-          <text x="450.5" y="120.5" text-anchor="middle" font-size="12" font-weight="700" fill="#10131a">★ UNIQUE TO YOU</text>
+          <rect x="308" y="100" width="215" height="30" rx="15" fill="var(--amber)"/>
+          <text x="415.5" y="120.5" text-anchor="middle" font-size="12" font-weight="700" fill="#10131a">★ UNIQUE TO YOU</text>
+          <path d="M370,130 L340,153" stroke="var(--amber)" stroke-width="1.5"/>
           <path d="M441,130 L410,149" stroke="var(--amber)" stroke-width="1.5"/>
           <path d="M460,130 L473,149" stroke="var(--amber)" stroke-width="1.5"/>
 
@@ -575,30 +603,33 @@
         <div style="display:flex; gap:24px; flex-wrap:wrap; margin-top:14px; padding:12px 16px; background:var(--bg-panel-2); border-radius:6px;">
           <div style="display:flex; align-items:center; gap:8px;">
             <span style="display:flex; gap:2px;">
-              <span style="width:10px; height:10px; border-radius:2px; background:var(--ink-dim); display:inline-block;"></span>
               <span style="width:10px; height:10px; border-radius:2px; background:var(--danger); display:inline-block;"></span>
-              <span style="width:10px; height:10px; border-radius:2px; background:var(--violet); display:inline-block;"></span>
               <span style="width:10px; height:10px; border-radius:2px; background:var(--teal); display:inline-block;"></span>
             </span>
-            <span style="font-size:0.82rem; color:var(--ink-dim);"><b style="color:var(--ink);">Shared</b> — identical bytes, every browser, forever frozen</span>
+            <span style="font-size:0.82rem; color:var(--ink-dim);"><b style="color:var(--ink);">Shared</b> — identical weights, every browser, forever frozen</span>
           </div>
           <div style="display:flex; align-items:center; gap:8px;">
-            <span style="width:10px; height:10px; border-radius:2px; background:var(--amber); display:inline-block;"></span>
-            <span style="font-size:0.82rem; color:var(--ink-dim);"><b style="color:var(--amber);">Unique to you</b> — exists only because of your photo, computed just now</span>
+            <span style="display:flex; gap:2px;">
+              <span style="width:10px; height:10px; border-radius:2px; background:var(--ink-dim); display:inline-block;"></span>
+              <span style="width:10px; height:10px; border-radius:2px; background:var(--violet); display:inline-block;"></span>
+              <span style="width:10px; height:10px; border-radius:2px; background:var(--amber); display:inline-block;"></span>
+            </span>
+            <span style="font-size:0.82rem; color:var(--ink-dim);"><b style="color:var(--amber);">Unique to you</b> — depends on your specific photo, computed just now</span>
           </div>
         </div>
-        <p style="margin-top:18px; font-size:0.85rem;">The gray blocks are actual photo pixels. Coral
-        is the encoder — it does run in your browser now, but only once, for that instant first
-        guess. Teal is the decoder, the thing actually doing the work: the exact same weights,
-        unchanged, that everyone else's browser also uses. Violet is the 256-number latent vector,
-        the "impression" your photo gets reduced to. All three of those — every gray, coral, violet,
-        and teal pixel in this diagram — are byte-for-byte identical no matter whose browser is
-        running it. The <b style="color:var(--amber);">★ UNIQUE TO YOU</b> badge is the one exception:
-        454 numbers that exist only because of your specific photo, layered onto the decoder's last
-        three steps, fitted live in your browser and nowhere else. It's also the only part that gets
-        trained twice over — first the 256 numbers alone, then this head fitted on top of them. You
-        already saw what difference it makes in the "latent only" vs. "latent + head" comparison back
-        in the training step — that gap is entirely this one amber piece.</p>
+        <p style="margin-top:18px; font-size:0.85rem;">Coral is the encoder and teal is the decoder —
+        the two networks' <i>weights</i>, the numbers that define what each layer computes. Those are
+        byte-for-byte identical no matter whose browser is running it, forever: they were fitted once,
+        offline, on 13,000 photos that were never yours, and never change again. Everything marked
+        <b style="color:var(--amber);">★ UNIQUE TO YOU</b> depends on your specific photo instead: the
+        gray blocks are your actual photo pixels going in and the decoder's actual output coming out;
+        the violet 256-number latent vector is what the encoder reduces your photo to, and no one
+        else's photo reduces to that same vector; and the 454-number personalization, fused onto the
+        decoder's last three layers, is fitted live in your browser from your latent vector alone. That
+        head is also the only piece that gets trained twice over — first the 256 numbers alone, then
+        this fitted on top of them. You already saw what difference it makes in the "latent only" vs.
+        "latent + head" comparison back in the training step — that gap is entirely this one adapter,
+        sitting on top of decoder weights that stayed exactly the same either way.</p>
       </div>
     </div>
   </details>
@@ -1005,6 +1036,106 @@
     ctx.fillText('step '+last.x, x0, H-6);
   }
 
+  // The loss curve plots error against time, in one dimension. But the actual search happens
+  // in a 256-dimensional space, and gradient descent doesn't move in a straight line through
+  // it -- it corrects course, the way the loss curve's own kink at the phase boundary hints
+  // at. This picks two directions out of the real recorded path and evaluates the frozen
+  // decoder's error on a grid spanning them, so that correction becomes a visible bend in a
+  // 2D slice of terrain instead of an invisible property of a 256-dim path.
+  async function renderLossLandscape(trajectory, decoder, target, canvas){
+    if (trajectory.length < 4) return false;
+    const dim = trajectory[0].length;
+    const start = trajectory[0], end = trajectory[trajectory.length-1];
+
+    // Direction 1: the net direction of travel, start to finish.
+    let u = end.map((v,i)=> v - start[i]);
+    let uLen = Math.sqrt(u.reduce((s,v)=> s+v*v, 0)) || 1;
+    u = u.map(v=> v/uLen);
+
+    // Direction 2: whichever recorded point strayed furthest from the straight line between
+    // start and end, with its along-u component removed. That's exactly where the path
+    // swerved hardest, so this is the direction the "correction" is most visible in.
+    let bestPerpLen = -1, farPoint = trajectory[Math.floor(trajectory.length/2)];
+    for (const p of trajectory){
+      const rel = p.map((v,i)=> v - start[i]);
+      const along = rel.reduce((s,v,i)=> s+v*u[i], 0);
+      const perpLen = Math.sqrt(rel.reduce((s,v,i)=> s+(v-along*u[i])**2, 0));
+      if (perpLen > bestPerpLen){ bestPerpLen = perpLen; farPoint = p; }
+    }
+    let v = farPoint.map((val,i)=> val - start[i]);
+    const along = v.reduce((s,val,i)=> s+val*u[i], 0);
+    v = v.map((val,i)=> val - along*u[i]);
+    let vLen = Math.sqrt(v.reduce((s,val)=> s+val*val, 0));
+    if (vLen < 1e-6){ // the path was ~a straight line -- fall back to an arbitrary orthogonal axis
+      v = u.map((val,i)=> (i===1?1:0) - val*u[1]);
+      vLen = Math.sqrt(v.reduce((s,val)=> s+val*val, 0)) || 1;
+    }
+    v = v.map(val=> val/vLen);
+
+    const project = p => {
+      const rel = p.map((val,i)=> val - start[i]);
+      return [rel.reduce((s,val,i)=> s+val*u[i], 0), rel.reduce((s,val,i)=> s+val*v[i], 0)];
+    };
+    const path2d = trajectory.map(project);
+    let aMin=Infinity, aMax=-Infinity, bMin=Infinity, bMax=-Infinity;
+    for (const [a,b] of path2d){ aMin=Math.min(aMin,a); aMax=Math.max(aMax,a); bMin=Math.min(bMin,b); bMax=Math.max(bMax,b); }
+    const aPad = (aMax-aMin)*0.3 || 1, bPad = (bMax-bMin)*0.3 || 1;
+    aMin -= aPad; aMax += aPad; bMin -= bPad; bMax += bPad;
+
+    const GRID = 22;
+    const losses = new Float32Array(GRID*GRID);
+    let lossMin = Infinity, lossMax = -Infinity;
+    for (let gy = 0; gy < GRID; gy++){
+      for (let gx = 0; gx < GRID; gx++){
+        const a = aMin + (aMax-aMin)*gx/(GRID-1);
+        const b = bMin + (bMax-bMin)*gy/(GRID-1);
+        const point = start.map((val,i)=> val + a*u[i] + b*v[i]);
+        const loss = tf.tidy(()=>{
+          const lat = tf.tensor(point, [1, dim]);
+          const out = decodeFull(lat, decoder, null);
+          return tf.losses.meanSquaredError(target, out).dataSync()[0];
+        });
+        losses[gy*GRID+gx] = loss;
+        if (loss < lossMin) lossMin = loss;
+        if (loss > lossMax) lossMax = loss;
+      }
+      await new Promise(r=> setTimeout(r, 0)); // yield between rows so the tab stays responsive
+    }
+
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    const cell = W/GRID;
+    const span = (lossMax-lossMin) || 1;
+    for (let gy = 0; gy < GRID; gy++){
+      for (let gx = 0; gx < GRID; gx++){
+        const t = (losses[gy*GRID+gx]-lossMin)/span;
+        // dark = low error, bright = high -- same "brightness tracks magnitude" language as
+        // every other heatmap on this page, with a faint blue cast so it doesn't read as
+        // the plain grayscale latent/head plots
+        const gray = Math.round(20 + t*130);
+        ctx.fillStyle = `rgb(${gray},${gray},${Math.min(255,Math.round(gray*1.12))})`;
+        ctx.fillRect(gx*cell, H-(gy+1)*cell, cell+1, cell+1);
+      }
+    }
+
+    const toPx = ([a,b]) => [ (a-aMin)/(aMax-aMin)*W, H-(b-bMin)/(bMax-bMin)*H ];
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    path2d.forEach((p,i)=>{ const [x,y]=toPx(p); i===0?ctx.moveTo(x,y):ctx.lineTo(x,y); });
+    ctx.stroke();
+
+    const [sx,sy] = toPx(path2d[0]);
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(sx,sy,4,0,Math.PI*2); ctx.stroke();
+    const [ex,ey] = toPx(path2d[path2d.length-1]);
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(ex,ey,3.5,0,Math.PI*2); ctx.fill();
+
+    ctx.fillStyle = '#9aa0ae'; ctx.font = '10px Inter, sans-serif';
+    ctx.fillText('start (hollow) → trained (filled)', 6, H-6);
+    return true;
+  }
+
   // ---------- Downloads ----------
   function downloadCanvas(canvas, filename, upscaleTo){
     let source = canvas;
@@ -1025,12 +1156,22 @@
     downloadCanvas(document.getElementById('latentHeatmapCanvas'), 'afterimage-latent.png'));
   document.getElementById('downloadHeadBtn').addEventListener('click', ()=>
     downloadCanvas(document.getElementById('headHeatmapCanvas'), 'afterimage-head.png'));
+  document.getElementById('downloadLandscapeBtn').addEventListener('click', ()=>
+    downloadCanvas(document.getElementById('lossLandscapeCanvas'), 'afterimage-landscape.png'));
   document.getElementById('downloadQrLatentBtn').addEventListener('click', ()=>
     downloadCanvas(document.getElementById('qrLatentCanvas'), 'afterimage-qr-essence.png'));
   document.getElementById('downloadQrHeadOnlyBtn').addEventListener('click', ()=>
     downloadCanvas(document.getElementById('qrHeadOnlyCanvas'), 'afterimage-qr-key.png'));
   document.getElementById('downloadQrFullBtn').addEventListener('click', ()=>
     downloadCanvas(document.getElementById('qrFullCanvas'), 'afterimage-qr-both.png'));
+  document.getElementById('downloadShareEssenceLatentBtn').addEventListener('click', ()=>
+    downloadCanvas(document.getElementById('shareEssenceLatentCanvas'), 'afterimage-latent.png'));
+  document.getElementById('downloadShareKeyHeadBtn').addEventListener('click', ()=>
+    downloadCanvas(document.getElementById('shareKeyHeadCanvas'), 'afterimage-head.png'));
+  document.getElementById('downloadShareBothLatentBtn').addEventListener('click', ()=>
+    downloadCanvas(document.getElementById('shareBothLatentCanvas'), 'afterimage-latent.png'));
+  document.getElementById('downloadShareBothHeadBtn').addEventListener('click', ()=>
+    downloadCanvas(document.getElementById('shareBothHeadCanvas'), 'afterimage-head.png'));
   document.getElementById('downloadAllBtn').addEventListener('click', ()=>{
     downloadCanvas(document.getElementById('reconCanvas'), 'afterimage-impression.png', 768);
     downloadCanvas(document.getElementById('latentHeatmapCanvas'), 'afterimage-latent.png');
@@ -1172,14 +1313,25 @@
   const latentHeatmapCanvas = document.getElementById('latentHeatmapCanvas');
   const headHeatmapCanvas = document.getElementById('headHeatmapCanvas');
   const lossCurveCanvas = document.getElementById('lossCurveCanvas');
-  let lossHistory = [], phase1End = null;
+  const lossLandscapeCanvas = document.getElementById('lossLandscapeCanvas');
+  let lossHistory = [], phase1End = null, latentTrajectory = [];
 
   // Each result canvas has a spinner sibling shown until that canvas actually has something
   // real painted into it -- e.g. the head's spinner deliberately stays up through all of phase
   // 1, since there's genuinely nothing to show it until phase 2 starts fitting it.
-  function hideSpinner(id){ const el = document.getElementById(id); if (el) el.style.display = 'none'; }
-  function showSpinner(id){ const el = document.getElementById(id); if (el) el.style.display = 'block'; }
-  function resetSpinners(){ ['reconSpinner','latentSpinner','headSpinner','lossSpinner'].forEach(showSpinner); }
+  // each spinner guards a canvas; the matching download row stays hidden until that canvas has something in it
+  const SPINNER_DOWNLOAD_ROW = { reconSpinner:'downloadReconRow', latentSpinner:'downloadLatentRow', headSpinner:'downloadHeadRow' };
+  function hideSpinner(id){
+    const el = document.getElementById(id); if (el) el.style.display = 'none';
+    const rowId = SPINNER_DOWNLOAD_ROW[id];
+    if (rowId) document.getElementById(rowId).style.display = 'flex';
+  }
+  function showSpinner(id){
+    const el = document.getElementById(id); if (el) el.style.display = 'block';
+    const rowId = SPINNER_DOWNLOAD_ROW[id];
+    if (rowId) document.getElementById(rowId).style.display = 'none';
+  }
+  function resetSpinners(){ ['reconSpinner','latentSpinner','headSpinner','lossSpinner','landscapeSpinner'].forEach(showSpinner); }
 
   // A mix of plain-English explanation and lighter asides, cycling under the progress bar so
   // the wait has *something* happening even during the several-second gaps between
@@ -1239,6 +1391,7 @@
     const latentArr = await latent.data();
     renderLatentHeatmap(latentArr, latentHeatmapCanvas);
     hideSpinner('latentSpinner');
+    latentTrajectory.push(Array.from(latentArr));
     if (adapter){
       const [scaleIn,shiftIn,scaleOut,shiftOut] = await Promise.all(
         [adapter.scaleIn.data(), adapter.shiftIn.data(), adapter.scaleOut.data(), adapter.shiftOut.data()]);
@@ -1321,7 +1474,7 @@
     const latent = tf.variable(initLatent);
     initLatent.dispose();
     renderHeadFingerprint(null, headHeatmapCanvas);
-    lossHistory = []; phase1End = null;
+    lossHistory = []; phase1End = null; latentTrajectory = [];
     document.getElementById('headProofRow').style.display = 'none';
     document.getElementById('headProofNote').style.display = 'none';
 
@@ -1347,6 +1500,9 @@
       scaleOut: await scaleOut.data(), shiftOut: await shiftOut.data(),
     };
     await showHeadProof(latent, adapter, decoder, target);
+    const landscapeDrawn = await renderLossLandscape(latentTrajectory, decoder, target, lossLandscapeCanvas);
+    hideSpinner('landscapeSpinner');
+    if (landscapeDrawn) document.getElementById('downloadLandscapeRow').style.display = 'flex';
     target.dispose(); latent.dispose();
     scaleIn.dispose(); shiftIn.dispose(); scaleOut.dispose(); shiftOut.dispose();
 
@@ -1438,8 +1594,9 @@
     hideSpinner('latentSpinner');
     renderHeadFingerprint(adapterArrs, headHeatmapCanvas);
     hideSpinner('headSpinner');
-    // no training happens on this path, so there's no loss curve to wait for
+    // no training happens on this path, so there's no loss curve or descent path to wait for
     hideSpinner('lossSpinner');
+    hideSpinner('landscapeSpinner');
     document.getElementById('learnSection').style.display = 'block';
     buildShareArtifacts(latentArr, adapterArrs);
     setupExplore(latentArr, adapterArrs, decoder);
