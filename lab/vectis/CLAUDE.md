@@ -13,6 +13,15 @@ this file is about how it's actually implemented and why.
 root `CLAUDE.md`). Accent color is a cyan (`#57c2e0`) not otherwise used on the site — amber is
 Ridgeline's, violet is Afterimage's.
 
+**Layout**: sections "2. your two axes" and "3. what's on the map" sit in a left `.col`, the
+compass/network plot in a right `.col`, both inside one `.row` (theme.css's generic flex
+row/column pair, reused rather than page-specific CSS). This replaced an earlier fully-stacked
+layout after direct feedback that adding a word and then having to scroll down to see it land
+made the core "type something, watch it plot" loop feel disconnected. `.row`'s `flex-wrap: wrap`
+means this collapses to the original stacked order automatically on anything too narrow for both
+columns (roughly under ~865px, the two `flex-basis` values plus gap) — including every mobile
+width — so no separate mobile-specific markup was needed.
+
 **Why a CDN import**: Ridgeline does all its math by hand in inline `<script>` with zero external
 JS, but Afterimage already broke from that — it loads TensorFlow.js, `tfjs-backend-wasm`,
 `qrcode-generator`, and `jsQR` from jsdelivr, because training a live autoencoder head in the
@@ -78,10 +87,11 @@ stretching *whatever* range exists to fill the whole axis means a razor-thin, no
 margin gets displayed with exactly the same visual confidence as a wide, meaningful one. Verified
 directly: eight animal words spanned only 0.046 of raw similarity to "legs" (0.859–0.905), and
 "worm" — which has no legs — outscored "dog". This isn't a bug in the normalization (it's doing
-exactly what was asked) or an isolated fluke (the page's own default example spans just
-0.025–0.033 on its two axes) — thin raw margins are the normal case for CLIP text-text
-similarity, not an exceptional one. That ruled out a threshold-triggered "unusually thin!"
-warning, which would misrepresent the common case as rare. Instead, `#spreadNote` always shows
+exactly what was asked) or an isolated fluke — the page's original default example (calm/chaotic)
+spanned just 0.025–0.033 on its two axes, and even the current, much better-behaved default
+(ocean/mountain) still only spans 0.058–0.102. Thin raw margins are the normal case for CLIP
+text-text similarity, not an exceptional one. That ruled out a threshold-triggered "unusually
+thin!" warning, which would misrepresent the common case as rare. Instead, `#spreadNote` always shows
 the live, current range on both axes whenever there are 2+ items, framed as a standing fact about
 how to read the plot rather than an alarm. Don't turn this back into a conditional warning
 without re-checking that assumption.
@@ -112,6 +122,44 @@ That combination doesn't depend on a reader parsing a glyph at all. Don't reintr
 arrow character inside rotated/vertical text without checking Unicode's vertical orientation
 property for it first — this exact failure mode is easy to reintroduce by accident.
 
+## Choosing axis words: topics beat traits, and it's measurable
+
+Three separate rounds of live testing hit the same wall: "calm"/"chaotic" put a thunderstorm as
+*less* chaotic than a library; "legs" ranked a worm above a dog; "safe"/"hairy" put a zebra as the
+least hairy thing on the map and ranked snake as safer than bunny. The instinct was that the
+specific word pair was just badly chosen — but a direct test disproved the easy fix: querying the
+quick-similarity-check widget's own machinery for `cosine(axisXWord, axisYWord)` across several
+antonym-style trait pairs (calm/chaotic 0.97, formal/playful 0.95, warm/cold 0.98,
+peaceful/violent 0.96, simple/complex 0.97, natural/artificial 0.96) showed **every** one sitting
+in essentially the same 0.95-0.98 band — this isn't a property of any one pair, it's what
+antonym-adjectives do in CLIP's text space generally. Topically-different *nouns*
+(ocean/mountain 0.91, food/technology 0.94, nature/city 0.93, forest/desert 0.90) score
+measurably — if not dramatically — lower. The likely reason: CLIP's text tower is trained to
+align with photo captions, which describe *what's depicted* far more reliably than they apply
+mood/trait adjectives, so two nouns naming different subjects separate better than two adjectives
+naming opposite ends of one trait.
+
+Two things follow from this, both shipped:
+- **The default example changed** from calm/chaotic + thunderstorm/library/rollercoaster/
+  meditation to ocean/mountain + surfing/summit/coral reef/ski lodge/sailboat/hiking trail —
+  verified live to place every item in a way that actually matches its real-world domain (ocean
+  items score high on "ocean," mountain items high on "mountain"), unlike every trait-pair
+  example tried. This is curation of what a first-time visitor sees, not a claim that this pair
+  is uniquely "correct" — a fresh visitor typing their own trait-adjective pair will still hit the
+  same wall, which is exactly why the second fix exists.
+- **`#axisSimNote` now shows `cosine(axisXEmbed, axisYEmbed)` for whatever pair someone actually
+  typed**, every time, with a plain-language bucket (`>=0.95` "expect a noisy, hard-to-trust
+  plot," `0.90-0.95` "some noise is normal," `<0.90` "relatively distinct, as these things go").
+  This is the durable fix — it makes the problem self-diagnosable for any axis pair, not just the
+  shipped one, and it's what actually explains a bad result on the spot instead of leaving someone
+  to independently rediscover this the way today's testing did. The static guidance paragraph
+  right above it (topics beat traits, with worked examples) exists so people can avoid the trap
+  before they hit it, not just after.
+
+Don't try to "fix" this by picking yet another axis-word pair and calling it solved — there is no
+pair that scores meaningfully better than ~0.90, and the real fix is the always-visible
+diagnostic, not example curation.
+
 ## Two real CLIP quirks this surfaces, on purpose
 
 - **Raw text-text cosine similarity runs hot and clusters tight** — see the rescaling section
@@ -138,10 +186,24 @@ into canvas space the same way the compass view does) rather than running a sepa
 force-directed layout. This was a scope call, not just a shortcut: the spec's §6 constraint is
 that *every* view must be traceable to the same two on-screen similarity numbers, and a
 from-scratch physics layout would be a second, independent way of deciding where things go —
-exactly the "second hidden computation" the spec calls out and rejects. Edges are drawn between
-any pair whose 2D origin-vector cosine similarity (`cosine2D()`, the same function the ranked
-list and arithmetic "closest to" result use) exceeds `0.55`, with opacity/glow scaled by how far
-above that floor they are.
+exactly the "second hidden computation" the spec calls out and rejects.
+
+**Edges use Euclidean distance between the plotted points, not `cosine2D()`.** They started out
+using the same origin-vector cosine similarity the ranked list uses, on the theory that reusing
+one function everywhere was simpler and more consistent with the "no second computation"
+principle. In practice that shipped a graph that visibly failed on two counts, both reported
+directly from a real screenshot: the network only ever connected points that shared an origin
+angle (i.e., pointed the same general direction from center), so anything on the opposite side of
+the plot — however close it actually sat to something else — could never get an edge, and every
+edge inside one visual cluster came out looking close to the same weight, because points in one
+cluster naturally share a similar angle from origin *too*. Cosine-from-origin measures "same
+direction," not "close together," and only the second one is what the compass view already
+teaches the eye to look for. Switched to plain Euclidean distance between the two items'
+positions (`Math.hypot(dx, dy)`), connecting anything within `DIST_THRESHOLD = 1.15` and scaling
+opacity/width/glow by `1 - dist/DIST_THRESHOLD`. This is still spec-compliant — §6 explicitly
+allows "cosine similarity (or distance)" for this view, unlike §3's ranked list, which is locked
+to origin-vector cosine and must stay that way. Don't swap the ranked list to distance to "match"
+this — they're allowed to differ on purpose.
 
 ## Vector arithmetic
 
@@ -207,8 +269,9 @@ No test suite — static page + a Web Worker. Serve the repo root (`python -m ht
 equivalent) and browse to `/lab/vectis/`; opening `index.html` directly over `file://` won't
 pick up `/nav.js` or `/theme.css`, and module workers generally won't load over `file://` at all.
 
-Golden path: wait for "Language model ready," confirm the four example items
-(thunderstorm/library/rollercoaster/meditation) land at distinct positions, change an axis word
+Golden path: wait for "Language model ready," confirm the six example items
+(surfing/summit/coral reef/ski lodge/sailboat/hiking trail) land at distinct positions roughly
+matching their real-world domain, change an axis word
 and confirm both the label and every point's position update, click a point and confirm the raw
 numbers + ranked list appear, run a vector-arithmetic combination and confirm a dashed ghost
 point appears with a sensible "closest to" result, toggle to Network and confirm edges render,

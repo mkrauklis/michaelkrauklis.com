@@ -153,19 +153,27 @@
     </div>
   </div>
 
-  <div class="panel" style="margin-top:20px;">
+  <div class="row" style="margin-top:20px; align-items:flex-start;">
+  <div class="col" style="flex:1 1 380px;">
+  <div class="panel">
     <span class="step-tag">2. your two axes</span>
     <div class="axis-row">
       <div class="col">
         <label class="field" for="axisXInput">Horizontal axis word (right = more of this)</label>
-        <input type="text" id="axisXInput" value="calm" maxlength="40">
+        <input type="text" id="axisXInput" value="ocean" maxlength="40">
       </div>
       <div class="col">
         <label class="field" for="axisYInput">Vertical axis word (top = more of this)</label>
-        <input type="text" id="axisYInput" value="chaotic" maxlength="40">
+        <input type="text" id="axisYInput" value="mountain" maxlength="40">
       </div>
     </div>
-    <p class="status" id="axisStatus" style="margin-top:10px;"></p>
+    <p class="status" style="margin-top:10px;">Works best with two different <i>topics</i>
+    ("ocean" / "mountain", "food" / "technology") rather than opposite personality traits or
+    physical properties ("calm" / "chaotic", "hairy" / "safe") — CLIP's raw text similarity is
+    much better at recognizing what something is about than judging whether it literally has a
+    trait. More on why below the tool.</p>
+    <p class="status" id="axisSimNote" style="margin-top:6px;"></p>
+    <p class="status" id="axisStatus" style="margin-top:6px;"></p>
     <p class="status" id="spreadNote" style="margin-top:6px; display:none;"></p>
   </div>
 
@@ -193,8 +201,10 @@
       <button class="secondary" id="clearAllBtn">Clear all items</button>
     </div>
   </div>
+  </div>
 
-  <div class="plot-shell">
+  <div class="col" style="flex:1 1 460px;">
+  <div class="plot-shell" style="margin-top:0;">
     <div class="toggle-group" id="viewToggle">
       <button data-view="compass" class="active">Compass</button>
       <button data-view="network">Network</button>
@@ -218,6 +228,8 @@
       <div class="raw" id="infoRaw"></div>
       <div id="infoRanks"></div>
     </div>
+  </div>
+  </div>
   </div>
 
   <div class="panel" style="margin-top:32px;">
@@ -442,7 +454,7 @@ function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
 
 // ---------- state ----------
 const state = {
-  axisXWord: 'calm', axisYWord: 'chaotic',
+  axisXWord: 'ocean', axisYWord: 'mountain',
   axisXEmbed: null, axisYEmbed: null,
   items: [],
   nextId: 1,
@@ -450,7 +462,7 @@ const state = {
   selectedId: null,
   ghost: null, // {x,y,fromX,fromY,label}
 };
-const EXAMPLE_ITEMS = ['thunderstorm', 'library', 'rollercoaster', 'meditation'];
+const EXAMPLE_ITEMS = ['surfing', 'summit', 'coral reef', 'ski lodge', 'sailboat', 'hiking trail'];
 
 function addTextItem(text){
   text = text.trim();
@@ -511,9 +523,9 @@ function removeItem(id){
 
 function loadExample(){
   state.items = [];
-  document.getElementById('axisXInput').value = 'calm';
-  document.getElementById('axisYInput').value = 'chaotic';
-  state.axisXWord = 'calm'; state.axisYWord = 'chaotic';
+  document.getElementById('axisXInput').value = 'ocean';
+  document.getElementById('axisYInput').value = 'mountain';
+  state.axisXWord = 'ocean'; state.axisYWord = 'mountain';
   EXAMPLE_ITEMS.forEach(addTextItem);
 }
 
@@ -534,6 +546,21 @@ async function recomputeAxes(){
   }
   if(mySeq !== axisSeq) return; // superseded by a newer axis change
   state.axisXEmbed = xEmb; state.axisYEmbed = yEmb;
+
+  // How different are the two axis words themselves, to the model? Any two short texts in
+  // CLIP's space already sit at 0.85-0.98 raw cosine similarity as a baseline (see CLAUDE.md),
+  // so this number is never going to look "low" the way it would for, say, word2vec -- but
+  // relative to that baseline, >=0.95 reliably means "these two barely separate," while
+  // anything under ~0.90 is comparatively distinct. Surfaced directly rather than only baked
+  // into the shipped example, since the same problem can happen with any two words someone
+  // picks -- this makes it self-diagnosable instead of just mysterious.
+  const axisSim = cosine(xEmb, yEmb);
+  const simNote = document.getElementById('axisSimNote');
+  let simLabel;
+  if(axisSim >= 0.95) simLabel = `very similar to each other (${axisSim.toFixed(2)}) — expect a noisy, hard-to-trust plot`;
+  else if(axisSim >= 0.90) simLabel = `somewhat similar to each other (${axisSim.toFixed(2)}) — some noise is normal`;
+  else simLabel = `relatively distinct from each other (${axisSim.toFixed(2)}), as these things go`;
+  simNote.textContent = `"${xWord}" and "${yWord}" are ${simLabel}.`;
 
   const embeddedItems = state.items.filter(i => i.embedding);
   for(const item of embeddedItems){
@@ -740,16 +767,26 @@ function drawNetwork(ctx, now){
   ctx.clearRect(0, 0, LOGICAL, LOGICAL);
   ctx.fillStyle = '#0b0e14'; ctx.fillRect(0,0,LOGICAL,LOGICAL);
   const nodes = state.items.filter(i => i.embedding).map(i => ({ item: i, p: liveXY(i, now) }));
+  // Edges use Euclidean distance between the plotted points, not cosine2D -- the spec allows
+  // either for this view (unlike the ranked list, which is locked to origin-vector cosine).
+  // Cosine-from-origin only asks "do these two point in roughly the same direction from
+  // center," which can't connect two points that just happen to sit near each other (it cares
+  // about angle, not proximity), and tends to flatten every within-cluster edge to nearly the
+  // same score, since points in one visual cluster naturally share a similar angle from origin
+  // too. Distance matches what the compass view already shows the eye directly: close together
+  // on the plot = related.
+  const DIST_THRESHOLD = 1.15;
   for(let a = 0; a < nodes.length; a++){
     for(let b = a+1; b < nodes.length; b++){
-      const sim = cosine2D(nodes[a].p.x, nodes[a].p.y, nodes[b].p.x, nodes[b].p.y);
-      if(sim < 0.55) continue;
+      const dist = Math.hypot(nodes[a].p.x - nodes[b].p.x, nodes[a].p.y - nodes[b].p.y);
+      if(dist > DIST_THRESHOLD) continue;
+      const strength = 1 - dist / DIST_THRESHOLD; // 1 = same point, 0 = at the threshold
       const [ax, ay] = toScreen(nodes[a].p.x, nodes[a].p.y);
       const [bx, by] = toScreen(nodes[b].p.x, nodes[b].p.y);
-      const alpha = clamp((sim - 0.55) / 0.45, 0.05, 0.9);
+      const alpha = clamp(0.06 + strength * 0.84, 0.06, 0.9);
       ctx.strokeStyle = `rgba(87,194,224,${alpha})`;
-      ctx.lineWidth = 1 + alpha * 2.5;
-      ctx.shadowColor = '#57c2e0'; ctx.shadowBlur = 6 * alpha;
+      ctx.lineWidth = 0.6 + strength * 3.2;
+      ctx.shadowColor = '#57c2e0'; ctx.shadowBlur = 10 * strength;
       ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
       ctx.shadowBlur = 0;
     }
