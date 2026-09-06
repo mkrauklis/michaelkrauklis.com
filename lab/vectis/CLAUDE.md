@@ -13,15 +13,18 @@ this file is about how it's actually implemented and why.
 root `CLAUDE.md`). Accent color is a cyan (`#57c2e0`) not otherwise used on the site — amber is
 Ridgeline's, violet is Afterimage's.
 
-**Why a CDN import, breaking the site's usual "no external JS" rule**: Ridgeline and Afterimage
-both do all their math by hand, in inline `<script>`. Vectis can't — it needs an actual trained
-vision-and-language model (CLIP) to turn a word or photo into a vector, and hand-rolling that is
-obviously out of scope. `worker.js` is a `type: "module"` Web Worker that does
-`import ... from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2'` — a genuine,
-deliberate exception to the site's "no bundler, no external JS dependencies" convention. It's
-scoped as tightly as possible: only `worker.js` imports anything, `index.html` itself stays
-dependency-free, and the import is pinned to an exact version so a jsdelivr/npm update can't
-silently change behavior.
+**Why a CDN import**: Ridgeline does all its math by hand in inline `<script>` with zero external
+JS, but Afterimage already broke from that — it loads TensorFlow.js, `tfjs-backend-wasm`,
+`qrcode-generator`, and `jsQR` from jsdelivr, because training a live autoencoder head in the
+browser isn't something you hand-roll. Vectis follows that same established precedent, not a new
+one: it needs an actual pretrained vision-and-language model (CLIP) to turn a word or photo into
+a vector, so `worker.js` — a `type: "module"` Web Worker — does
+`import ... from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2'` (transformers.js,
+running the model via ONNX Runtime Web under the hood, rather than tfjs — CLIP's public ONNX
+builds live on the Hugging Face hub, and transformers.js is what knows how to fetch and run
+them). It's still scoped as tightly as this pattern allows: only `worker.js` imports anything,
+`index.html` itself stays dependency-free, and the import is pinned to an exact version so a
+jsdelivr/npm update can't silently change behavior.
 
 **Why a Worker at all**: loading two ONNX models and running inference on them can take a
 noticeable moment. Doing it on the main thread would freeze the axis-swap animation and the
