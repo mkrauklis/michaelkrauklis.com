@@ -72,6 +72,25 @@ script tag. That's the entire dependency surface.
      test photos (a phone shot with light cirrus clouds, a dramatic stock photo with heavy
      cumulus and a lake). If you change this algorithm again, validate against a real, busy-sky
      photo, not only clean synthetic fills — they will not catch this failure mode.
+   - **Bias correction**: both the sliding-window median and the majority-vote lookahead only
+     register a break once *most* of what they're looking at has crossed into land, so the raw
+     row they land on is already partway into land — a predictable overshoot of about
+     `winRows/2 + (1-MAJORITY)*lookahead` back toward the sky. `detectSkyline()` corrects for
+     this directly (the `bias` constant) rather than leaving the line to visibly float above
+     the real ridge. If `winRows`, `lookahead`, or `MAJORITY` change, this correction needs to
+     move with them.
+   - **Auto sensitivity, and why "smoothest wins" isn't quite right**: `autoTuneAndExtract()`
+     runs `detectSkyline()` at a spread of sensitivities and uses roughness (mean column-to-
+     column jump) to pick one, because a wrong sensitivity reacts to noise and visibly jumps
+     around — a real skyline doesn't. But the single smoothest candidate isn't always the most
+     correct one: a *lenient* sensitivity triggers on weak evidence, and a cloud-vs-cloud
+     transition high in a busy sky can be just as consistent column-to-column as the real ridge
+     is, so "lowest roughness wins" outright would happily pick that early, wrong answer over a
+     later, right one at a stricter setting. So it finds the best roughness achievable first,
+     then walks candidates strict-to-lenient and stops at the first one already close to that
+     best (see the `+1.5` tolerance) — roughness rules out sensitivities that are clearly too
+     strict (visibly erratic), it isn't used to go hunting for the single smoothest result on
+     offer.
 3. **Fourier decomposition** — the elevation profile is mirrored (`M = 2N`) to force
    periodicity, then run through a hand-rolled DFT (`dft()`). Components are sorted by
    amplitude, largest first, so reconstructions add the most structurally important

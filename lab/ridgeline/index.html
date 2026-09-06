@@ -515,14 +515,30 @@
     });
   });
 
+  // A wrong sensitivity doesn't fail quietly -- it makes the line jump wildly column to
+  // column, because it's reacting to cloud/rock noise instead of one continuous ridge. That's
+  // a real, measurable signal (a real skyline changes gradually), so "auto" tries a spread of
+  // sensitivities and picks whichever produces the smoothest line, instead of just assuming
+  // one fixed default works for every photo.
   function autoTuneAndExtract(){
-    // The detector below doesn't need a brightness threshold or a polarity guess -- it looks
-    // for where the photo stops being internally consistent, not for a specific brightness
-    // relationship between sky and land. So "auto" is just: reset the fine-tune controls to
-    // their defaults and run it.
-    threshSlider.value = 128;
-    threshVal.textContent = 128;
     invertCheck.checked = false;
+    // Strictest first: a lenient sensitivity triggers on weaker evidence, which can look
+    // *smoother* than a stricter, more accurate one -- a cloud-vs-cloud transition high in a
+    // busy sky can be nearly as consistent column to column as the real ridge is, so "lowest
+    // roughness wins" alone would happily pick the early, wrong answer over the later, right
+    // one. So this finds the best achievable roughness first, then walks from strict to
+    // lenient and stops at the first candidate that's already close to that best -- the
+    // smoothness score is used to rule out sensitivities that are clearly too strict (visibly
+    // erratic), not to go looking for the single smoothest result on offer.
+    const candidates = [30, 70, 110, 150, 190, 230];
+    const results = candidates.map(s => ({ s, ...detectSkyline(s, false, 90) }));
+    const valid = results.filter(r => r.fallbackRate <= 0.15);
+    const pool = valid.length ? valid : results;
+    const bestRoughness = Math.min(...pool.map(r => r.roughness));
+    const good = pool.find(r => r.roughness <= bestRoughness + 1.5) || pool[0];
+    const sensitivity = good ? good.s : 128;
+    threshSlider.value = sensitivity;
+    threshVal.textContent = sensitivity;
     sampleSlider.value = 220;
     sampleVal.textContent = 220;
 
@@ -562,28 +578,27 @@
     return out;
   }
 
-  function extractAndPreview(){
-    if (!state.img) return;
+  // A local step test (comparing a row's own above/below neighborhood) can't tell a real
+  // sky/land boundary apart from a hard cloud edge -- a dramatic sky is full of those, and the
+  // very first one from the top used to win. The fix is a reference sample of "what sky looks
+  // like" -- the top strip of the photo, which is sky far more often than not -- that each
+  // column is scanned against for where the brightness permanently, not just briefly, leaves
+  // that range. Mean/standard-deviation isn't a good enough summary of that reference, though:
+  // a blue sky dotted with bright clouds is two populations in one sample, and their mix drags
+  // the mean toward the clouds and inflates the spread, which is exactly what let a bright
+  // cumulus mid-frame register as "still sky" while under-reacting to real, softer ridgelines.
+  // Median and MAD (median absolute deviation) aren't dragged around by that mix the way a
+  // mean and standard deviation are, so the reference and the per-row z-score below both use
+  // them. Returns the smoothed elevation array plus two quality signals `autoTuneAndExtract()`
+  // uses to pick a sensitivity automatically: `roughness` (mean column-to-column jump -- a real
+  // skyline is gradual, so a high value means the detector is reacting to noise, not ridge) and
+  // `fallbackRate` (how often no boundary was found at all).
+  function detectSkyline(sensitivity, preferFarthest, N){
     const ctx = sourceCanvas.getContext('2d');
     const w = sourceCanvas.width, h = sourceCanvas.height;
     const data = ctx.getImageData(0,0,w,h).data;
-    const N = parseInt(sampleSlider.value, 10);
-    const sensitivity = parseInt(threshSlider.value, 10); // repurposed, see below
-    const preferFarthest = invertCheck.checked;
     const elevations = new Array(N);
 
-    // A local step test (comparing a row's own above/below neighborhood) can't tell a real
-    // sky/land boundary apart from a hard cloud edge -- a dramatic sky is full of those, and
-    // the very first one from the top used to win. The fix is a reference sample of "what sky
-    // looks like" -- the top strip of the photo, which is sky far more often than not -- that
-    // each column is scanned against for where the brightness permanently, not just briefly,
-    // leaves that range. Mean/standard-deviation isn't a good enough summary of that reference,
-    // though: a blue sky dotted with bright clouds is two populations in one sample, and their
-    // mix drags the mean toward the clouds and inflates the spread, which is exactly what let a
-    // bright cumulus mid-frame register as "still sky" while under-reacting to real, softer
-    // ridgelines. Median and MAD (median absolute deviation) aren't dragged around by that
-    // mix the way a mean and standard deviation are, so the reference and the per-row z-score
-    // below both use them.
     const colSampleHalfWidth = Math.max(4, Math.round(w*0.03));
     const winRows = Math.max(5, Math.round(h*0.03));
     const yMin = Math.max(winRows, Math.round(h*0.02));
@@ -597,6 +612,13 @@
     // sky": higher accepts a smaller, subtler departure; lower requires a starker one.
     const zThreshold = 3.3 - (sensitivity/254)*2.0; // 3.3 (strict) .. 1.3 (lenient)
     const MAJORITY = 0.75; // fraction of the lookahead window that must agree before a break counts
+    // Both the sliding window and the majority-vote lookahead only register a break once *most*
+    // of what they're looking at has crossed into land, which means the row they land on is
+    // already partway into land by about half a window plus a quarter of a lookahead -- a
+    // consistent, predictable overshoot back toward the sky, corrected here rather than left
+    // for the line to visibly float above the real ridge.
+    const bias = Math.round(winRows/2 + (1-MAJORITY)*lookahead);
+    let fallbackCount = 0;
 
     for (let i = 0; i < N; i++){
       const x = Math.min(w-1, Math.floor(i*w/N));
@@ -644,7 +666,7 @@
       // "most," not "every row," so one sunlit rock face or gap can't reset the count, and
       // "first," not "strongest," so a weak-but-real ridge higher up beats a stronger edge lower
       // down, like a lake's reflection of the same ridge.
-      let foundY = h-1;
+      let foundY = -1;
       for (let step = 0; step <= yMax-yMin; step++){
         const y = preferFarthest ? (yMax-step) : (yMin+step);
         let over = 0, total = 0;
@@ -655,9 +677,27 @@
         }
         if (total > 0 && over/total >= MAJORITY){ foundY = y; break; }
       }
+      if (foundY < 0){ foundY = h-1; fallbackCount++; }
+      else foundY = preferFarthest ? Math.max(yMin, foundY-bias) : Math.min(yMax, foundY+bias);
       elevations[i] = foundY;
     }
-    state.elevations = medianSmooth(elevations, 5);
+
+    const smoothed = medianSmooth(elevations, 5);
+    let roughness = 0;
+    for (let i = 1; i < smoothed.length; i++) roughness += Math.abs(smoothed[i]-smoothed[i-1]);
+    roughness /= Math.max(1, smoothed.length-1);
+    return { elevations: smoothed, roughness, fallbackRate: fallbackCount/N };
+  }
+
+  function extractAndPreview(){
+    if (!state.img) return;
+    const ctx = sourceCanvas.getContext('2d');
+    const w = sourceCanvas.width, h = sourceCanvas.height;
+    const N = parseInt(sampleSlider.value, 10);
+    const sensitivity = parseInt(threshSlider.value, 10); // repurposed, see detectSkyline()
+    const preferFarthest = invertCheck.checked;
+
+    state.elevations = detectSkyline(sensitivity, preferFarthest, N).elevations;
     state.N = N;
 
     // redraw source with overlay line -- draw the smoothed line, since that's what every
