@@ -109,6 +109,17 @@ label.field{ display: block; font-size: 0.85rem; color: var(--ink-dim); margin: 
 input[type=range]{ width: 100%; accent-color: var(--accent); }
 .field-value{ color: var(--ink); font-weight: 600; }
 
+/* Generic text-entry chrome -- added for Vectis, the first lab tool whose primary input is
+   typed text/phrases rather than a photo or a slider. Kept here rather than duplicated in a
+   page-local <style> block so the next text-input tool gets it for free. */
+input[type=text], input[type=search], select{
+  display: block; width: 100%;
+  background: var(--bg-panel-2); border: 1px solid var(--line); color: var(--ink);
+  padding: 10px 12px; border-radius: 6px; font-family: 'Inter', sans-serif; font-size: 0.9rem;
+}
+input[type=text]:focus, input[type=search]:focus, select:focus{ outline: none; border-color: var(--accent); }
+input[type=text]:disabled, select:disabled{ opacity: 0.5; cursor: not-allowed; }
+
 button.primary{
   background: var(--accent); color: #10131a; border: none; padding: 12px 22px;
   border-radius: 6px; font-weight: 600; font-size: 0.95rem; cursor: pointer; font-family: 'Inter', sans-serif;

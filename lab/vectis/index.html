@@ -1,0 +1,966 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="google-adsense-account" content="ca-pub-5936916546458743">
+<title>Vectis — Build Your Own Embedding Space</title>
+<link rel="stylesheet" href="/theme.css">
+<style>
+  :root{ --accent: #57c2e0; --accent-dim: #2c5866; }
+
+  .wrap{ max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+  /* ---------- model status ---------- */
+  .model-status{
+    display:flex; flex-direction:column; gap:8px; margin-top: 18px;
+  }
+  .model-row{ display:flex; align-items:center; gap:10px; font-size: 0.82rem; color: var(--ink-dim); }
+  .model-row .bar{ flex:1; height:6px; background:var(--bg-panel-2); border-radius:3px; overflow:hidden; }
+  .model-row .bar > i{ display:block; height:100%; width:0%; background:var(--accent); transition:width .2s ease; }
+  .model-row.ready{ color: var(--teal); }
+  .model-row.error{ color: var(--danger); }
+
+  /* ---------- axis + item controls ---------- */
+  .axis-row{ display:flex; gap:20px; flex-wrap:wrap; }
+  .axis-row .col{ flex:1; min-width:220px; }
+  .item-controls{ display:flex; gap:20px; flex-wrap:wrap; margin-top:24px; }
+  .item-controls .col{ flex:1; min-width:260px; }
+  .add-text-row{ display:flex; gap:8px; }
+  .add-text-row input{ flex:1; }
+  .dropzone.small{ padding: 20px 16px; font-size:0.85rem; }
+
+  .chip-list{ display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+  .chip{
+    display:flex; align-items:center; gap:6px;
+    background: var(--bg-panel-2); border:1px solid var(--line); border-radius: 999px;
+    padding: 4px 6px 4px 4px; font-size: 0.8rem; cursor:pointer; transition: border-color .12s ease;
+  }
+  .chip:hover, .chip.selected{ border-color: var(--accent); }
+  .chip .avatar{
+    width:20px; height:20px; border-radius:50%; object-fit:cover; background: var(--bg-panel);
+    display:flex; align-items:center; justify-content:center; font-size:0.65rem; color:var(--ink-dim);
+    flex-shrink:0;
+  }
+  .chip .label{ max-width: 140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .chip .remove{ color: var(--ink-dim); font-size:0.9rem; line-height:1; padding:0 3px; }
+  .chip .remove:hover{ color: var(--danger); }
+  .chip.pending{ opacity:0.55; }
+
+  /* ---------- plot ---------- */
+  .plot-shell{ margin-top: 28px; }
+  .toggle-group{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom: 14px; }
+  .toggle-group button{
+    background: var(--bg-panel-2); border: 1px solid var(--line); color: var(--ink-dim);
+    padding: 8px 16px; border-radius: 6px; cursor: pointer; font-family:'Inter',sans-serif;
+    font-size:0.85rem; transition: all .12s ease;
+  }
+  .toggle-group button.active{ border-color: var(--accent); color: var(--accent); background: rgba(87,194,224,0.08); }
+
+  .canvas-wrap{ position:relative; }
+  .canvas-wrap canvas{
+    width:100%; aspect-ratio: 1/1; display:block; background:#0b0e14;
+    border:1px solid var(--line); border-radius:8px; touch-action:none; cursor:pointer;
+  }
+  .axis-label{
+    position:absolute; font-size:0.72rem; color: var(--ink-dim); pointer-events:none;
+    letter-spacing:0.02em; text-transform:uppercase;
+  }
+  .axis-label.pos{ color: var(--accent); font-weight:600; }
+  .axis-label.top{ top:8px; left:50%; transform:translateX(-50%); }
+  .axis-label.bottom{ bottom:8px; left:50%; transform:translateX(-50%); }
+  .axis-label.left{ left:10px; top:50%; transform:translateY(-50%); writing-mode:vertical-rl; }
+  .axis-label.right{ right:10px; top:50%; transform:translateY(-50%) rotate(180deg); writing-mode:vertical-rl; }
+
+  .select-hint{ margin-top:10px; font-size:0.78rem; color:var(--ink-dim); }
+
+  .info-panel{
+    margin-top:16px; background: var(--bg-panel-2); border:1px solid var(--line); border-radius:8px;
+    padding:16px 18px; display:none;
+  }
+  .info-panel.visible{ display:block; }
+  .info-panel h3{ font-size:0.95rem; margin:0 0 8px; }
+  .info-panel .raw{ font-size:0.8rem; color:var(--ink-dim); margin-bottom:12px; }
+  .rank-row{ display:flex; align-items:center; gap:10px; font-size:0.82rem; padding:4px 0; }
+  .rank-row .name{ flex:0 0 140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .rank-row .bar{ flex:1; height:6px; background:var(--bg-panel); border-radius:3px; overflow:hidden; }
+  .rank-row .bar > i{ display:block; height:100%; background: var(--accent); }
+  .rank-row .val{ flex:0 0 42px; text-align:right; color:var(--ink-dim); }
+
+  /* ---------- arithmetic ---------- */
+  .arith-row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:14px; }
+  .arith-row select{ flex: 1 1 130px; width:auto; }
+  .arith-op{ flex:0 0 56px; width:auto; text-align:center; }
+  .arith-result{ margin-top:14px; font-size:0.88rem; color:var(--ink-dim); min-height:1.4em; }
+  .arith-result b{ color:var(--accent); }
+
+  /* ---------- explainer widgets ---------- */
+  .angle-demo{ display:flex; gap:24px; flex-wrap:wrap; align-items:center; margin-top:14px; }
+  .angle-demo canvas{
+    background:#0b0e14; border:1px solid var(--line); border-radius:8px; touch-action:none; cursor:grab;
+  }
+  .angle-readout{ font-size:0.95rem; }
+  .angle-readout .big{ font-family:'Fraunces',serif; font-size:1.9rem; color:var(--accent); }
+  .quick-check{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:14px; }
+  .quick-check input{ flex:1; min-width:140px; }
+  .quick-check .score{ font-size:1.3rem; font-family:'Fraunces',serif; color:var(--accent); min-width:70px; text-align:center; }
+
+  .merch-note{ font-size:0.82rem; margin-top:6px; }
+</style>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5936916546458743"
+     crossorigin="anonymous"></script>
+</head>
+<body>
+<script src="/nav.js"></script>
+
+<header class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <span class="hero-line">two words become a map, and you can watch anything land on it</span>
+      <h1>Vectis</h1>
+      <p>Pick two words — anything, "formal" and "playful," "chaotic" and "calm." Each one becomes
+      an axis. Drop in words, phrases, or your own photos, and each one gets placed on the map
+      based on nothing but how close it sits to each of your two words. There's no dataset, no
+      pretrained categories — just one repeated operation, similarity to a word you chose, done
+      twice per item.</p>
+    </div>
+    <canvas id="heroCanvas"></canvas>
+  </div>
+</header>
+
+<div class="wrap" style="padding-top:40px;">
+  <p>Everything below runs a small vision-and-language model called CLIP entirely in your
+  browser tab — nothing you type or upload is ever sent anywhere. The one exception, and it's
+  worth being upfront about: the very first time you use this page, your browser downloads the
+  model's weights (a few tens of megabytes) from a public model host, the same way it would
+  download a font or a script. That's the model learning nothing from you — it's already
+  finished learning, from millions of captioned photos, before it ever reached your machine.
+  After that first download your browser caches it, and every photo or phrase you plot from then
+  on never leaves this tab.</p>
+  <p style="font-size:0.85rem;">The mechanics, briefly: CLIP maps images and text into the
+  <i>same</i> space of numbers, trained so that a photo of a dog and the word "dog" land near each
+  other in that space. "Near" is measured with <b style="color:var(--ink);">cosine similarity</b> —
+  how small the angle is between two vectors, ignoring their length. Vectis takes that one
+  measurement — similarity to a reference word — and uses it twice per item, once against each
+  axis word you pick, to get an (x, y) position. That's the entire trick. There's a plain-language
+  walkthrough with two hands-on demos in "how this actually works," below the tool.</p>
+
+  <div class="panel" style="margin-top:20px;">
+    <span class="step-tag">1. the model</span>
+    <div class="model-status">
+      <div class="model-row" id="textModelRow"><span id="textModelLabel">Loading language model…</span><div class="bar"><i id="textModelBar"></i></div></div>
+      <div class="model-row" id="visionModelRow" style="display:none;"><span id="visionModelLabel">Loading vision model…</span><div class="bar"><i id="visionModelBar"></i></div></div>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top:20px;">
+    <span class="step-tag">2. your two axes</span>
+    <div class="axis-row">
+      <div class="col">
+        <label class="field" for="axisXInput">Horizontal axis word (right = more of this)</label>
+        <input type="text" id="axisXInput" value="calm" maxlength="40">
+      </div>
+      <div class="col">
+        <label class="field" for="axisYInput">Vertical axis word (top = more of this)</label>
+        <input type="text" id="axisYInput" value="chaotic" maxlength="40">
+      </div>
+    </div>
+    <p class="status" id="axisStatus" style="margin-top:10px;"></p>
+  </div>
+
+  <div class="panel" style="margin-top:20px;">
+    <span class="step-tag">3. what's on the map</span>
+    <div class="item-controls">
+      <div class="col">
+        <label class="field" style="margin-top:0;">Add a word or phrase</label>
+        <div class="add-text-row">
+          <input type="text" id="itemTextInput" maxlength="60" placeholder="e.g. thunderstorm">
+          <button class="secondary" id="addTextBtn">Add</button>
+        </div>
+      </div>
+      <div class="col">
+        <label class="field" style="margin-top:0;">Add photos</label>
+        <label class="dropzone small" id="imageDropzone">
+          <input type="file" id="imageInput" accept="image/*" multiple>
+          <span class="cta">Click or drop images here</span> — each one gets its own point
+        </label>
+      </div>
+    </div>
+    <div class="chip-list" id="chipList"></div>
+    <div class="actions">
+      <button class="secondary" id="resetExampleBtn">Reset to example</button>
+      <button class="secondary" id="clearAllBtn">Clear all items</button>
+    </div>
+  </div>
+
+  <div class="plot-shell">
+    <div class="toggle-group" id="viewToggle">
+      <button data-view="compass" class="active">Compass</button>
+      <button data-view="network">Network</button>
+    </div>
+    <div class="canvas-wrap">
+      <canvas id="plotCanvas" width="720" height="720"></canvas>
+      <span class="axis-label top pos" id="labelTop"></span>
+      <span class="axis-label bottom" id="labelBottom"></span>
+      <span class="axis-label right pos" id="labelRight"></span>
+      <span class="axis-label left" id="labelLeft"></span>
+    </div>
+    <p class="select-hint">Click any point (or its line back to the center) to see how it got
+    there, and what else on the map it's most like.</p>
+    <p class="select-hint" id="modalityNote" style="display:none;">Heads up: CLIP's raw
+    similarity numbers for photos sit in a noticeably different range than its numbers for
+    words, so mixing the two often pushes every photo toward the same corner or edge. That's a
+    real, known quirk of the model (sometimes called the "modality gap"), not a bug in this
+    page — try plotting only words, or only photos, if you want more spread.</p>
+    <div class="info-panel" id="infoPanel">
+      <h3 id="infoTitle"></h3>
+      <div class="raw" id="infoRaw"></div>
+      <div id="infoRanks"></div>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top:32px;">
+    <span class="step-tag">4. vector arithmetic</span>
+    <p style="margin:0 0 4px;">The classic word-vector trick — king − man + woman ≈ queen — done
+    here with only the two numbers you've already watched get computed for everything on the map.
+    No extra model call, just arithmetic on positions.</p>
+    <div class="arith-row">
+      <select id="arithA"></select>
+      <select id="arithOpAB" class="arith-op"><option value="+">+</option><option value="-" selected>−</option></select>
+      <select id="arithB"></select>
+      <select id="arithOpBC" class="arith-op"><option value="+" selected>+</option><option value="-">−</option></select>
+      <select id="arithC"><option value="">(nothing)</option></select>
+      <button class="primary" id="combineBtn">Combine</button>
+    </div>
+    <div class="arith-result" id="arithResult"></div>
+  </div>
+
+  <div class="panel" style="margin-top:32px;">
+    <span class="step-tag">5. save &amp; share</span>
+    <div class="actions">
+      <button class="secondary" id="downloadCompassBtn">Download compass PNG</button>
+      <button class="secondary" id="downloadNetworkBtn">Download network PNG</button>
+    </div>
+    <p class="merch-note">Want this as a magnet? Download a PNG above, then
+    <a href="https://www.zazzle.com/create_your_own_photo_magnet-256206116898885602?rf=238054754631086278" target="_blank" rel="noopener">open this Zazzle magnet template</a>
+    and upload it there — click "Personalize this design" and use the file you just downloaded.</p>
+    <p class="merch-note" id="shirtNote">Every item on your map right now is text, so this one
+    also works as a t-shirt: download a PNG above, then
+    <a href="https://www.zazzle.com/design_your_own_t_shirt-256206116898885602?rf=238054754631086278" target="_blank" rel="noopener">open this Zazzle t-shirt template</a>
+    and upload it the same way.</p>
+  </div>
+
+  <details id="explainerSection" class="disclosure advanced" style="margin-top:40px;">
+    <summary>How this actually works <span class="adv-sub">— the geometry, and two things to try by hand</span></summary>
+    <div class="disclosure-body">
+      <p>A word doesn't mean anything to a computer by itself — but CLIP has seen enough
+      captioned photos that it's learned to place any word, phrase, or image as a point in a
+      space with a few hundred dimensions, positioned so that things which mean similar things
+      end up near each other. "Dog" and a photo of a golden retriever land close together; "dog"
+      and "spreadsheet" land far apart. That's the entire premise of the tool above: pick two
+      words, use them as two directions in that space, and read off how far along each direction
+      everything else falls.</p>
+      <p><b style="color:var(--ink);">Cosine similarity</b> is the specific way "how close" gets
+      measured. Instead of straight-line distance, it looks at the <i>angle</i> between two
+      vectors — two things pointing the same direction score 1, perpendicular scores 0, opposite
+      directions score −1, regardless of how long either vector is. That's what the widget below
+      lets you feel directly, with no model involved at all.</p>
+
+      <div class="row" style="margin-top:20px;">
+        <div class="col">
+          <span class="step-tag">try it — angle and cosine</span>
+          <div class="angle-demo">
+            <canvas id="angleCanvas" width="260" height="260"></canvas>
+            <div class="angle-readout">
+              <div>angle: <span id="angleDeg">0°</span></div>
+              <div>cosine similarity: <span class="big" id="angleCos">1.00</span></div>
+              <p class="status" style="margin-top:8px;max-width:180px;">Drag either arrow tip
+              around the center. This is the whole formula CLIP uses underneath — just in two
+              dimensions you can see, instead of a few hundred you can't.</p>
+            </div>
+          </div>
+        </div>
+        <div class="col">
+          <span class="step-tag">try it — quick similarity check</span>
+          <p style="margin:0 0 6px;">Type two words and see their raw similarity, straight from
+          CLIP's text side — no plotting, no rescaling, just the one number the whole tool is
+          built from.</p>
+          <div class="quick-check">
+            <input type="text" id="quickA" placeholder="word one" value="ocean">
+            <input type="text" id="quickB" placeholder="word two" value="calm">
+            <span class="score" id="quickScore">–</span>
+          </div>
+          <p class="status" id="quickStatus" style="margin-top:8px;"></p>
+        </div>
+      </div>
+
+      <p style="margin-top:24px;">One deliberate limit, worth stating plainly: everything you see
+      above — the plot, the ranked list, the arithmetic, the network view — is computed only from
+      the two similarity numbers per item that you can see on screen. There's no second, hidden
+      comparison happening in the full few-hundred-dimensional space that could quietly disagree
+      with what's plotted. That's a constraint, not a shortcut: the moment this tool could show
+      you an answer it can't also explain, it stops teaching anything.</p>
+    </div>
+  </details>
+
+  <details class="disclosure" style="margin-top:24px;">
+    <summary>Privacy &amp; technical notes</summary>
+    <div class="disclosure-body">
+      <p>All embedding happens in a background thread in your browser using
+      <a href="https://github.com/xenova/transformers.js" target="_blank" rel="noopener">transformers.js</a>
+      running <a href="https://github.com/openai/CLIP" target="_blank" rel="noopener">OpenAI's CLIP</a>
+      (a public, quantized ONNX build). Your words, phrases, and photos are never uploaded — the
+      only network activity is the one-time model download, cached by your browser afterward.
+      Refreshing the page clears everything you've plotted; nothing is saved anywhere.</p>
+    </div>
+  </details>
+</div>
+
+<footer>
+  <div class="wrap">Michael Krauklis — <a href="/lab/">back to the lab</a></div>
+</footer>
+
+<script type="module">
+const WORKER_URL = new URL('./worker.js', import.meta.url);
+let worker;
+let reqSeq = 1;
+const pending = new Map();
+
+function ensureWorker(){
+  if(worker) return;
+  worker = new Worker(WORKER_URL, { type: 'module' });
+  worker.onmessage = (e) => {
+    const msg = e.data;
+    if(msg.type === 'progress'){ onModelProgress(msg); return; }
+    const p = pending.get(msg.id);
+    if(!p) return;
+    if(msg.type === 'error'){ pending.delete(msg.id); p.reject(new Error(msg.message)); return; }
+    pending.delete(msg.id);
+    p.resolve(msg);
+  };
+  worker.onerror = (err) => {
+    setTextModelState('error', 'Model failed to load — ' + (err.message || 'check your connection'));
+  };
+}
+
+function callWorker(type, payload){
+  ensureWorker();
+  const id = reqSeq++;
+  return new Promise((resolve, reject) => {
+    pending.set(id, { resolve, reject });
+    const transfer = payload && payload.bitmap ? [payload.bitmap] : undefined;
+    worker.postMessage({ id, type, ...payload }, transfer);
+  });
+}
+
+// ---------- model status UI ----------
+const textModelRow = document.getElementById('textModelRow');
+const textModelLabel = document.getElementById('textModelLabel');
+const textModelBar = document.getElementById('textModelBar');
+const visionModelRow = document.getElementById('visionModelRow');
+const visionModelLabel = document.getElementById('visionModelLabel');
+const visionModelBar = document.getElementById('visionModelBar');
+
+let textReady = false, visionReady = false;
+
+function setTextModelState(status, text, pct){
+  if(status === 'error'){ textModelRow.className = 'model-row error'; textModelLabel.textContent = text; return; }
+  if(status === 'ready'){ textModelRow.className = 'model-row ready'; textModelLabel.textContent = 'Language model ready.'; textModelBar.style.width = '100%'; return; }
+  textModelLabel.textContent = text; if(pct != null) textModelBar.style.width = Math.round(pct) + '%';
+}
+function setVisionModelState(status, text, pct){
+  visionModelRow.style.display = 'flex';
+  if(status === 'error'){ visionModelRow.className = 'model-row error'; visionModelLabel.textContent = text; return; }
+  if(status === 'ready'){ visionModelRow.className = 'model-row ready'; visionModelLabel.textContent = 'Vision model ready.'; visionModelBar.style.width = '100%'; return; }
+  visionModelLabel.textContent = text; if(pct != null) visionModelBar.style.width = Math.round(pct) + '%';
+}
+function onModelProgress(msg){
+  if(msg.tower === 'text'){
+    if(msg.status === 'progress') setTextModelState('loading', 'Loading language model…', msg.progress);
+  } else if(msg.tower === 'vision'){
+    if(msg.status === 'progress') setVisionModelState('loading', 'Loading vision model…', msg.progress);
+  }
+}
+
+async function warmText(){
+  setTextModelState('loading', 'Loading language model…', 0);
+  try{
+    await callWorker('warmText', {});
+    textReady = true;
+    setTextModelState('ready');
+    setControlsEnabled(true);
+    recomputeAxes();
+  }catch(err){
+    setTextModelState('error', 'Language model failed to load: ' + err.message);
+  }
+}
+async function warmVisionIfNeeded(){
+  if(visionReady) return;
+  setVisionModelState('loading', 'Loading vision model…', 0);
+  try{
+    await callWorker('warmVision', {});
+    visionReady = true;
+    setVisionModelState('ready');
+  }catch(err){
+    setVisionModelState('error', 'Vision model failed to load: ' + err.message);
+    throw err;
+  }
+}
+
+function setControlsEnabled(on){
+  document.getElementById('addTextBtn').disabled = !on;
+  document.getElementById('itemTextInput').disabled = !on;
+  document.getElementById('axisXInput').disabled = !on;
+  document.getElementById('axisYInput').disabled = !on;
+}
+setControlsEnabled(false);
+
+// ---------- embedding cache ----------
+const textCache = new Map(); // normalized text -> embedding array
+
+async function embedTexts(texts){
+  const need = [];
+  for(const t of texts){ const k = t.trim().toLowerCase(); if(!textCache.has(k)) need.push(k); }
+  if(need.length){
+    const msg = await callWorker('embedText', { texts: need });
+    need.forEach((k, i) => textCache.set(k, msg.embeddings[i]));
+  }
+  return texts.map(t => textCache.get(t.trim().toLowerCase()));
+}
+
+function cosine(a, b){
+  let dot = 0; for(let i=0;i<a.length;i++) dot += a[i]*b[i];
+  return dot; // a and b are already unit-normalized by the worker
+}
+function cosine2D(ax, ay, bx, by){
+  const da = Math.hypot(ax, ay), db = Math.hypot(bx, by);
+  if(da < 1e-6 || db < 1e-6) return 0;
+  return (ax*bx + ay*by) / (da*db);
+}
+function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
+
+// ---------- state ----------
+const state = {
+  axisXWord: 'calm', axisYWord: 'chaotic',
+  axisXEmbed: null, axisYEmbed: null,
+  items: [],
+  nextId: 1,
+  view: 'compass',
+  selectedId: null,
+  ghost: null, // {x,y,fromX,fromY,label}
+};
+const EXAMPLE_ITEMS = ['thunderstorm', 'library', 'rollercoaster', 'meditation'];
+
+function addTextItem(text){
+  text = text.trim();
+  if(!text) return;
+  const item = {
+    id: state.nextId++, kind: 'text', text,
+    embedding: null, rawX: 0, rawY: 0,
+    pos: { x: 0, y: 0 }, animFrom: { x: 0, y: 0 }, animTo: { x: 0, y: 0 }, animStart: 0,
+    pending: true,
+  };
+  state.items.push(item);
+  renderChips(); populateArithSelects();
+  embedTexts([text]).then(([emb]) => { item.embedding = emb; item.pending = false; recomputeAxes(); renderChips(); populateArithSelects(); }).catch(err => {
+    item.pending = false; item.error = err.message; renderChips();
+  });
+}
+
+function cropToSquareDataURL(img, size){
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const s = Math.min(img.width, img.height);
+  const sx = (img.width - s) / 2, sy = (img.height - s) / 2;
+  ctx.drawImage(img, sx, sy, s, s, 0, 0, size, size);
+  return canvas.toDataURL('image/jpeg', 0.85);
+}
+
+async function addImageItem(file){
+  const label = file.name.replace(/\.[a-z0-9]+$/i, '');
+  const bitmap = await createImageBitmap(file);
+  const item = {
+    id: state.nextId++, kind: 'image', text: label,
+    embedding: null, rawX: 0, rawY: 0,
+    pos: { x: 0, y: 0 }, animFrom: { x: 0, y: 0 }, animTo: { x: 0, y: 0 }, animStart: 0,
+    pending: true, thumb: null, thumbImg: null,
+  };
+  const tmpImg = await createImageBitmap(file);
+  item.thumb = cropToSquareDataURL(tmpImg, 96);
+  item.thumbImg = new Image(); item.thumbImg.src = item.thumb;
+  state.items.push(item);
+  renderChips(); populateArithSelects();
+  try{
+    await warmVisionIfNeeded();
+    const msg = await callWorker('embedImage', { bitmap });
+    item.embedding = msg.embeddings[0];
+  }catch(err){
+    item.error = err.message;
+  }
+  item.pending = false;
+  recomputeAxes(); renderChips(); populateArithSelects();
+}
+
+function removeItem(id){
+  state.items = state.items.filter(i => i.id !== id);
+  if(state.selectedId === id) selectItem(null);
+  recomputeAxes(); renderChips(); populateArithSelects();
+}
+
+function loadExample(){
+  state.items = [];
+  document.getElementById('axisXInput').value = 'calm';
+  document.getElementById('axisYInput').value = 'chaotic';
+  state.axisXWord = 'calm'; state.axisYWord = 'chaotic';
+  EXAMPLE_ITEMS.forEach(addTextItem);
+}
+
+// ---------- axis + rescale ----------
+let axisSeq = 0;
+async function recomputeAxes(){
+  if(!textReady) return;
+  const mySeq = ++axisSeq;
+  const xWord = state.axisXWord.trim(), yWord = state.axisYWord.trim();
+  if(!xWord || !yWord) return;
+  document.getElementById('axisStatus').textContent = 'Placing items…';
+  let xEmb, yEmb;
+  try{
+    [xEmb, yEmb] = await embedTexts([xWord, yWord]);
+  }catch(err){
+    document.getElementById('axisStatus').textContent = 'Could not embed axis words: ' + err.message;
+    return;
+  }
+  if(mySeq !== axisSeq) return; // superseded by a newer axis change
+  state.axisXEmbed = xEmb; state.axisYEmbed = yEmb;
+
+  const embeddedItems = state.items.filter(i => i.embedding);
+  for(const item of embeddedItems){
+    item.rawX = cosine(item.embedding, xEmb);
+    item.rawY = cosine(item.embedding, yEmb);
+  }
+  const selfX = cosine(xEmb, xEmb), crossXY = cosine(yEmb, xEmb);
+  const selfY = cosine(yEmb, yEmb), crossYX = cosine(xEmb, yEmb);
+  const poolX = [selfX, crossXY, ...embeddedItems.map(i => i.rawX)];
+  const poolY = [selfY, crossYX, ...embeddedItems.map(i => i.rawY)];
+  const minX = Math.min(...poolX), maxX = Math.max(...poolX);
+  const minY = Math.min(...poolY), maxY = Math.max(...poolY);
+  const rangeX = (maxX - minX) || 1, rangeY = (maxY - minY) || 1;
+
+  const now = performance.now();
+  for(const item of embeddedItems){
+    const nx = clamp(((item.rawX - minX) / rangeX) * 2 - 1, -1, 1);
+    const ny = clamp(((item.rawY - minY) / rangeY) * 2 - 1, -1, 1);
+    item.animFrom = { x: item.pos.x, y: item.pos.y };
+    item.animTo = { x: nx, y: ny };
+    item.animStart = now;
+    item.pos = { x: nx, y: ny };
+  }
+  document.getElementById('axisStatus').textContent = '';
+  document.getElementById('labelRight').textContent = xWord;
+  document.getElementById('labelLeft').textContent = '← less ' + xWord;
+  document.getElementById('labelTop').textContent = yWord;
+  document.getElementById('labelBottom').textContent = '← less ' + yWord;
+  updateInfoPanel();
+}
+
+document.getElementById('axisXInput').addEventListener('change', e => { state.axisXWord = e.target.value || 'calm'; recomputeAxes(); });
+document.getElementById('axisYInput').addEventListener('change', e => { state.axisYWord = e.target.value || 'chaotic'; recomputeAxes(); });
+
+// ---------- item controls wiring ----------
+document.getElementById('addTextBtn').addEventListener('click', () => {
+  const input = document.getElementById('itemTextInput');
+  addTextItem(input.value); input.value = '';
+});
+document.getElementById('itemTextInput').addEventListener('keydown', e => {
+  if(e.key === 'Enter'){ document.getElementById('addTextBtn').click(); }
+});
+document.getElementById('imageInput').addEventListener('change', e => {
+  [...e.target.files].forEach(f => addImageItem(f));
+  e.target.value = '';
+});
+const dropzone = document.getElementById('imageDropzone');
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault(); dropzone.classList.remove('drag');
+  [...e.dataTransfer.files].filter(f => f.type.startsWith('image/')).forEach(f => addImageItem(f));
+});
+document.getElementById('resetExampleBtn').addEventListener('click', loadExample);
+document.getElementById('clearAllBtn').addEventListener('click', () => { state.items = []; selectItem(null); recomputeAxes(); renderChips(); populateArithSelects(); });
+
+function renderChips(){
+  const list = document.getElementById('chipList');
+  list.innerHTML = '';
+  for(const item of state.items){
+    const chip = document.createElement('div');
+    chip.className = 'chip' + (item.pending ? ' pending' : '') + (state.selectedId === item.id ? ' selected' : '');
+    const avatar = document.createElement('span');
+    avatar.className = 'avatar';
+    if(item.kind === 'image' && item.thumb){ avatar.style.backgroundImage = `url(${item.thumb})`; avatar.style.backgroundSize = 'cover'; }
+    else { avatar.textContent = 'T'; }
+    const label = document.createElement('span');
+    label.className = 'label';
+    label.textContent = item.pending ? item.text + '…' : (item.error ? item.text + ' (failed)' : item.text);
+    const remove = document.createElement('span');
+    remove.className = 'remove'; remove.textContent = '×';
+    remove.addEventListener('click', ev => { ev.stopPropagation(); removeItem(item.id); });
+    chip.appendChild(avatar); chip.appendChild(label); chip.appendChild(remove);
+    chip.addEventListener('click', () => selectItem(item.id));
+    list.appendChild(chip);
+  }
+  updateMerchGating();
+}
+
+function updateMerchGating(){
+  const shirtNote = document.getElementById('shirtNote');
+  const allText = state.items.length > 0 && state.items.every(i => i.kind === 'text');
+  shirtNote.style.display = allText ? 'block' : 'none';
+  const hasText = state.items.some(i => i.kind === 'text');
+  const hasImage = state.items.some(i => i.kind === 'image');
+  document.getElementById('modalityNote').style.display = (hasText && hasImage) ? 'block' : 'none';
+}
+
+// ---------- plot rendering ----------
+const canvas = document.getElementById('plotCanvas');
+const ctx = canvas.getContext('2d');
+const LOGICAL = 720;
+function fitCanvas(){
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = Math.round(rect.width * dpr);
+  canvas.height = Math.round(rect.width * dpr);
+  ctx.setTransform(dpr * (rect.width / LOGICAL), 0, 0, dpr * (rect.width / LOGICAL), 0, 0);
+}
+window.addEventListener('resize', fitCanvas);
+
+const MARGIN = 70;
+const R = (LOGICAL / 2) - MARGIN;
+function toScreen(x, y){ return [LOGICAL/2 + x*R, LOGICAL/2 - y*R]; }
+
+function easeInOutCubic(t){ return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2; }
+function liveXY(item, now){
+  const dur = 650;
+  const t = clamp((now - item.animStart) / dur, 0, 1);
+  const e = easeInOutCubic(t);
+  return { x: item.animFrom.x + (item.animTo.x - item.animFrom.x) * e, y: item.animFrom.y + (item.animTo.y - item.animFrom.y) * e };
+}
+
+function drawCompass(ctx, now){
+  ctx.clearRect(0, 0, LOGICAL, LOGICAL);
+  ctx.strokeStyle = 'rgba(154,160,174,0.18)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(LOGICAL/2, MARGIN-20); ctx.lineTo(LOGICAL/2, LOGICAL-MARGIN+20); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(MARGIN-20, LOGICAL/2); ctx.lineTo(LOGICAL-MARGIN+20, LOGICAL/2); ctx.stroke();
+  ctx.strokeStyle = 'rgba(154,160,174,0.35)';
+  ctx.strokeRect(MARGIN, MARGIN, LOGICAL-2*MARGIN, LOGICAL-2*MARGIN);
+
+  for(const item of state.items){
+    if(item.pending && !item.embedding) continue;
+    const p = liveXY(item, now);
+    const [sx, sy] = toScreen(p.x, p.y);
+    const [ox, oy] = toScreen(0, 0);
+    const selected = state.selectedId === item.id;
+    ctx.strokeStyle = selected ? '#57c2e0' : 'rgba(87,194,224,0.35)';
+    ctx.lineWidth = selected ? 2 : 1;
+    ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(sx, sy); ctx.stroke();
+
+    if(item.kind === 'image' && item.thumbImg && item.thumbImg.complete){
+      const rad = selected ? 24 : 18;
+      ctx.save();
+      ctx.beginPath(); ctx.arc(sx, sy, rad, 0, Math.PI*2); ctx.clip();
+      ctx.drawImage(item.thumbImg, sx-rad, sy-rad, rad*2, rad*2);
+      ctx.restore();
+      ctx.beginPath(); ctx.arc(sx, sy, rad, 0, Math.PI*2);
+      ctx.strokeStyle = selected ? '#e9e7de' : 'rgba(233,231,222,0.5)';
+      ctx.lineWidth = selected ? 2.5 : 1.5;
+      ctx.stroke();
+    } else {
+      ctx.beginPath(); ctx.arc(sx, sy, selected ? 8 : 6, 0, Math.PI*2);
+      ctx.fillStyle = selected ? '#e9e7de' : '#57c2e0';
+      ctx.fill();
+      ctx.fillStyle = selected ? '#e9e7de' : 'rgba(233,231,222,0.85)';
+      ctx.font = (selected ? '600 ' : '') + '12px Inter, sans-serif';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(item.text, sx + 12, sy);
+    }
+  }
+
+  if(state.ghost){
+    const g = state.ghost;
+    const t = clamp((now - g.animStart) / 650, 0, 1);
+    const e = easeInOutCubic(t);
+    const gx = g.animFrom.x + (g.x - g.animFrom.x) * e;
+    const gy = g.animFrom.y + (g.y - g.animFrom.y) * e;
+    const [sx, sy] = toScreen(gx, gy);
+    const [ox, oy] = toScreen(0, 0);
+    ctx.setLineDash([5,4]);
+    ctx.strokeStyle = '#d97a6c'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(sx, sy); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.save();
+    ctx.translate(sx, sy); ctx.rotate(Math.PI/4);
+    ctx.fillStyle = '#d97a6c'; ctx.fillRect(-7, -7, 14, 14);
+    ctx.restore();
+    ctx.fillStyle = '#d97a6c'; ctx.font = '600 12px Inter, sans-serif'; ctx.textBaseline = 'middle';
+    ctx.fillText(g.label, sx + 14, sy);
+  }
+}
+
+function drawNetwork(ctx, now){
+  ctx.clearRect(0, 0, LOGICAL, LOGICAL);
+  ctx.fillStyle = '#0b0e14'; ctx.fillRect(0,0,LOGICAL,LOGICAL);
+  const nodes = state.items.filter(i => i.embedding).map(i => ({ item: i, p: liveXY(i, now) }));
+  for(let a = 0; a < nodes.length; a++){
+    for(let b = a+1; b < nodes.length; b++){
+      const sim = cosine2D(nodes[a].p.x, nodes[a].p.y, nodes[b].p.x, nodes[b].p.y);
+      if(sim < 0.55) continue;
+      const [ax, ay] = toScreen(nodes[a].p.x, nodes[a].p.y);
+      const [bx, by] = toScreen(nodes[b].p.x, nodes[b].p.y);
+      const alpha = clamp((sim - 0.55) / 0.45, 0.05, 0.9);
+      ctx.strokeStyle = `rgba(87,194,224,${alpha})`;
+      ctx.lineWidth = 1 + alpha * 2.5;
+      ctx.shadowColor = '#57c2e0'; ctx.shadowBlur = 6 * alpha;
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+  }
+  for(const n of nodes){
+    const [sx, sy] = toScreen(n.p.x, n.p.y);
+    const selected = state.selectedId === n.item.id;
+    ctx.shadowColor = '#57c2e0'; ctx.shadowBlur = selected ? 18 : 10;
+    if(n.item.kind === 'image' && n.item.thumbImg && n.item.thumbImg.complete){
+      const rad = selected ? 22 : 16;
+      ctx.save();
+      ctx.beginPath(); ctx.arc(sx, sy, rad, 0, Math.PI*2); ctx.clip();
+      ctx.drawImage(n.item.thumbImg, sx-rad, sy-rad, rad*2, rad*2);
+      ctx.restore();
+      ctx.beginPath(); ctx.arc(sx, sy, rad, 0, Math.PI*2);
+      ctx.strokeStyle = selected ? '#ffffff' : '#57c2e0'; ctx.lineWidth = 2; ctx.stroke();
+    } else {
+      ctx.beginPath(); ctx.arc(sx, sy, selected ? 9 : 6, 0, Math.PI*2);
+      ctx.fillStyle = selected ? '#ffffff' : '#57c2e0';
+      ctx.fill();
+    }
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(233,231,222,0.85)';
+    ctx.font = '11px Inter, sans-serif'; ctx.textBaseline = 'middle';
+    ctx.fillText(n.item.text, sx + 14, sy);
+  }
+}
+
+function render(now){
+  if(state.view === 'compass') drawCompass(ctx, now); else drawNetwork(ctx, now);
+}
+function loop(now){ render(now); requestAnimationFrame(loop); }
+
+// ---------- selection + hit testing ----------
+canvas.addEventListener('click', e => {
+  const rect = canvas.getBoundingClientRect();
+  const px = (e.clientX - rect.left) / rect.width * LOGICAL;
+  const py = (e.clientY - rect.top) / rect.height * LOGICAL;
+  let bestId = null, bestDist = 28;
+  const now = performance.now();
+  for(const item of state.items){
+    if(!item.embedding) continue;
+    const p = liveXY(item, now);
+    const [sx, sy] = toScreen(p.x, p.y);
+    const d = Math.hypot(sx - px, sy - py);
+    if(d < bestDist){ bestDist = d; bestId = item.id; }
+  }
+  selectItem(bestId);
+});
+
+function selectItem(id){
+  state.selectedId = id;
+  renderChips();
+  updateInfoPanel();
+}
+
+function updateInfoPanel(){
+  const panel = document.getElementById('infoPanel');
+  const item = state.items.find(i => i.id === state.selectedId);
+  if(!item || !item.embedding){ panel.classList.remove('visible'); return; }
+  panel.classList.add('visible');
+  document.getElementById('infoTitle').textContent = item.text;
+  document.getElementById('infoRaw').textContent =
+    `raw similarity to "${state.axisXWord}": ${item.rawX.toFixed(3)}  •  raw similarity to "${state.axisYWord}": ${item.rawY.toFixed(3)}  •  plotted at (${item.pos.x.toFixed(2)}, ${item.pos.y.toFixed(2)})`;
+  const others = state.items.filter(i => i.id !== item.id && i.embedding)
+    .map(i => ({ item: i, sim: cosine2D(item.pos.x, item.pos.y, i.pos.x, i.pos.y) }))
+    .sort((a, b) => b.sim - a.sim);
+  const ranksEl = document.getElementById('infoRanks');
+  ranksEl.innerHTML = '';
+  if(!others.length){ ranksEl.innerHTML = '<p class="status">Add more items to see what this is most like.</p>'; return; }
+  for(const o of others){
+    const row = document.createElement('div'); row.className = 'rank-row';
+    const pct = clamp((o.sim + 1) / 2 * 100, 0, 100);
+    row.innerHTML = `<span class="name">${o.item.text}</span><span class="bar"><i style="width:${pct}%"></i></span><span class="val">${o.sim.toFixed(2)}</span>`;
+    ranksEl.appendChild(row);
+  }
+}
+
+// ---------- view toggle ----------
+document.getElementById('viewToggle').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-view]');
+  if(!btn) return;
+  state.view = btn.dataset.view;
+  [...document.querySelectorAll('#viewToggle button')].forEach(b => b.classList.toggle('active', b === btn));
+});
+
+// ---------- vector arithmetic ----------
+function populateArithSelects(){
+  const opts = state.items.filter(i => i.embedding).map(i => `<option value="${i.id}">${i.text}</option>`).join('');
+  for(const id of ['arithA', 'arithB']) document.getElementById(id).innerHTML = opts;
+  document.getElementById('arithC').innerHTML = '<option value="">(nothing)</option>' + opts;
+}
+document.getElementById('combineBtn').addEventListener('click', () => {
+  const A = state.items.find(i => i.id == document.getElementById('arithA').value);
+  const B = state.items.find(i => i.id == document.getElementById('arithB').value);
+  const C = state.items.find(i => i.id == document.getElementById('arithC').value);
+  if(!A || !B){ document.getElementById('arithResult').textContent = 'Pick at least two items.'; return; }
+  const opAB = document.getElementById('arithOpAB').value === '+' ? 1 : -1;
+  const opBC = document.getElementById('arithOpBC').value === '+' ? 1 : -1;
+  let x = A.pos.x + opAB * B.pos.x;
+  let y = A.pos.y + opAB * B.pos.y;
+  let label = `${A.text} ${opAB > 0 ? '+' : '−'} ${B.text}`;
+  if(C){ x += opBC * C.pos.x; y += opBC * C.pos.y; label += ` ${opBC > 0 ? '+' : '−'} ${C.text}`; }
+  x = clamp(x, -1, 1); y = clamp(y, -1, 1);
+  const prevGhost = state.ghost;
+  state.ghost = { x, y, label, animFrom: prevGhost ? { x: prevGhost.x, y: prevGhost.y } : { x: 0, y: 0 }, animStart: performance.now() };
+  const ranked = state.items.filter(i => i.embedding)
+    .map(i => ({ item: i, sim: cosine2D(x, y, i.pos.x, i.pos.y) }))
+    .sort((a, b) => b.sim - a.sim);
+  const best = ranked[0];
+  document.getElementById('arithResult').innerHTML = best
+    ? `<b>${label}</b> lands closest to <b>${best.item.text}</b> (cosine ${best.sim.toFixed(2)})`
+    : `<b>${label}</b> plotted — add more items to see what it's closest to.`;
+});
+
+// ---------- export ----------
+function exportMode(mode){
+  const tmp = document.createElement('canvas');
+  tmp.width = LOGICAL; tmp.height = LOGICAL;
+  const tctx = tmp.getContext('2d');
+  if(mode === 'compass') drawCompass(tctx, performance.now()); else drawNetwork(tctx, performance.now());
+  tmp.toBlob(blob => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = `vectis-${mode}.png`; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  });
+}
+document.getElementById('downloadCompassBtn').addEventListener('click', () => exportMode('compass'));
+document.getElementById('downloadNetworkBtn').addEventListener('click', () => exportMode('network'));
+
+// ---------- angle / cosine demo (pure geometry, no model) ----------
+(function(){
+  const c = document.getElementById('angleCanvas');
+  const actx = c.getContext('2d');
+  const cx = 130, cy = 130, len = 95;
+  let angleA = 20 * Math.PI/180, angleB = -35 * Math.PI/180;
+  let dragging = null;
+
+  function draw(){
+    actx.clearRect(0,0,260,260);
+    actx.strokeStyle = 'rgba(154,160,174,0.2)';
+    actx.beginPath(); actx.arc(cx, cy, len, 0, Math.PI*2); actx.stroke();
+    drawArrow(angleA, '#57c2e0');
+    drawArrow(angleB, '#d97a6c');
+    const diff = angleA - angleB;
+    const cosv = Math.cos(diff);
+    const deg = Math.abs(diff * 180/Math.PI % 360);
+    const degShown = deg > 180 ? 360 - deg : deg;
+    document.getElementById('angleDeg').textContent = degShown.toFixed(0) + '°';
+    document.getElementById('angleCos').textContent = cosv.toFixed(2);
+  }
+  function drawArrow(angle, color){
+    const x = cx + Math.cos(angle)*len, y = cy - Math.sin(angle)*len;
+    actx.strokeStyle = color; actx.fillStyle = color; actx.lineWidth = 3;
+    actx.beginPath(); actx.moveTo(cx, cy); actx.lineTo(x, y); actx.stroke();
+    actx.beginPath(); actx.arc(x, y, 7, 0, Math.PI*2); actx.fill();
+  }
+  function angleOf(px, py){ return Math.atan2(-(py-cy), px-cx); }
+  function pos(e){
+    const rect = c.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x: (clientX-rect.left)/rect.width*260, y: (clientY-rect.top)/rect.height*260 };
+  }
+  function pick(p){
+    const ax = cx + Math.cos(angleA)*len, ay = cy - Math.sin(angleA)*len;
+    const bx = cx + Math.cos(angleB)*len, by = cy - Math.sin(angleB)*len;
+    const da = Math.hypot(ax-p.x, ay-p.y), db = Math.hypot(bx-p.x, by-p.y);
+    if(da < 20 && da <= db) return 'a';
+    if(db < 20) return 'b';
+    return null;
+  }
+  c.addEventListener('pointerdown', e => { dragging = pick(pos(e)); });
+  window.addEventListener('pointermove', e => {
+    if(!dragging) return;
+    const p = pos(e);
+    const a = angleOf(p.x, p.y);
+    if(dragging === 'a') angleA = a; else angleB = a;
+    draw();
+  });
+  window.addEventListener('pointerup', () => dragging = null);
+  draw();
+})();
+
+// ---------- quick similarity check ----------
+(function(){
+  const a = document.getElementById('quickA'), b = document.getElementById('quickB');
+  const scoreEl = document.getElementById('quickScore'), statusEl = document.getElementById('quickStatus');
+  let timer = null;
+  async function run(){
+    if(!textReady){ statusEl.textContent = 'Waiting for the language model to finish loading…'; return; }
+    if(!a.value.trim() || !b.value.trim()) return;
+    statusEl.textContent = 'Comparing…';
+    try{
+      const [ea, eb] = await embedTexts([a.value, b.value]);
+      scoreEl.textContent = cosine(ea, eb).toFixed(2);
+      statusEl.textContent = '';
+    }catch(err){ statusEl.textContent = err.message; }
+  }
+  [a, b].forEach(el => el.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(run, 450); }));
+})();
+
+// ---------- hero canvas (decorative) ----------
+(function(){
+  const hc = document.getElementById('heroCanvas');
+  const hctx = hc.getContext('2d');
+  function size(){ hc.width = hc.clientWidth; hc.height = hc.clientHeight; }
+  const nodes = Array.from({length: 14}, () => ({ x: Math.random(), y: Math.random(), vx: (Math.random()-0.5)*0.0006, vy: (Math.random()-0.5)*0.0006 }));
+  function tick(){
+    size();
+    hctx.clearRect(0,0,hc.width,hc.height);
+    for(const n of nodes){
+      n.x += n.vx; n.y += n.vy;
+      if(n.x < 0 || n.x > 1) n.vx *= -1;
+      if(n.y < 0 || n.y > 1) n.vy *= -1;
+    }
+    for(let i=0;i<nodes.length;i++){
+      for(let j=i+1;j<nodes.length;j++){
+        const dx = (nodes[i].x-nodes[j].x)*hc.width, dy = (nodes[i].y-nodes[j].y)*hc.height;
+        const d = Math.hypot(dx,dy);
+        if(d < 90){
+          hctx.strokeStyle = `rgba(87,194,224,${0.4*(1-d/90)})`;
+          hctx.beginPath(); hctx.moveTo(nodes[i].x*hc.width, nodes[i].y*hc.height); hctx.lineTo(nodes[j].x*hc.width, nodes[j].y*hc.height); hctx.stroke();
+        }
+      }
+    }
+    for(const n of nodes){
+      hctx.fillStyle = '#57c2e0';
+      hctx.beginPath(); hctx.arc(n.x*hc.width, n.y*hc.height, 3, 0, Math.PI*2); hctx.fill();
+    }
+    requestAnimationFrame(tick);
+  }
+  tick();
+})();
+
+// ---------- boot ----------
+fitCanvas();
+requestAnimationFrame(loop);
+loadExample();
+warmText();
+</script>
+</body>
+</html>
