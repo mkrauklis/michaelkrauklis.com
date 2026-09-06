@@ -91,6 +91,27 @@ one has already started is discarded (`if(mySeq !== axisSeq) return`). This matt
 axis-word changes and item-adds both call `recomputeAxes()`, and a slow one (an axis word not
 yet in `textCache`) shouldn't clobber a faster one that started later.
 
+## Axis labels: no arrows, ever
+
+The left/right end-labels originally used `writing-mode: vertical-rl` (to fit in the plot's
+narrow side margins) plus a literal `←` character to mean "this end is the *less* pole" — e.g.
+`← less scary` down the left edge. This actively lied about direction: Unicode gives directional
+arrows a "rotate" orientation for vertical text layout, so browsers auto-rotate `←` 90° clockwise
+inside `vertical-rl` text, and a left-pointing arrow rotated 90° clockwise points *up*. Caught
+directly from a user screenshot asking why the arrow for "less scary" pointed up. The bottom
+label had the same character used for a vertical axis's "less" direction, which was never
+correct either, rotated glyph or not — down isn't left.
+
+The fix drops arrows entirely rather than trying to pick a "correct" one per edge: labels are now
+plain horizontal text at all four positions (`.axis-label.left`/`.right` no longer set
+`writing-mode`, just a `width: 60px` so "LESS SCARY" wraps to two short lines instead of running
+into the plot), and direction is instead communicated the way the top/bottom labels always did it
+— position (the labeled word sits at its own positive edge) plus `.axis-label.pos`'s accent
+color and bold weight marking the positive pole, with the negative pole left in plain dim ink.
+That combination doesn't depend on a reader parsing a glyph at all. Don't reintroduce a directional
+arrow character inside rotated/vertical text without checking Unicode's vertical orientation
+property for it first — this exact failure mode is easy to reintroduce by accident.
+
 ## Two real CLIP quirks this surfaces, on purpose
 
 - **Raw text-text cosine similarity runs hot and clusters tight** — see the rescaling section

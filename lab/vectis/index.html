@@ -63,14 +63,14 @@
     border:1px solid var(--line); border-radius:8px; touch-action:none; cursor:pointer;
   }
   .axis-label{
-    position:absolute; font-size:0.72rem; color: var(--ink-dim); pointer-events:none;
-    letter-spacing:0.02em; text-transform:uppercase;
+    position:absolute; font-size:0.68rem; color: var(--ink-dim); pointer-events:none;
+    letter-spacing:0.02em; text-transform:uppercase; text-align:center; line-height:1.3;
   }
-  .axis-label.pos{ color: var(--accent); font-weight:600; }
+  .axis-label.pos{ color: var(--accent); font-weight:700; }
   .axis-label.top{ top:8px; left:50%; transform:translateX(-50%); }
   .axis-label.bottom{ bottom:8px; left:50%; transform:translateX(-50%); }
-  .axis-label.left{ left:10px; top:50%; transform:translateY(-50%); writing-mode:vertical-rl; }
-  .axis-label.right{ right:10px; top:50%; transform:translateY(-50%) rotate(180deg); writing-mode:vertical-rl; }
+  .axis-label.left{ left:6px; top:50%; transform:translateY(-50%); width:60px; }
+  .axis-label.right{ right:6px; top:50%; transform:translateY(-50%); width:60px; }
 
   .select-hint{ margin-top:10px; font-size:0.78rem; color:var(--ink-dim); }
 
@@ -586,9 +586,9 @@ async function recomputeAxes(){
   }
   document.getElementById('axisStatus').textContent = '';
   document.getElementById('labelRight').textContent = xWord;
-  document.getElementById('labelLeft').textContent = '← less ' + xWord;
+  document.getElementById('labelLeft').textContent = 'less ' + xWord;
   document.getElementById('labelTop').textContent = yWord;
-  document.getElementById('labelBottom').textContent = '← less ' + yWord;
+  document.getElementById('labelBottom').textContent = 'less ' + yWord;
   updateInfoPanel();
 }
 
