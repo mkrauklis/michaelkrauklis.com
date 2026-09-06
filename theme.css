@@ -86,6 +86,11 @@ section{ margin-bottom: 56px; }
 .panel{ background: var(--bg-panel); border: 1px solid var(--line); border-radius: 8px; padding: 28px; }
 
 .dropzone{
+  /* block, not the <label> default of inline -- an inline box's border/background doesn't
+     grow to enclose a second wrapped line of text, it just lets that line spill out past the
+     box and collide with whatever sits below (only surfaced once a dropzone's label text got
+     long enough to wrap, in Vectis -- Ridgeline/Afterimage's shorter labels never wrapped). */
+  display: block;
   border: 1.5px dashed var(--line); border-radius: 8px; padding: 48px 24px;
   text-align: center; cursor: pointer; transition: border-color .15s ease, background .15s ease;
 }

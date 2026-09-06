@@ -166,6 +166,7 @@
       </div>
     </div>
     <p class="status" id="axisStatus" style="margin-top:10px;"></p>
+    <p class="status" id="spreadNote" style="margin-top:6px; display:none;"></p>
   </div>
 
   <div class="panel" style="margin-top:20px;">
@@ -539,22 +540,49 @@ async function recomputeAxes(){
     item.rawX = cosine(item.embedding, xEmb);
     item.rawY = cosine(item.embedding, yEmb);
   }
-  const selfX = cosine(xEmb, xEmb), crossXY = cosine(yEmb, xEmb);
-  const selfY = cosine(yEmb, yEmb), crossYX = cosine(xEmb, yEmb);
-  const poolX = [selfX, crossXY, ...embeddedItems.map(i => i.rawX)];
-  const poolY = [selfY, crossYX, ...embeddedItems.map(i => i.rawY)];
-  const minX = Math.min(...poolX), maxX = Math.max(...poolX);
-  const minY = Math.min(...poolY), maxY = Math.max(...poolY);
-  const rangeX = (maxX - minX) || 1, rangeY = (maxY - minY) || 1;
 
+  // Dynamic, corpus-only normalization: the lowest and highest raw scores the current items
+  // have actually achieved become this axis's -1/+1 poles -- not the axis word's own
+  // (unreachable) self-similarity of 1. CLIP's raw cosine similarities routinely all land in a
+  // narrow, sometimes entirely negative band; anchoring to a phantom max/min instead of the
+  // real corpus squashed everything toward one side and left the plot off-center. See
+  // CLAUDE.md's "Rescaling" section.
   const now = performance.now();
-  for(const item of embeddedItems){
-    const nx = clamp(((item.rawX - minX) / rangeX) * 2 - 1, -1, 1);
-    const ny = clamp(((item.rawY - minY) / rangeY) * 2 - 1, -1, 1);
-    item.animFrom = { x: item.pos.x, y: item.pos.y };
-    item.animTo = { x: nx, y: ny };
-    item.animStart = now;
-    item.pos = { x: nx, y: ny };
+  const spreadNote = document.getElementById('spreadNote');
+  spreadNote.style.display = 'none';
+  if(embeddedItems.length === 1){
+    const only = embeddedItems[0];
+    only.animFrom = { x: only.pos.x, y: only.pos.y };
+    only.animTo = { x: 0, y: 0 };
+    only.animStart = now;
+    only.pos = { x: 0, y: 0 };
+  } else if(embeddedItems.length > 1){
+    const xs = embeddedItems.map(i => i.rawX), ys = embeddedItems.map(i => i.rawY);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    const rangeX = maxX - minX, rangeY = maxY - minY;
+    for(const item of embeddedItems){
+      const nx = rangeX > 1e-9 ? clamp(((item.rawX - minX) / rangeX) * 2 - 1, -1, 1) : 0;
+      const ny = rangeY > 1e-9 ? clamp(((item.rawY - minY) / rangeY) * 2 - 1, -1, 1) : 0;
+      item.animFrom = { x: item.pos.x, y: item.pos.y };
+      item.animTo = { x: nx, y: ny };
+      item.animStart = now;
+      item.pos = { x: nx, y: ny };
+    }
+    // Always shown, not just past some "uh oh" threshold: raw CLIP text-text similarity
+    // margins between everyday words are *routinely* this thin (verified directly -- even the
+    // page's own default example spans well under 0.05 on both axes), so flagging it only past
+    // a cutoff would misrepresent the normal case as a rare exception. The plot always stretches
+    // whatever margin exists to fill the full axis -- that's the fix just made, on request, so
+    // even a real spread that used to get squashed now shows up -- but a thin raw margin means
+    // the resulting order can flip on essentially noise (confirmed: "worm" outscored "dog" on
+    // similarity to "legs"). Don't turn this into a threshold-gated warning; it needs to set
+    // expectations every time, not just when it looks unusually bad.
+    spreadNote.textContent = `Raw similarity here spans ${rangeX.toFixed(3)} on "${xWord}" and ` +
+      `${rangeY.toFixed(3)} on "${yWord}" — margins this thin are normal for CLIP text embeddings, ` +
+      `not a sign anything's broken, but they mean small differences in position can come from ` +
+      `essentially noise. Click a point to see its exact raw numbers before reading too much into it.`;
+    spreadNote.style.display = 'block';
   }
   document.getElementById('axisStatus').textContent = '';
   document.getElementById('labelRight').textContent = xWord;
@@ -648,6 +676,7 @@ function liveXY(item, now){
 
 function drawCompass(ctx, now){
   ctx.clearRect(0, 0, LOGICAL, LOGICAL);
+  ctx.fillStyle = '#0b0e14'; ctx.fillRect(0, 0, LOGICAL, LOGICAL);
   ctx.strokeStyle = 'rgba(154,160,174,0.18)';
   ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(LOGICAL/2, MARGIN-20); ctx.lineTo(LOGICAL/2, LOGICAL-MARGIN+20); ctx.stroke();

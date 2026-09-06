@@ -51,18 +51,40 @@ row before sending it back (`normalizeRows()`), so `cosine()` on the main thread
 product. `env.allowLocalModels = false` keeps transformers.js from trying anything except the
 public hub.
 
-## The rescaling formula, and why it's not just raw cosine
+## The rescaling formula, and why it's corpus-only, not pole-anchored
 
-Spec requirement: axis words act as "the two reference poles" for a min/max rescale, so the plot
-always uses its full -1..1 range regardless of how tightly raw similarities cluster (they do
-cluster — see the CLIP quirks below). `recomputeAxes()` builds the pool for the X axis as
-`[cosine(axisXWord, axisXWord), cosine(axisYWord, axisXWord), ...items.rawX]` — i.e. the axis
-word's similarity to itself (always 1, so this is effectively always the pool's max) and the
-*other* axis word's similarity to this one (a real, sometimes-surprising lower bound), alongside
-every item's raw value. Y is the mirror image. This guarantees the axis word itself anchors its
-own positive extreme, and everything else — including the other axis word — gets stretched to
-fit underneath it. `rangeX/rangeY` fall back to `1` if the pool is degenerate (e.g. both axis
-words embed identically) to avoid dividing by zero.
+The spec's original text called for axis words to act as "the two reference poles" for a min/max
+rescale — pooling each item's raw score together with the axis word's similarity to itself
+(always exactly 1) and to the other axis word, then normalizing against that pool. **This shipped
+first and was wrong in practice**, caught from a real screenshot: every item came out clustered
+in one corner, heavily biased negative, the plot never centered. The cause was the phantom pole —
+cosine similarity of 1 is only reachable by a word compared against itself, so no real item could
+ever get near that end of the range, and every actual item got compressed into whatever fraction
+of the range was left underneath it.
+
+The fix, direct from that feedback: **normalize purely against the corpus of scores the current
+items have actually achieved** — no axis self-similarity, no phantom poles. For each axis,
+`recomputeAxes()` takes the min and max of `item.rawX` (or `rawY`) across every embedded item and
+maps that range to exactly `[-1, 1]`. This guarantees whichever item scored highest lands at the
+positive extreme and whichever scored lowest lands at the negative extreme, no matter what the
+actual raw numbers are — "even if everything is negative the lowest and highest become the
+normalizing min/max," per the instruction that fixed it. A single item (no meaningful range yet)
+is centered at the origin instead of forced to an edge; two-plus items get the full min/max
+treatment, guarded against a zero-width range (`rangeX > 1e-9`) for the case where every item
+scores identically.
+
+**The tradeoff this creates, and why there's a permanent note about it, not a conditional one**:
+stretching *whatever* range exists to fill the whole axis means a razor-thin, noise-sized raw
+margin gets displayed with exactly the same visual confidence as a wide, meaningful one. Verified
+directly: eight animal words spanned only 0.046 of raw similarity to "legs" (0.859–0.905), and
+"worm" — which has no legs — outscored "dog". This isn't a bug in the normalization (it's doing
+exactly what was asked) or an isolated fluke (the page's own default example spans just
+0.025–0.033 on its two axes) — thin raw margins are the normal case for CLIP text-text
+similarity, not an exceptional one. That ruled out a threshold-triggered "unusually thin!"
+warning, which would misrepresent the common case as rare. Instead, `#spreadNote` always shows
+the live, current range on both axes whenever there are 2+ items, framed as a standing fact about
+how to read the plot rather than an alarm. Don't turn this back into a conditional warning
+without re-checking that assumption.
 
 Every recompute increments `axisSeq`; a recompute whose embedding lookup resolves after a newer
 one has already started is discarded (`if(mySeq !== axisSeq) return`). This matters because
@@ -71,14 +93,12 @@ yet in `textCache`) shouldn't clobber a faster one that started later.
 
 ## Two real CLIP quirks this surfaces, on purpose
 
-- **Raw text-text cosine similarity runs hot.** Two arbitrary short phrases in CLIP's text space
-  routinely score 0.85-0.95 raw cosine similarity, whether or not they're related. This is
-  exactly the problem the spec's rescaling step exists to paper over — see `updateInfoPanel()`'s
-  raw-numbers readout, which shows this plainly rather than hiding it (`raw similarity to "calm":
-  0.914 • raw similarity to "chaotic": 0.913`, before rescaling stretches that thin gap to fill
-  the whole axis). This is expected, not a bug — resist the urge to "fix" it by, say, subtracting
-  a baseline; that would be exactly the kind of hidden per-item correction the spec's §6
-  constraint rules out.
+- **Raw text-text cosine similarity runs hot and clusters tight** — see the rescaling section
+  above for the full account (the phantom-pole bug it caused, the corpus-only fix, and why
+  `#spreadNote` is permanent rather than conditional). This is expected model behavior, not a
+  bug — resist the urge to "fix" it by, say, subtracting a baseline; that would be exactly the
+  kind of hidden per-item correction the spec's §6 constraint rules out. `updateInfoPanel()`'s
+  raw-numbers readout is what makes it checkable at all — don't remove it.
 - **Text-image cosine similarity lives in a completely different, much lower numeric range**
   than text-text (CLIP's well-documented "modality gap") — verified directly against a real
   photo during development: raw similarity to a word landed around 0.22-0.23, versus ~0.9 for
@@ -127,6 +147,13 @@ calling `drawCompass`/`drawNetwork` with that canvas's own context — both draw
 export never depends on which view is currently showing on screen, and doesn't need to
 temporarily swap anything.
 
+`drawCompass` explicitly fills `#0b0e14` before drawing, matching `drawNetwork` — the on-screen
+`<canvas>` gets its dark background from CSS, but a freshly created export canvas has none, so
+without this fill the exported compass PNG came out with a *transparent* background that any
+viewer without its own dark theme (a phone's photo viewer, for instance) renders on white,
+leaving the light-gray grid and labels almost invisible. Caught from an actual exported PNG the
+user sent back.
+
 ## Monetization
 
 - AdSense: same script tag + `google-adsense-account` meta, same publisher id as the rest of the
@@ -137,13 +164,21 @@ temporarily swap anything.
   be `kind: 'text'`) since a shirt printed with someone's own uploaded photo is a private/personal
   object, not something to wear in public; the magnet is offered unconditionally.
 
-## Shared theme.css change
+## Shared theme.css changes
 
-Added a generic `input[type=text], input[type=search], select` rule to the root `theme.css` —
-Vectis is the first lab tool whose primary input is typed text rather than a photo or a slider,
-and neither Ridgeline nor Afterimage needed this chrome. Kept in the shared file rather than
-duplicated locally so a future tool gets it for free, per the root `CLAUDE.md`'s stated
-preference for relying on `theme.css` defaults before writing new page-local CSS.
+- Added a generic `input[type=text], input[type=search], select` rule — Vectis is the first lab
+  tool whose primary input is typed text rather than a photo or a slider, and neither Ridgeline
+  nor Afterimage needed this chrome. Kept in the shared file rather than duplicated locally so a
+  future tool gets it for free, per the root `CLAUDE.md`'s stated preference for relying on
+  `theme.css` defaults before writing new page-local CSS.
+- Added `display: block` to `.dropzone`. A `<label>` is inline by default, and an inline
+  element's border/background doesn't grow to enclose a second wrapped line of text — it just
+  lets that line spill out past the box. Ridgeline and Afterimage never hit this because their
+  dropzone label text is short enough to never wrap; Vectis's ("Click or drop images here — each
+  one gets its own point") does wrap on a narrow phone screen, and the overflowing second line
+  visually collided with the chip list sitting right below it. Fixing it in the shared rule
+  rather than locally, since it's a defect in the shared component itself, not something specific
+  to Vectis's copy.
 
 ## Testing changes
 
