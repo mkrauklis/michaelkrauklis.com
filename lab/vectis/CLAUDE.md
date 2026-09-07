@@ -240,15 +240,27 @@ the arithmetic result readout) to resurrect rather than rebuild from scratch.
 
 ## Most-/least-similar arcs
 
-When a point is selected in the compass view, `drawCompass()` draws a green arc from it to its
-single most-similar other item and a red arc to its single least-similar one — both via
-`rankOthers(item)`, the exact same origin-vector-cosine ranking function `updateInfoPanel()` uses
-for its ranked list (refactored out of `updateInfoPanel()` specifically so the two can never
-silently disagree). This is a direct visual echo of the top and bottom rows of that list, on the
-plot itself rather than only in the panel below it. `drawSimilarityArc()` bows the line into a
-quadratic-bezier arc (not a straight line) purely to distinguish it visually from the plain
-origin-to-point lines already on the compass — the curvature has no numeric meaning. Compass-view
-only; the network view has its own distance-based edges already serving a similar purpose there.
+When a point is selected in the compass view, `drawCompass()` sweeps a green arc to its
+single most-similar other item and a red arc to its single least-similar one — both ranked via
+`rankOthers(item)`, the exact same origin-vector-cosine function `updateInfoPanel()` uses for its
+ranked list (refactored out of `updateInfoPanel()` specifically so the two can never silently
+disagree).
+
+**The arcs are centered on the origin, not drawn point-to-point** — a first version connected the
+selected point directly to each target with a bowed bezier curve, which read as just a curvier
+version of the plain lines already radiating from center, with no obvious link to what "similar"
+actually meant (direct feedback: make it "obvious that arc length is how similarity is being
+calculated"). The current version (`drawSimilarityArc()`) instead draws along a circle centered
+on the origin, radius equal to the *selected* item's own distance from center, sweeping from the
+selected item's angular position to the target's. That sweep is computed as the literal shortest
+angular difference between the two origin-vectors (`Math.atan2` on each, normalized to the
+shorter way around a full circle) — which is exactly `acos(similarity)`, the same
+angle-vs-cosine relationship the "try it — angle and cosine" demo teaches by hand further down
+the page. A short arc means "very similar," a long one (up to half the circle, at similarity −1)
+means "very different" — length reads directly as dissimilarity, no separate number required.
+Both arcs share one radius (the selected item's), so only their sweep differs, making the two
+directly comparable at a glance. Compass-view only; the network view has its own distance-based
+edges already serving a similar purpose there.
 
 ## Layout
 
@@ -269,6 +281,37 @@ dramatically taller than the plot beside it — reported directly as "all the ex
 #2 is killing the layout." `#axisSimNote` (the one-line, always-current "these two words are
 X similar" readout) stays outside the accordion since it's short and the single most actionable
 diagnostic; the longer static tip and the multi-line spread breakdown are what got tucked away.
+
+The "3. what's on the map" panel had a similar problem in miniature: the mode toggle originally
+sat under a paragraph explaining *why* words and photos are kept separate (the modality-gap
+history above). Removed outright on direct feedback ("the user doesn't care. Just have the
+split.") — the toggle buttons themselves are self-explanatory, and the reasoning already lives
+here and in "how this actually works" for anyone who does want it.
+
+## The embedding table (in "how this actually works")
+
+`#embeddingTable`, populated by `updateEmbeddingTable()` (called from `recomputeAxes()`, so it
+tracks every add/remove/axis-change automatically), lists every currently-plotted item's literal
+`(x, y)` position — added on direct request specifically to tie the abstract explanation above it
+to the visitor's own concrete session, and to open with a plain "you just generated N real CLIP
+embeddings" line rather than assuming the reader already believes something happened. It's
+deliberately just a restatement of `item.pos`, the exact same numbers the compass plot and the
+info panel's raw-similarity line already use — not a new computation, so it can't drift from what
+'s actually plotted.
+
+**Built via DOM methods (`createElement`/`textContent`), not template-string `innerHTML`** — same
+reasoning as the ranked-list fix below. `item.text` is unescaped user input (typed text or a
+photo's filename); interpolating it into an HTML string and assigning `innerHTML` would let a
+name like `<img src=x onerror=...>` execute as markup. Verified directly: adding an item with
+that exact text renders the literal string everywhere (chip, ranked list, embedding table) with
+no script execution. If you touch this function, keep using element methods — don't collapse it
+back into a template-string `innerHTML` assignment for brevity.
+
+**`updateInfoPanel()`'s ranked-list rows had the same latent bug**, present since the ranked list
+first shipped and unrelated to this feature — building each row's markup as a template string
+assigned to `innerHTML`, with `item.text` interpolated directly into it — was fixed alongside the
+new table, for the same reason and the same way (explicit `createElement`/`textContent` calls,
+appended via `.append(...)`).
 
 ## Intro copy
 
@@ -341,8 +384,10 @@ pick up `/nav.js` or `/theme.css`, and module workers generally won't load over 
 Golden path: wait for "Language model ready," confirm the six example items
 (surfing/summit/coral reef/ski lodge/sailboat/hiking trail) land at distinct positions roughly
 matching their real-world domain, change an axis word and confirm the label, `#axisSimNote`, and
-every point's position update, click a point and confirm the raw numbers + ranked list appear
-alongside a green arc to its most-similar neighbor and a red arc to its least-similar one, expand
+every point's position update and `#embeddingTable` (in "how this actually works") updates its
+rows to match, click a point and confirm the raw numbers + ranked list appear alongside a green
+arc and a red arc both centered on the origin (not point-to-point) with the red one visibly
+longer whenever its similarity is more negative than the green one's is positive, expand
 the "Tips for picking axis words" accordion and confirm `#spreadNote` has live numbers in it,
 toggle to Network and confirm edges vary visibly in weight and some cross the plot's center
 (not just within one visual cluster), and download both PNGs. Separately, click the Photos mode
@@ -353,12 +398,20 @@ confirm the map is empty again (not a leftover mix of both kinds) and "Reset to 
 repopulates the six word items.
 
 One easy-to-miss testing trap: this page's whole render loop runs on `requestAnimationFrame`,
-which browsers fully pause for backgrounded tabs — if you're driving a browser-automation tool
-that opens a new tab **in the background** (rather than switching to it), the compass/network
-canvas will never redraw and every visual check (arcs, animations, exported PNGs) will silently
-fail with no console error, even though everything else (model loading, item embedding, DOM
-updates) works fine, since those don't depend on rAF. Bring the tab to the foreground before
-checking anything that touches the canvas.
+which browsers fully pause whenever `document.visibilityState !== 'visible'` — every visual check
+(arcs, animations, exported PNGs) will then silently fail with no console error, even though
+everything else (model loading, item embedding, DOM updates) works fine, since those don't depend
+on rAF. Don't trust a browser-automation tool's own "this tab is active/selected" bookkeeping as
+proof the page is actually visible — confirmed directly, more than once, that a tab reported as
+active still had `document.visibilityState === 'hidden'` (and `document.hasFocus()` false),
+silently stalling `drawCompass()`/`drawNetwork()` from ever running. Check
+`document.visibilityState` from inside the page itself before trusting a "nothing changed"
+result. If it's stuck hidden and switching tabs doesn't fix it, don't wait on it — call the
+render function directly for a one-off synchronous draw (a temporary
+`window.__x = () => render(performance.now())`, invoked from the test script, works and doesn't
+depend on rAF at all); reading canvas pixel data back afterward works regardless of page
+visibility, only the automatic scheduling is affected. Remove any such debug hook before
+shipping.
 
 This was all verified end-to-end against the real hosted model during development (not mocked) —
 CDN/model-hub access is required for any of it to work, so if you're testing somewhere

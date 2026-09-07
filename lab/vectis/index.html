@@ -167,10 +167,7 @@
 
   <div class="panel" style="margin-top:20px;">
     <span class="step-tag">3. what's on the map</span>
-    <p class="status" style="margin-top:0;">Words or photos, not both at once — CLIP's raw
-    similarity numbers for the two don't share a scale (more on that below the tool), so mixing
-    them made the plot lie about how spread out things really were. Switching clears the map.</p>
-    <div class="toggle-group" id="modeToggle" style="margin-top:10px;">
+    <div class="toggle-group" id="modeToggle">
       <button data-mode="text" class="active">Words</button>
       <button data-mode="image">Photos</button>
     </div>
@@ -282,6 +279,23 @@
             <span class="score" id="quickScore">–</span>
           </div>
           <p class="status" id="quickStatus" style="margin-top:8px;"></p>
+        </div>
+      </div>
+
+      <div style="margin-top:28px;">
+        <span class="step-tag">your actual embeddings</span>
+        <p id="embeddingIntro" style="margin:0 0 10px;"></p>
+        <div style="overflow-x:auto;">
+          <table id="embeddingTable" style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+            <thead>
+              <tr>
+                <th style="text-align:left; padding:6px 10px; color:var(--ink-dim); font-weight:600; border-bottom:1px solid var(--line);">item</th>
+                <th style="text-align:right; padding:6px 10px; color:var(--ink-dim); font-weight:600; border-bottom:1px solid var(--line);">x</th>
+                <th style="text-align:right; padding:6px 10px; color:var(--ink-dim); font-weight:600; border-bottom:1px solid var(--line);">y</th>
+              </tr>
+            </thead>
+            <tbody id="embeddingTableBody"></tbody>
+          </table>
         </div>
       </div>
 
@@ -611,6 +625,7 @@ async function recomputeAxes(){
   document.getElementById('labelTop').textContent = yWord;
   document.getElementById('labelBottom').textContent = 'less ' + yWord;
   updateInfoPanel();
+  updateEmbeddingTable();
 }
 
 document.getElementById('axisXInput').addEventListener('change', e => { state.axisXWord = e.target.value || 'calm'; recomputeAxes(); });
@@ -749,35 +764,43 @@ function drawCompass(ctx, now){
     }
   }
 
-  // When something's selected, arc to its most- and least-similar neighbor (by the same
-  // origin-vector cosine the ranked list uses) in green/red -- a direct visual echo of the top
-  // and bottom rows of that list, on the plot itself rather than only in the panel below it.
+  // When something's selected, sweep an arc -- centered on the origin, not point-to-point -- to
+  // its most- and least-similar neighbor (by the same origin-vector cosine the ranked list uses)
+  // in green/red. The arc's radius is the selected item's own distance from center, so both
+  // arcs share one circle; what differs is how much of that circle each one sweeps. That sweep
+  // is the actual angle between the two origin-vectors -- literally acos(similarity), the same
+  // relationship the "angle and cosine" demo below the tool teaches directly -- so a short arc
+  // means "very similar" and a long one (up to half the circle) means "very different," visibly,
+  // not just as a number in the panel below.
   const selectedItem = state.items.find(i => i.id === state.selectedId && i.embedding);
   if(selectedItem){
     const others = rankOthers(selectedItem);
     if(others.length){
       const selP = liveXY(selectedItem, now);
       const [selX, selY] = toScreen(selP.x, selP.y);
+      const [ox, oy] = toScreen(0, 0);
+      const radius = Math.hypot(selX - ox, selY - oy);
+      const selAngle = Math.atan2(selY - oy, selX - ox);
       const best = others[0], worst = others[others.length - 1];
-      drawSimilarityArc(ctx, selX, selY, best.item, now, '#5fd88a');
-      if(worst.item.id !== best.item.id) drawSimilarityArc(ctx, selX, selY, worst.item, now, '#e0615a');
+      if(radius > 1){
+        drawSimilarityArc(ctx, ox, oy, radius, selAngle, best.item, now, '#5fd88a');
+        if(worst.item.id !== best.item.id) drawSimilarityArc(ctx, ox, oy, radius, selAngle, worst.item, now, '#e0615a');
+      }
     }
   }
 }
 
-function drawSimilarityArc(ctx, x1, y1, targetItem, now, color){
+function drawSimilarityArc(ctx, ox, oy, radius, selAngle, targetItem, now, color){
   const p = liveXY(targetItem, now);
-  const [x2, y2] = toScreen(p.x, p.y);
-  const dx = x2 - x1, dy = y2 - y1;
-  const dist = Math.hypot(dx, dy) || 1;
-  const bulge = Math.min(36, dist * 0.2);
-  const cx = (x1 + x2) / 2 - (dy / dist) * bulge;
-  const cy = (y1 + y2) / 2 + (dx / dist) * bulge;
-  ctx.strokeStyle = color; ctx.lineWidth = 2.5;
-  ctx.shadowColor = color; ctx.shadowBlur = 8;
+  const [tx, ty] = toScreen(p.x, p.y);
+  const targetAngle = Math.atan2(ty - oy, tx - ox);
+  let diff = targetAngle - selAngle;
+  while(diff > Math.PI) diff -= Math.PI * 2;
+  while(diff < -Math.PI) diff += Math.PI * 2;
+  ctx.strokeStyle = color; ctx.lineWidth = 3;
+  ctx.shadowColor = color; ctx.shadowBlur = 9;
   ctx.beginPath();
-  ctx.moveTo(x1, y1);
-  ctx.quadraticCurveTo(cx, cy, x2, y2);
+  ctx.arc(ox, oy, radius, selAngle, selAngle + diff, diff < 0);
   ctx.stroke();
   ctx.shadowBlur = 0;
 }
@@ -882,12 +905,63 @@ function updateInfoPanel(){
   const others = rankOthers(item);
   const ranksEl = document.getElementById('infoRanks');
   ranksEl.innerHTML = '';
-  if(!others.length){ ranksEl.innerHTML = '<p class="status">Add more items to see what this is most like.</p>'; return; }
+  if(!others.length){
+    const p = document.createElement('p'); p.className = 'status';
+    p.textContent = 'Add more items to see what this is most like.';
+    ranksEl.appendChild(p);
+    return;
+  }
   for(const o of others){
+    // Built via DOM methods, not innerHTML + template string -- item.text comes straight from
+    // whatever someone typed (or a photo's filename), so interpolating it into an HTML string
+    // would let a name like `<img src=x onerror=...>` execute as markup instead of displaying
+    // as text.
     const row = document.createElement('div'); row.className = 'rank-row';
     const pct = clamp((o.sim + 1) / 2 * 100, 0, 100);
-    row.innerHTML = `<span class="name">${o.item.text}</span><span class="bar"><i style="width:${pct}%"></i></span><span class="val">${o.sim.toFixed(2)}</span>`;
+    const nameEl = document.createElement('span'); nameEl.className = 'name'; nameEl.textContent = o.item.text;
+    const barEl = document.createElement('span'); barEl.className = 'bar';
+    const fillEl = document.createElement('i'); fillEl.style.width = pct + '%';
+    barEl.appendChild(fillEl);
+    const valEl = document.createElement('span'); valEl.className = 'val'; valEl.textContent = o.sim.toFixed(2);
+    row.append(nameEl, barEl, valEl);
     ranksEl.appendChild(row);
+  }
+}
+
+// Shows the literal (x, y) each plotted item landed on -- ties the abstract explainer above to
+// the visitor's own concrete session, and doubles as an honest "yes, this is a real number"
+// check against the info panel above. Built via DOM methods for the same reason as the ranked
+// list: item.text is untrusted user input.
+function updateEmbeddingTable(){
+  const intro = document.getElementById('embeddingIntro');
+  const body = document.getElementById('embeddingTableBody');
+  const embedded = state.items.filter(i => i.embedding);
+  body.innerHTML = '';
+  if(!embedded.length){
+    intro.textContent = 'Add a word or a photo above and its real (x, y) position will show up here.';
+    return;
+  }
+  const n = embedded.length;
+  intro.innerHTML = '';
+  const lead = document.createTextNode('Nice — you just generated ');
+  const count = document.createElement('b'); count.style.color = 'var(--ink)';
+  count.textContent = `${n} real CLIP embedding${n === 1 ? '' : 's'}`;
+  const tail = document.createTextNode(` and turned ${n === 1 ? 'it' : 'them'} into coordinates. ` +
+    `Here's the exact (x, y) position each one landed on, after rescaling:`);
+  intro.append(lead, count, tail);
+  for(const item of embedded){
+    const row = document.createElement('tr');
+    const nameCell = document.createElement('td');
+    nameCell.style.cssText = 'padding:6px 10px; border-bottom:1px solid var(--line);';
+    nameCell.textContent = item.text;
+    const xCell = document.createElement('td');
+    xCell.style.cssText = 'text-align:right; padding:6px 10px; border-bottom:1px solid var(--line); font-variant-numeric:tabular-nums;';
+    xCell.textContent = item.pos.x.toFixed(3);
+    const yCell = document.createElement('td');
+    yCell.style.cssText = xCell.style.cssText;
+    yCell.textContent = item.pos.y.toFixed(3);
+    row.append(nameCell, xCell, yCell);
+    body.appendChild(row);
   }
 }
 
@@ -1022,6 +1096,7 @@ document.getElementById('downloadNetworkBtn').addEventListener('click', () => ex
 // ---------- boot ----------
 fitCanvas();
 requestAnimationFrame(loop);
+updateEmbeddingTable();
 loadExample();
 warmText();
 </script>
