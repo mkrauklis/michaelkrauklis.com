@@ -155,11 +155,14 @@
     <details class="disclosure" style="margin-top:10px;">
       <summary>Tips for picking axis words</summary>
       <div class="disclosure-body">
-        <p class="status">Works best with two different <i>topics</i> ("ocean" / "mountain",
-        "food" / "technology") rather than opposite personality traits or physical properties
-        ("calm" / "chaotic", "hairy" / "safe") — CLIP's raw text similarity is much better at
-        recognizing what something is about than judging whether it literally has a trait. More
-        on why below the tool.</p>
+        <p class="status">Works best with two different, specific, concrete <i>topics</i>
+        ("ocean" / "mountain", "food" / "technology") rather than opposite personality traits or
+        physical properties ("calm" / "chaotic", "hairy" / "safe") — CLIP's raw text similarity
+        is much better at recognizing what something is about than judging whether it literally
+        has a trait. Broad, generic category words ("person," "crowd," "thing") tend to do
+        especially poorly, even as plain topics — they're too common across everything to anchor
+        a specific direction, so a word like "person" can score packed and empty scenes almost
+        identically. More on why below the tool.</p>
         <p class="status" id="spreadNote" style="margin-top:10px; display:none;"></p>
       </div>
     </details>
@@ -766,12 +769,18 @@ function drawCompass(ctx, now){
 
   // When something's selected, sweep an arc -- centered on the origin, not point-to-point -- to
   // its most- and least-similar neighbor (by the same origin-vector cosine the ranked list uses)
-  // in green/red. The arc's radius is the selected item's own distance from center, so both
-  // arcs share one circle; what differs is how much of that circle each one sweeps. That sweep
-  // is the actual angle between the two origin-vectors -- literally acos(similarity), the same
-  // relationship the "angle and cosine" demo below the tool teaches directly -- so a short arc
-  // means "very similar" and a long one (up to half the circle) means "very different," visibly,
-  // not just as a number in the panel below.
+  // in green/red. Each arc's radius is capped below the *shorter* of the two vectors it connects
+  // (its own point and the selected point), scaled by a fraction distinct per arc -- both
+  // necessary, not just tidy: capping below the shorter vector keeps the arc from swinging out
+  // past whichever of the two points is closer to center, and giving green/red different
+  // fractions guarantees their circles never coincide. A first version shared one radius (the
+  // selected item's own distance) for both arcs, which put them on the *same* circle whenever
+  // that distance was the shorter vector for both -- so the arc drawn second (red) simply
+  // overpainted the first (green) wherever their sweeps overlapped, and sometimes only one arc
+  // appeared to render at all. The swept angle itself is still the exact angle between the two
+  // origin-vectors -- literally acos(similarity), the same relationship the "angle and cosine"
+  // demo below the tool teaches directly -- so a short arc means "very similar" and a long one
+  // (up to half the circle) means "very different," visibly, not just as a number in the panel.
   const selectedItem = state.items.find(i => i.id === state.selectedId && i.embedding);
   if(selectedItem){
     const others = rankOthers(selectedItem);
@@ -779,21 +788,22 @@ function drawCompass(ctx, now){
       const selP = liveXY(selectedItem, now);
       const [selX, selY] = toScreen(selP.x, selP.y);
       const [ox, oy] = toScreen(0, 0);
-      const radius = Math.hypot(selX - ox, selY - oy);
+      const selDist = Math.hypot(selX - ox, selY - oy);
       const selAngle = Math.atan2(selY - oy, selX - ox);
       const best = others[0], worst = others[others.length - 1];
-      if(radius > 1){
-        drawSimilarityArc(ctx, ox, oy, radius, selAngle, best.item, now, '#5fd88a');
-        if(worst.item.id !== best.item.id) drawSimilarityArc(ctx, ox, oy, radius, selAngle, worst.item, now, '#e0615a');
-      }
+      drawSimilarityArc(ctx, ox, oy, selDist, selAngle, best.item, now, '#5fd88a', 0.5);
+      if(worst.item.id !== best.item.id) drawSimilarityArc(ctx, ox, oy, selDist, selAngle, worst.item, now, '#e0615a', 0.85);
     }
   }
 }
 
-function drawSimilarityArc(ctx, ox, oy, radius, selAngle, targetItem, now, color){
+function drawSimilarityArc(ctx, ox, oy, selDist, selAngle, targetItem, now, color, fraction){
   const p = liveXY(targetItem, now);
   const [tx, ty] = toScreen(p.x, p.y);
+  const targetDist = Math.hypot(tx - ox, ty - oy);
   const targetAngle = Math.atan2(ty - oy, tx - ox);
+  const radius = Math.min(selDist, targetDist) * fraction;
+  if(radius < 4) return; // too small (near-origin point) to draw meaningfully
   let diff = targetAngle - selAngle;
   while(diff > Math.PI) diff -= Math.PI * 2;
   while(diff < -Math.PI) diff += Math.PI * 2;

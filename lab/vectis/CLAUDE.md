@@ -160,6 +160,29 @@ Don't try to "fix" this by picking yet another axis-word pair and calling it sol
 pair that scores meaningfully better than ~0.90, and the real fix is the always-visible
 diagnostic, not example curation.
 
+**A further wrinkle found the same way: broad, generic category words underperform even other
+topic nouns** — reported directly ("I'll use a dimension like 'person' or 'crowd' and it does
+really poorly"). Verified with "person"/"landscape" against a set of items deliberately varying
+in how crowded they are: "packed stadium" scored *lower* raw similarity to "person" (0.915) than
+"empty room" (0.938) or "solo hiker" (0.942) did, and landed near the bottom of the plot's
+"person" axis instead of the top. Reworded to "crowded"/"empty" and it still misranked the same
+item ("packed stadium" landed on the *un*-crowded side). Two follow-up checks ruled out easy
+fixes rather than just accepting the first bad result: (1) it's not a phrasing/prompt-template
+issue — `cosine("person", "a photo of a person")` is 0.98, so wrapping a word in a fuller caption-
+style template barely moves its own embedding, meaning it can't meaningfully change how anything
+else ranks against it either; (2) it's not fixable by picking different but equally-generic
+words — "crowded"/"empty" hit the identical failure mode as "person"/"landscape" on the same test
+item. The likely cause: words this generic (person, crowd, thing, crowded, empty) show up across
+such a huge fraction of caption-training data that they don't anchor a specific direction in the
+embedding space the way a vivid, concrete noun like "ocean" does — closer to the "hubness"
+problem documented in high-dimensional embedding spaces generally than to anything specific to
+CLIP. No code fix exists for this the way the corpus-normalization fix existed for the centering
+bug — it's a real limit of the underlying representation. Handled the only honest way available:
+extended the axis-word tips paragraph to call out broad category words by name as an additional,
+worse-than-average case, on top of "topics beat traits." Don't spend more effort chasing a
+phrasing or template trick for this specific complaint without new evidence — both obvious ones
+were tried and ruled out above.
+
 ## Two real CLIP quirks this surfaces, on purpose
 
 - **Raw text-text cosine similarity runs hot and clusters tight** — see the rescaling section
@@ -251,16 +274,29 @@ selected point directly to each target with a bowed bezier curve, which read as 
 version of the plain lines already radiating from center, with no obvious link to what "similar"
 actually meant (direct feedback: make it "obvious that arc length is how similarity is being
 calculated"). The current version (`drawSimilarityArc()`) instead draws along a circle centered
-on the origin, radius equal to the *selected* item's own distance from center, sweeping from the
-selected item's angular position to the target's. That sweep is computed as the literal shortest
-angular difference between the two origin-vectors (`Math.atan2` on each, normalized to the
-shorter way around a full circle) — which is exactly `acos(similarity)`, the same
-angle-vs-cosine relationship the "try it — angle and cosine" demo teaches by hand further down
-the page. A short arc means "very similar," a long one (up to half the circle, at similarity −1)
-means "very different" — length reads directly as dissimilarity, no separate number required.
-Both arcs share one radius (the selected item's), so only their sweep differs, making the two
-directly comparable at a glance. Compass-view only; the network view has its own distance-based
-edges already serving a similar purpose there.
+on the origin, sweeping from the selected item's angular position to the target's. That sweep is
+computed as the literal shortest angular difference between the two origin-vectors (`Math.atan2`
+on each, normalized to the shorter way around a full circle) — which is exactly `acos(similarity)
+`, the same angle-vs-cosine relationship the "try it — angle and cosine" demo teaches by hand
+further down the page. A short arc means "very similar," a long one (up to half the circle, at
+similarity −1) means "very different" — length reads directly as dissimilarity, no separate
+number required.
+
+**Each arc gets its own radius, capped below the shorter of the two vectors it connects, with a
+different fraction per arc (`0.5` for the best match, `0.85` for the worst)** — both necessary,
+per direct feedback after the first version shipped with one shared radius (the selected item's
+own distance) for both arcs. That was wrong two ways at once: (1) if the selected item was
+*farther* from center than a target, the arc swept right past where that target's own point
+actually sat, since the shared radius had nothing to do with the target's distance; (2) worse,
+whenever that shared radius put both arcs on the *literally same circle*, the arc drawn second
+(red) simply painted over the first (green) wherever their sweeps overlapped — which is why the
+green arc sometimes appeared to not render at all. Capping each arc's own radius at
+`Math.min(selectedDist, targetDist) * fraction` fixes the first problem (the arc can never extend
+past whichever of its two endpoints is closer to center); giving the two arcs different fractions
+fixes the second (their circles can no longer coincide even in the degenerate case where the same
+distance is the limiting one for both). Below a small pixel threshold the arc is skipped entirely
+rather than drawing an invisible/degenerate sliver. Compass-view only; the network view has its
+own distance-based edges already serving a similar purpose there.
 
 ## Layout
 
