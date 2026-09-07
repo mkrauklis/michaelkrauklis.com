@@ -24,8 +24,6 @@
   /* ---------- axis + item controls ---------- */
   .axis-row{ display:flex; gap:20px; flex-wrap:wrap; }
   .axis-row .col{ flex:1; min-width:220px; }
-  .item-controls{ display:flex; gap:20px; flex-wrap:wrap; margin-top:24px; }
-  .item-controls .col{ flex:1; min-width:260px; }
   .add-text-row{ display:flex; gap:8px; }
   .add-text-row input{ flex:1; }
   .dropzone.small{ padding: 20px 16px; font-size:0.85rem; }
@@ -169,22 +167,21 @@
 
   <div class="panel" style="margin-top:20px;">
     <span class="step-tag">3. what's on the map</span>
-    <div class="item-controls">
-      <div class="col">
-        <label class="field" style="margin-top:0;">Add a word or phrase</label>
-        <div class="add-text-row">
-          <input type="text" id="itemTextInput" maxlength="60" placeholder="e.g. thunderstorm">
-          <button class="secondary" id="addTextBtn">Add</button>
-        </div>
-      </div>
-      <div class="col">
-        <label class="field" style="margin-top:0;">Add photos</label>
-        <label class="dropzone small" id="imageDropzone">
-          <input type="file" id="imageInput" accept="image/*" multiple>
-          <span class="cta">Click or drop images here</span> — each one gets its own point
-        </label>
-      </div>
+    <p class="status" style="margin-top:0;">Words or photos, not both at once — CLIP's raw
+    similarity numbers for the two don't share a scale (more on that below the tool), so mixing
+    them made the plot lie about how spread out things really were. Switching clears the map.</p>
+    <div class="toggle-group" id="modeToggle" style="margin-top:10px;">
+      <button data-mode="text" class="active">Words</button>
+      <button data-mode="image">Photos</button>
     </div>
+    <div class="add-text-row" id="textInputRow" style="margin-top:14px;">
+      <input type="text" id="itemTextInput" maxlength="60" placeholder="e.g. thunderstorm">
+      <button class="secondary" id="addTextBtn">Add</button>
+    </div>
+    <label class="dropzone small" id="imageDropzone" style="margin-top:14px; display:none;">
+      <input type="file" id="imageInput" accept="image/*" multiple>
+      <span class="cta">Click or drop images here</span> — each one gets its own point
+    </label>
     <div class="chip-list" id="chipList"></div>
     <div class="actions">
       <button class="secondary" id="resetExampleBtn">Reset to example</button>
@@ -208,13 +205,6 @@
     </div>
     <p class="select-hint">Click any point (or its line back to the center) to see how it got
     there, and what else on the map it's most like.</p>
-    <p class="select-hint" id="modalityNote" style="display:none;">Heads up: CLIP's raw
-    similarity numbers for photos sit in a noticeably different range than its numbers for words
-    (a known quirk called the "modality gap"). This page corrects for it by estimating the gap
-    between photos and words currently on your map and shifting photo scores to compensate,
-    which is enough to plot both together sensibly — but with only a photo or two to estimate
-    from, the correction is an approximation, not a lab-grade fix, so treat exact photo
-    placement with a little extra skepticism.</p>
     <div class="info-panel" id="infoPanel">
       <h3 id="infoTitle"></h3>
       <div class="raw" id="infoRaw"></div>
@@ -250,8 +240,10 @@
       photos, before it ever reached your machine. After that first download your browser caches
       it, and every photo or phrase you plot from then on never leaves this tab. CLIP maps images
       and text into the <i>same</i> space of numbers, trained so that a photo of a dog and the
-      word "dog" land near each other in that space — which is what makes it possible to compare
-      a typed word against an uploaded photo at all.</p>
+      word "dog" land near each other in that space. In practice its raw similarity numbers for
+      photos and for words don't sit on quite the same scale, so this page keeps you plotting one
+      kind at a time rather than mixing the two — see "picking axis words" for more on how raw
+      CLIP similarity behaves.</p>
       <p>A word doesn't mean anything to a computer by itself — but CLIP has seen enough
       captioned photos that it's learned to place any word, phrase, or image as a point in a
       space with a few hundred dimensions, positioned so that things which mean similar things
@@ -445,6 +437,7 @@ const state = {
   items: [],
   nextId: 1,
   view: 'compass',
+  mode: 'text', // 'text' or 'image' -- never mixed, see mode toggle below
   selectedId: null,
 };
 const EXAMPLE_ITEMS = ['surfing', 'summit', 'coral reef', 'ski lodge', 'sailboat', 'hiking trail'];
@@ -543,33 +536,6 @@ function normalizeGroup(items, now){
   return { rangeX, rangeY };
 }
 
-// CLIP's image and text embeddings occupy systematically different regions of the shared space
-// -- a published, well-studied artifact (Liang et al., "Mind the Gap," NeurIPS 2022) caused by
-// training/initialization geometry, not by images and words meaning different things. The
-// paper's own fix is exactly this: estimate the offset between the two modalities' embedding
-// clouds and subtract it before comparing across them. There's no large reference corpus to draw
-// on in-browser, so the offset is estimated from whatever text and image embeddings are
-// currently on the page (axis words always count as text; more items of either kind make the
-// estimate steadier). With very few images this is a rough approximation, not a lab-grade
-// correction -- but per the paper, the gap's *direction* is dominated by structural factors
-// rather than specific content, so even a small sample usually points roughly the right way.
-function correctModalityGap(items, axisXEmbed, axisYEmbed){
-  const textEmbeds = [axisXEmbed, axisYEmbed];
-  for(const i of items) if(i.kind === 'text' && i.embedding) textEmbeds.push(i.embedding);
-  const imageItems = items.filter(i => i.kind === 'image' && i.embedding);
-  if(!imageItems.length) return; // nothing to correct
-  const dim = textEmbeds[0].length;
-  const meanText = new Array(dim).fill(0), meanImage = new Array(dim).fill(0);
-  for(const e of textEmbeds) for(let d = 0; d < dim; d++) meanText[d] += e[d] / textEmbeds.length;
-  for(const i of imageItems) for(let d = 0; d < dim; d++) meanImage[d] += i.embedding[d] / imageItems.length;
-  const gap = meanText.map((v, d) => v - meanImage[d]);
-  for(const item of imageItems){
-    const shifted = item.embedding.map((v, d) => v + gap[d]);
-    let normSq = 0; for(const v of shifted) normSq += v * v;
-    const norm = Math.sqrt(normSq) || 1;
-    item.correctedEmbedding = shifted.map(v => v / norm);
-  }
-}
 
 let axisSeq = 0;
 async function recomputeAxes(){
@@ -604,11 +570,9 @@ async function recomputeAxes(){
   simNote.textContent = `"${xWord}" and "${yWord}" are ${simLabel}.`;
 
   const embeddedItems = state.items.filter(i => i.embedding);
-  correctModalityGap(embeddedItems, xEmb, yEmb);
   for(const item of embeddedItems){
-    const emb = item.correctedEmbedding || item.embedding;
-    item.rawX = cosine(emb, xEmb);
-    item.rawY = cosine(emb, yEmb);
+    item.rawX = cosine(item.embedding, xEmb);
+    item.rawY = cosine(item.embedding, yEmb);
   }
 
   // Dynamic, corpus-only normalization: the lowest and highest raw scores actually achieved
@@ -617,12 +581,10 @@ async function recomputeAxes(){
   // negative band; anchoring to a phantom max/min instead of the real corpus squashed everything
   // toward one side and left the plot off-center. See CLAUDE.md's "Rescaling" section.
   //
-  // One combined pool across both kinds, now that correctModalityGap() has already pulled photo
-  // and word raw scores onto a comparable scale -- an earlier version normalized text and image
-  // items in two separate pools instead, which fixed the visual squashing but made a photo's
-  // position permanently incomparable to a word's, defeating the point of plotting them
-  // together at all. See CLAUDE.md's "Modality gap" section for why the correction below is
-  // trusted enough to make combining the pools safe again.
+  // One combined pool across all embedded items -- safe because `state.items` only ever holds
+  // one kind at a time (see the mode toggle/CLAUDE.md's "Modality mode" section). An earlier
+  // version let text and image items coexist and tried to reconcile CLIP's very different raw
+  // similarity scales for each; that was abandoned as unreliable, not this normalization.
   const now = performance.now();
   const combinedRange = normalizeGroup(embeddedItems, now);
 
@@ -676,6 +638,23 @@ dropzone.addEventListener('drop', e => {
 document.getElementById('resetExampleBtn').addEventListener('click', loadExample);
 document.getElementById('clearAllBtn').addEventListener('click', () => { state.items = []; selectItem(null); recomputeAxes(); renderChips(); });
 
+// Words and photos are never mixed -- see CLAUDE.md's "Modality mode" section for why. Switching
+// modes clears the map rather than trying to hide/preserve the other kind's items.
+document.getElementById('modeToggle').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-mode]');
+  if(!btn || btn.classList.contains('active')) return;
+  state.mode = btn.dataset.mode;
+  [...document.querySelectorAll('#modeToggle button')].forEach(b => b.classList.toggle('active', b === btn));
+  document.getElementById('textInputRow').style.display = state.mode === 'text' ? 'flex' : 'none';
+  document.getElementById('imageDropzone').style.display = state.mode === 'image' ? 'block' : 'none';
+  document.getElementById('resetExampleBtn').style.display = state.mode === 'text' ? 'inline-block' : 'none';
+  if(state.mode === 'image') warmVisionIfNeeded();
+  state.items = [];
+  selectItem(null);
+  recomputeAxes();
+  renderChips();
+});
+
 function renderChips(){
   const list = document.getElementById('chipList');
   list.innerHTML = '';
@@ -701,11 +680,7 @@ function renderChips(){
 
 function updateMerchGating(){
   const shirtNote = document.getElementById('shirtNote');
-  const allText = state.items.length > 0 && state.items.every(i => i.kind === 'text');
-  shirtNote.style.display = allText ? 'block' : 'none';
-  const hasText = state.items.some(i => i.kind === 'text');
-  const hasImage = state.items.some(i => i.kind === 'image');
-  document.getElementById('modalityNote').style.display = (hasText && hasImage) ? 'block' : 'none';
+  shirtNote.style.display = (state.mode === 'text' && state.items.length > 0) ? 'block' : 'none';
 }
 
 // ---------- plot rendering ----------

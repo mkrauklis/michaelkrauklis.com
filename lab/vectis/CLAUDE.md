@@ -171,43 +171,37 @@ diagnostic, not example curation.
 - **Text-image cosine similarity lives in a completely different, much lower numeric range**
   than text-text (CLIP's well-documented "modality gap") — verified directly against a real
   photo during development: raw similarity to a word landed around 0.22-0.23, versus ~0.9 for
-  that same word against other words. Left uncorrected, this meant dropping one photo onto a
-  text-heavy map tends to shove it straight into a corner regardless of content, and crush every
-  word's real spread into a sliver near the opposite end (caught from a screenshot of six
-  spread-out words collapsing into one corner the instant a photo was added). This is now
-  actively corrected, not just documented — see `correctModalityGap()` below.
+  that same word against other words. See "Modality mode" below for how this is handled.
 
-### Modality-gap correction
+## Modality mode: words or photos, never both
 
-`correctModalityGap(items, axisXEmbed, axisYEmbed)`, called from `recomputeAxes()` right after
-raw embeddings are available and before any similarity is computed, implements the fix described
-in Liang et al., ["Mind the Gap: Understanding the Modality Gap in Multi-modal Contrastive
-Representation Learning"](https://arxiv.org/abs/2203.02053) (NeurIPS 2022): the offset between
-CLIP's image-embedding cloud and its text-embedding cloud is largely a fixed, structural artifact
-of training/initialization, not a meaningful content difference, so subtracting an estimate of
-that offset from image embeddings before comparing them to text is a legitimate, published
-correction rather than an invented rescaling.
+Two earlier attempts tried to make mixed word-and-photo plots work: normalizing each kind against
+only its own kind (fixed the visual squashing, but made a photo's position permanently
+incomparable to a word's — pointless to plot together at all), then a gap-correction step
+estimating and subtracting the offset between CLIP's image- and text-embedding clouds, per Liang
+et al., ["Mind the Gap"](https://arxiv.org/abs/2203.02053) (NeurIPS 2022). The correction was
+real and directionally worked, but with only one or two photos to estimate the offset from — the
+realistic common case — it was too unreliable to trust, and was called out as such directly:
+"you didn't solve the modality issue."
 
-The paper estimates that offset from a large reference corpus of both modalities. There's no such
-corpus available in-browser, so the offset is estimated from whatever text and image embeddings
-happen to be on the page right now — the mean of all text embeddings (axis words always count,
-plus any text items) minus the mean of all image embeddings — and each image embedding gets
-shifted by that difference, then renormalized to unit length (`item.correctedEmbedding`). `cosine
-()`-based similarity to axis words uses `item.correctedEmbedding || item.embedding`, so text
-items are completely unaffected and only images change. With only one or two photos on the page
-this is a rough, small-sample estimate rather than a precise one — call this an honest reduction
-of the gap, not a guarantee it's fully closed, and `#modalityNote` says so directly rather than
-implying a perfect fix.
+The actual fix: stop trying to make two things comparable that CLIP itself doesn't represent
+comparably, and don't let the plot mix them at all. `state.mode` is `'text'` or `'image'` — never
+both — controlled by the `#modeToggle` buttons (styled like the Compass/Network toggle).
+Switching modes clears `state.items` outright rather than trying to hide or preserve the other
+kind's items; there's no partial state where both kinds coexist even transiently. Switching to
+`'image'` also proactively calls `warmVisionIfNeeded()` so the vision-tower progress bar starts
+before the user even opens the file picker, rather than only after their first drop.
 
-**Why this replaced an earlier "normalize each kind separately" fix**: a first attempt at this
-problem split `normalizeGroup()` into two independent calls (one for text items, one for image
-items), which did stop one photo from crushing every word's spread — but it also meant a photo's
-plotted position could never be compared to a word's position again, since each was stretched to
-fill the range against only its own kind. That defeats the actual point of plotting photos and
-words together. Once the modality-gap correction pulls the two onto a genuinely comparable raw
-scale, going back to one combined `normalizeGroup()` call (see the "Rescaling" section above) is
-safe again and restores real cross-modal comparability — don't reintroduce the kind-split as a
-"safer" fallback without first checking whether the actual correction has regressed.
+This is a deliberate departure from spec §2 step 2, which described items as "typed text/phrases,
+or uploaded images" without restricting mixing. That assumption didn't survive contact with the
+actual model's behavior — CLIP's cross-modal raw similarity isn't reliable enough, at the sample
+sizes this tool actually sees, to plot both kinds on one honest scale. Don't resurrect mixing (or
+a gap-correction attempt) without first re-establishing that the underlying reliability problem
+has actually changed — it hasn't just gone undiscovered, it was tried twice and rejected.
+
+With this in place, `recomputeAxes()` normalizes `embeddedItems` as one combined pool
+unconditionally (see "Rescaling" above) — safe because that array can now only ever contain one
+kind at a time, not because cross-modal comparability was ever actually solved.
 
 ## Network view
 
@@ -316,9 +310,11 @@ user sent back.
   site.
 - Zazzle: two separate "create your own" templates (magnet, t-shirt), each a plain link with the
   same `?rf=` ambassador param already used by Ridgeline — no API integration. Per spec §9, the
-  t-shirt link is gated behind `updateMerchGating()`'s `allText` check (every current item must
-  be `kind: 'text'`) since a shirt printed with someone's own uploaded photo is a private/personal
-  object, not something to wear in public; the magnet is offered unconditionally.
+  t-shirt link is gated behind `updateMerchGating()`'s `state.mode === 'text'` check (a shirt
+  printed with someone's own uploaded photo is a private/personal object, not something to wear
+  in public); the magnet is offered unconditionally. Now that word/photo mode is exclusive (see
+  "Modality mode"), this check simplified from "every current item is text" to just the mode
+  flag — equivalent in practice, since items can no longer be mixed.
 
 ## Shared theme.css changes
 
@@ -349,11 +345,12 @@ every point's position update, click a point and confirm the raw numbers + ranke
 alongside a green arc to its most-similar neighbor and a red arc to its least-similar one, expand
 the "Tips for picking axis words" accordion and confirm `#spreadNote` has live numbers in it,
 toggle to Network and confirm edges vary visibly in weight and some cross the plot's center
-(not just within one visual cluster), and download both PNGs. Separately, drop in an actual photo
-and confirm the vision-tower progress bar appears, the item eventually gets a real position, and
-the existing text items' spread doesn't collapse toward one corner once it's added (the
-modality-gap correction's whole job) — `#modalityNote` should still appear once the plot has both
-kinds, but the words shouldn't crush together the way they did before that fix.
+(not just within one visual cluster), and download both PNGs. Separately, click the Photos mode
+button, confirm the word items disappear and the vision-tower progress bar starts immediately
+(before dropping anything), drop in two different real photos and confirm they land at distinct
+positions rather than both collapsing to the same point, then switch back to Words mode and
+confirm the map is empty again (not a leftover mix of both kinds) and "Reset to example" still
+repopulates the six word items.
 
 One easy-to-miss testing trap: this page's whole render loop runs on `requestAnimationFrame`,
 which browsers fully pause for backgrounded tabs — if you're driving a browser-automation tool
