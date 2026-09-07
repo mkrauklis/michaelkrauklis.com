@@ -87,13 +87,6 @@
   .rank-row .bar > i{ display:block; height:100%; background: var(--accent); }
   .rank-row .val{ flex:0 0 42px; text-align:right; color:var(--ink-dim); }
 
-  /* ---------- arithmetic ---------- */
-  .arith-row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:14px; }
-  .arith-row select{ flex: 1 1 130px; width:auto; }
-  .arith-op{ flex:0 0 56px; width:auto; text-align:center; }
-  .arith-result{ margin-top:14px; font-size:0.88rem; color:var(--ink-dim); min-height:1.4em; }
-  .arith-result b{ color:var(--accent); }
-
   /* ---------- explainer widgets ---------- */
   .angle-demo{ display:flex; gap:24px; flex-wrap:wrap; align-items:center; margin-top:14px; }
   .angle-demo canvas{
@@ -129,21 +122,13 @@
 </header>
 
 <div class="wrap" style="padding-top:40px;">
-  <p>Everything below runs a small vision-and-language model called CLIP entirely in your
-  browser tab — nothing you type or upload is ever sent anywhere. The one exception, and it's
-  worth being upfront about: the very first time you use this page, your browser downloads the
-  model's weights (a few tens of megabytes) from a public model host, the same way it would
-  download a font or a script. That's the model learning nothing from you — it's already
-  finished learning, from millions of captioned photos, before it ever reached your machine.
-  After that first download your browser caches it, and every photo or phrase you plot from then
-  on never leaves this tab.</p>
-  <p style="font-size:0.85rem;">The mechanics, briefly: CLIP maps images and text into the
-  <i>same</i> space of numbers, trained so that a photo of a dog and the word "dog" land near each
-  other in that space. "Near" is measured with <b style="color:var(--ink);">cosine similarity</b> —
-  how small the angle is between two vectors, ignoring their length. Vectis takes that one
-  measurement — similarity to a reference word — and uses it twice per item, once against each
-  axis word you pick, to get an (x, y) position. That's the entire trick. There's a plain-language
-  walkthrough with two hands-on demos in "how this actually works," below the tool.</p>
+  <p>An <b style="color:var(--ink);">embedding</b> is just a list of numbers a model uses to
+  stand in for what something means — a word, a phrase, a photo — placed so that things which
+  mean similar things end up with similar numbers. Pick two things as your axes below, and
+  everything else you add gets plotted by how similar it is to each one, turning that list of
+  numbers into an actual map you can see and click around in. Nothing you type or upload ever
+  leaves your browser; the model itself, how the plotting math works, and two hands-on demos are
+  in "how this actually works," below the tool.</p>
 
   <div class="panel" style="margin-top:20px;">
     <span class="step-tag">1. the model</span>
@@ -167,14 +152,19 @@
         <input type="text" id="axisYInput" value="mountain" maxlength="40">
       </div>
     </div>
-    <p class="status" style="margin-top:10px;">Works best with two different <i>topics</i>
-    ("ocean" / "mountain", "food" / "technology") rather than opposite personality traits or
-    physical properties ("calm" / "chaotic", "hairy" / "safe") — CLIP's raw text similarity is
-    much better at recognizing what something is about than judging whether it literally has a
-    trait. More on why below the tool.</p>
-    <p class="status" id="axisSimNote" style="margin-top:6px;"></p>
+    <p class="status" id="axisSimNote" style="margin-top:10px;"></p>
     <p class="status" id="axisStatus" style="margin-top:6px;"></p>
-    <p class="status" id="spreadNote" style="margin-top:6px; display:none;"></p>
+    <details class="disclosure" style="margin-top:10px;">
+      <summary>Tips for picking axis words</summary>
+      <div class="disclosure-body">
+        <p class="status">Works best with two different <i>topics</i> ("ocean" / "mountain",
+        "food" / "technology") rather than opposite personality traits or physical properties
+        ("calm" / "chaotic", "hairy" / "safe") — CLIP's raw text similarity is much better at
+        recognizing what something is about than judging whether it literally has a trait. More
+        on why below the tool.</p>
+        <p class="status" id="spreadNote" style="margin-top:10px; display:none;"></p>
+      </div>
+    </details>
   </div>
 
   <div class="panel" style="margin-top:20px;">
@@ -219,10 +209,12 @@
     <p class="select-hint">Click any point (or its line back to the center) to see how it got
     there, and what else on the map it's most like.</p>
     <p class="select-hint" id="modalityNote" style="display:none;">Heads up: CLIP's raw
-    similarity numbers for photos sit in a noticeably different range than its numbers for
-    words, so mixing the two often pushes every photo toward the same corner or edge. That's a
-    real, known quirk of the model (sometimes called the "modality gap"), not a bug in this
-    page — try plotting only words, or only photos, if you want more spread.</p>
+    similarity numbers for photos sit in a noticeably different range than its numbers for words
+    (a known quirk called the "modality gap"). This page corrects for it by estimating the gap
+    between photos and words currently on your map and shifting photo scores to compensate,
+    which is enough to plot both together sensibly — but with only a photo or two to estimate
+    from, the correction is an approximation, not a lab-grade fix, so treat exact photo
+    placement with a little extra skepticism.</p>
     <div class="info-panel" id="infoPanel">
       <h3 id="infoTitle"></h3>
       <div class="raw" id="infoRaw"></div>
@@ -233,23 +225,7 @@
   </div>
 
   <div class="panel" style="margin-top:32px;">
-    <span class="step-tag">4. vector arithmetic</span>
-    <p style="margin:0 0 4px;">The classic word-vector trick — king − man + woman ≈ queen — done
-    here with only the two numbers you've already watched get computed for everything on the map.
-    No extra model call, just arithmetic on positions.</p>
-    <div class="arith-row">
-      <select id="arithA"></select>
-      <select id="arithOpAB" class="arith-op"><option value="+">+</option><option value="-" selected>−</option></select>
-      <select id="arithB"></select>
-      <select id="arithOpBC" class="arith-op"><option value="+" selected>+</option><option value="-">−</option></select>
-      <select id="arithC"><option value="">(nothing)</option></select>
-      <button class="primary" id="combineBtn">Combine</button>
-    </div>
-    <div class="arith-result" id="arithResult"></div>
-  </div>
-
-  <div class="panel" style="margin-top:32px;">
-    <span class="step-tag">5. save &amp; share</span>
+    <span class="step-tag">4. save &amp; share</span>
     <div class="actions">
       <button class="secondary" id="downloadCompassBtn">Download compass PNG</button>
       <button class="secondary" id="downloadNetworkBtn">Download network PNG</button>
@@ -266,6 +242,16 @@
   <details id="explainerSection" class="disclosure advanced" style="margin-top:40px;">
     <summary>How this actually works <span class="adv-sub">— the geometry, and two things to try by hand</span></summary>
     <div class="disclosure-body">
+      <p>Everything on this page runs a small vision-and-language model called CLIP entirely in
+      your browser tab. The one exception, worth being upfront about: the very first time you use
+      this page, your browser downloads the model's weights (a few tens of megabytes) from a
+      public model host, the same way it would download a font or a script. That's the model
+      learning nothing from you — it's already finished learning, from millions of captioned
+      photos, before it ever reached your machine. After that first download your browser caches
+      it, and every photo or phrase you plot from then on never leaves this tab. CLIP maps images
+      and text into the <i>same</i> space of numbers, trained so that a photo of a dog and the
+      word "dog" land near each other in that space — which is what makes it possible to compare
+      a typed word against an uploaded photo at all.</p>
       <p>A word doesn't mean anything to a computer by itself — but CLIP has seen enough
       captioned photos that it's learned to place any word, phrase, or image as a point in a
       space with a few hundred dimensions, positioned so that things which mean similar things
@@ -308,7 +294,7 @@
       </div>
 
       <p style="margin-top:24px;">One deliberate limit, worth stating plainly: everything you see
-      above — the plot, the ranked list, the arithmetic, the network view — is computed only from
+      above — the plot, the ranked list, the network view — is computed only from
       the two similarity numbers per item that you can see on screen. There's no second, hidden
       comparison happening in the full few-hundred-dimensional space that could quietly disagree
       with what's plotted. That's a constraint, not a shortcut: the moment this tool could show
@@ -460,7 +446,6 @@ const state = {
   nextId: 1,
   view: 'compass',
   selectedId: null,
-  ghost: null, // {x,y,fromX,fromY,label}
 };
 const EXAMPLE_ITEMS = ['surfing', 'summit', 'coral reef', 'ski lodge', 'sailboat', 'hiking trail'];
 
@@ -474,8 +459,8 @@ function addTextItem(text){
     pending: true,
   };
   state.items.push(item);
-  renderChips(); populateArithSelects();
-  embedTexts([text]).then(([emb]) => { item.embedding = emb; item.pending = false; recomputeAxes(); renderChips(); populateArithSelects(); }).catch(err => {
+  renderChips();
+  embedTexts([text]).then(([emb]) => { item.embedding = emb; item.pending = false; recomputeAxes(); renderChips(); }).catch(err => {
     item.pending = false; item.error = err.message; renderChips();
   });
 }
@@ -503,7 +488,7 @@ async function addImageItem(file){
   item.thumb = cropToSquareDataURL(tmpImg, 96);
   item.thumbImg = new Image(); item.thumbImg.src = item.thumb;
   state.items.push(item);
-  renderChips(); populateArithSelects();
+  renderChips();
   try{
     await warmVisionIfNeeded();
     const msg = await callWorker('embedImage', { bitmap });
@@ -512,13 +497,13 @@ async function addImageItem(file){
     item.error = err.message;
   }
   item.pending = false;
-  recomputeAxes(); renderChips(); populateArithSelects();
+  recomputeAxes(); renderChips();
 }
 
 function removeItem(id){
   state.items = state.items.filter(i => i.id !== id);
   if(state.selectedId === id) selectItem(null);
-  recomputeAxes(); renderChips(); populateArithSelects();
+  recomputeAxes(); renderChips();
 }
 
 function loadExample(){
@@ -530,6 +515,62 @@ function loadExample(){
 }
 
 // ---------- axis + rescale ----------
+// Min/max-normalizes one kind-group's raw scores to fill [-1, 1] on both axes, in place.
+// Returns the raw ranges achieved (for the spread note) or null when there's nothing to
+// normalize against (0 or 1 items in the group).
+function normalizeGroup(items, now){
+  if(items.length === 1){
+    const only = items[0];
+    only.animFrom = { x: only.pos.x, y: only.pos.y };
+    only.animTo = { x: 0, y: 0 };
+    only.animStart = now;
+    only.pos = { x: 0, y: 0 };
+    return null;
+  }
+  if(items.length === 0) return null;
+  const xs = items.map(i => i.rawX), ys = items.map(i => i.rawY);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const rangeX = maxX - minX, rangeY = maxY - minY;
+  for(const item of items){
+    const nx = rangeX > 1e-9 ? clamp(((item.rawX - minX) / rangeX) * 2 - 1, -1, 1) : 0;
+    const ny = rangeY > 1e-9 ? clamp(((item.rawY - minY) / rangeY) * 2 - 1, -1, 1) : 0;
+    item.animFrom = { x: item.pos.x, y: item.pos.y };
+    item.animTo = { x: nx, y: ny };
+    item.animStart = now;
+    item.pos = { x: nx, y: ny };
+  }
+  return { rangeX, rangeY };
+}
+
+// CLIP's image and text embeddings occupy systematically different regions of the shared space
+// -- a published, well-studied artifact (Liang et al., "Mind the Gap," NeurIPS 2022) caused by
+// training/initialization geometry, not by images and words meaning different things. The
+// paper's own fix is exactly this: estimate the offset between the two modalities' embedding
+// clouds and subtract it before comparing across them. There's no large reference corpus to draw
+// on in-browser, so the offset is estimated from whatever text and image embeddings are
+// currently on the page (axis words always count as text; more items of either kind make the
+// estimate steadier). With very few images this is a rough approximation, not a lab-grade
+// correction -- but per the paper, the gap's *direction* is dominated by structural factors
+// rather than specific content, so even a small sample usually points roughly the right way.
+function correctModalityGap(items, axisXEmbed, axisYEmbed){
+  const textEmbeds = [axisXEmbed, axisYEmbed];
+  for(const i of items) if(i.kind === 'text' && i.embedding) textEmbeds.push(i.embedding);
+  const imageItems = items.filter(i => i.kind === 'image' && i.embedding);
+  if(!imageItems.length) return; // nothing to correct
+  const dim = textEmbeds[0].length;
+  const meanText = new Array(dim).fill(0), meanImage = new Array(dim).fill(0);
+  for(const e of textEmbeds) for(let d = 0; d < dim; d++) meanText[d] += e[d] / textEmbeds.length;
+  for(const i of imageItems) for(let d = 0; d < dim; d++) meanImage[d] += i.embedding[d] / imageItems.length;
+  const gap = meanText.map((v, d) => v - meanImage[d]);
+  for(const item of imageItems){
+    const shifted = item.embedding.map((v, d) => v + gap[d]);
+    let normSq = 0; for(const v of shifted) normSq += v * v;
+    const norm = Math.sqrt(normSq) || 1;
+    item.correctedEmbedding = shifted.map(v => v / norm);
+  }
+}
+
 let axisSeq = 0;
 async function recomputeAxes(){
   if(!textReady) return;
@@ -563,53 +604,44 @@ async function recomputeAxes(){
   simNote.textContent = `"${xWord}" and "${yWord}" are ${simLabel}.`;
 
   const embeddedItems = state.items.filter(i => i.embedding);
+  correctModalityGap(embeddedItems, xEmb, yEmb);
   for(const item of embeddedItems){
-    item.rawX = cosine(item.embedding, xEmb);
-    item.rawY = cosine(item.embedding, yEmb);
+    const emb = item.correctedEmbedding || item.embedding;
+    item.rawX = cosine(emb, xEmb);
+    item.rawY = cosine(emb, yEmb);
   }
 
-  // Dynamic, corpus-only normalization: the lowest and highest raw scores the current items
-  // have actually achieved become this axis's -1/+1 poles -- not the axis word's own
-  // (unreachable) self-similarity of 1. CLIP's raw cosine similarities routinely all land in a
-  // narrow, sometimes entirely negative band; anchoring to a phantom max/min instead of the
-  // real corpus squashed everything toward one side and left the plot off-center. See
-  // CLAUDE.md's "Rescaling" section.
+  // Dynamic, corpus-only normalization: the lowest and highest raw scores actually achieved
+  // become this axis's -1/+1 poles -- not the axis word's own (unreachable) self-similarity of
+  // 1. CLIP's raw cosine similarities routinely all land in a narrow, sometimes entirely
+  // negative band; anchoring to a phantom max/min instead of the real corpus squashed everything
+  // toward one side and left the plot off-center. See CLAUDE.md's "Rescaling" section.
+  //
+  // One combined pool across both kinds, now that correctModalityGap() has already pulled photo
+  // and word raw scores onto a comparable scale -- an earlier version normalized text and image
+  // items in two separate pools instead, which fixed the visual squashing but made a photo's
+  // position permanently incomparable to a word's, defeating the point of plotting them
+  // together at all. See CLAUDE.md's "Modality gap" section for why the correction below is
+  // trusted enough to make combining the pools safe again.
   const now = performance.now();
+  const combinedRange = normalizeGroup(embeddedItems, now);
+
   const spreadNote = document.getElementById('spreadNote');
-  spreadNote.style.display = 'none';
-  if(embeddedItems.length === 1){
-    const only = embeddedItems[0];
-    only.animFrom = { x: only.pos.x, y: only.pos.y };
-    only.animTo = { x: 0, y: 0 };
-    only.animStart = now;
-    only.pos = { x: 0, y: 0 };
-  } else if(embeddedItems.length > 1){
-    const xs = embeddedItems.map(i => i.rawX), ys = embeddedItems.map(i => i.rawY);
-    const minX = Math.min(...xs), maxX = Math.max(...xs);
-    const minY = Math.min(...ys), maxY = Math.max(...ys);
-    const rangeX = maxX - minX, rangeY = maxY - minY;
-    for(const item of embeddedItems){
-      const nx = rangeX > 1e-9 ? clamp(((item.rawX - minX) / rangeX) * 2 - 1, -1, 1) : 0;
-      const ny = rangeY > 1e-9 ? clamp(((item.rawY - minY) / rangeY) * 2 - 1, -1, 1) : 0;
-      item.animFrom = { x: item.pos.x, y: item.pos.y };
-      item.animTo = { x: nx, y: ny };
-      item.animStart = now;
-      item.pos = { x: nx, y: ny };
-    }
-    // Always shown, not just past some "uh oh" threshold: raw CLIP text-text similarity
-    // margins between everyday words are *routinely* this thin (verified directly -- even the
-    // page's own default example spans well under 0.05 on both axes), so flagging it only past
-    // a cutoff would misrepresent the normal case as a rare exception. The plot always stretches
-    // whatever margin exists to fill the full axis -- that's the fix just made, on request, so
-    // even a real spread that used to get squashed now shows up -- but a thin raw margin means
-    // the resulting order can flip on essentially noise (confirmed: "worm" outscored "dog" on
-    // similarity to "legs"). Don't turn this into a threshold-gated warning; it needs to set
-    // expectations every time, not just when it looks unusually bad.
-    spreadNote.textContent = `Raw similarity here spans ${rangeX.toFixed(3)} on "${xWord}" and ` +
-      `${rangeY.toFixed(3)} on "${yWord}" — margins this thin are normal for CLIP text embeddings, ` +
-      `not a sign anything's broken, but they mean small differences in position can come from ` +
-      `essentially noise. Click a point to see its exact raw numbers before reading too much into it.`;
+  if(combinedRange){
+    // Always shown, not just past some "uh oh" threshold: raw CLIP similarity margins between
+    // everyday words are *routinely* this thin, so flagging it only past a cutoff would
+    // misrepresent the normal case as a rare exception (see CLAUDE.md for the measured range
+    // across several examples). A thin raw margin means the resulting order can flip on
+    // essentially noise (confirmed: "worm" outscored "dog" on similarity to "legs"). Don't turn
+    // this into a threshold-gated warning; it needs to set expectations every time.
+    spreadNote.textContent = `Raw similarity here spans ${combinedRange.rangeX.toFixed(3)} on ` +
+      `"${xWord}" and ${combinedRange.rangeY.toFixed(3)} on "${yWord}" — margins this thin are ` +
+      `normal for CLIP, not a sign anything's broken, but they mean small differences in position ` +
+      `can come from essentially noise. Click a point to see its exact raw numbers before reading ` +
+      `too much into it.`;
     spreadNote.style.display = 'block';
+  } else {
+    spreadNote.style.display = 'none';
   }
   document.getElementById('axisStatus').textContent = '';
   document.getElementById('labelRight').textContent = xWord;
@@ -642,7 +674,7 @@ dropzone.addEventListener('drop', e => {
   [...e.dataTransfer.files].filter(f => f.type.startsWith('image/')).forEach(f => addImageItem(f));
 });
 document.getElementById('resetExampleBtn').addEventListener('click', loadExample);
-document.getElementById('clearAllBtn').addEventListener('click', () => { state.items = []; selectItem(null); recomputeAxes(); renderChips(); populateArithSelects(); });
+document.getElementById('clearAllBtn').addEventListener('click', () => { state.items = []; selectItem(null); recomputeAxes(); renderChips(); });
 
 function renderChips(){
   const list = document.getElementById('chipList');
@@ -742,25 +774,37 @@ function drawCompass(ctx, now){
     }
   }
 
-  if(state.ghost){
-    const g = state.ghost;
-    const t = clamp((now - g.animStart) / 650, 0, 1);
-    const e = easeInOutCubic(t);
-    const gx = g.animFrom.x + (g.x - g.animFrom.x) * e;
-    const gy = g.animFrom.y + (g.y - g.animFrom.y) * e;
-    const [sx, sy] = toScreen(gx, gy);
-    const [ox, oy] = toScreen(0, 0);
-    ctx.setLineDash([5,4]);
-    ctx.strokeStyle = '#d97a6c'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(sx, sy); ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.save();
-    ctx.translate(sx, sy); ctx.rotate(Math.PI/4);
-    ctx.fillStyle = '#d97a6c'; ctx.fillRect(-7, -7, 14, 14);
-    ctx.restore();
-    ctx.fillStyle = '#d97a6c'; ctx.font = '600 12px Inter, sans-serif'; ctx.textBaseline = 'middle';
-    ctx.fillText(g.label, sx + 14, sy);
+  // When something's selected, arc to its most- and least-similar neighbor (by the same
+  // origin-vector cosine the ranked list uses) in green/red -- a direct visual echo of the top
+  // and bottom rows of that list, on the plot itself rather than only in the panel below it.
+  const selectedItem = state.items.find(i => i.id === state.selectedId && i.embedding);
+  if(selectedItem){
+    const others = rankOthers(selectedItem);
+    if(others.length){
+      const selP = liveXY(selectedItem, now);
+      const [selX, selY] = toScreen(selP.x, selP.y);
+      const best = others[0], worst = others[others.length - 1];
+      drawSimilarityArc(ctx, selX, selY, best.item, now, '#5fd88a');
+      if(worst.item.id !== best.item.id) drawSimilarityArc(ctx, selX, selY, worst.item, now, '#e0615a');
+    }
   }
+}
+
+function drawSimilarityArc(ctx, x1, y1, targetItem, now, color){
+  const p = liveXY(targetItem, now);
+  const [x2, y2] = toScreen(p.x, p.y);
+  const dx = x2 - x1, dy = y2 - y1;
+  const dist = Math.hypot(dx, dy) || 1;
+  const bulge = Math.min(36, dist * 0.2);
+  const cx = (x1 + x2) / 2 - (dy / dist) * bulge;
+  const cy = (y1 + y2) / 2 + (dx / dist) * bulge;
+  ctx.strokeStyle = color; ctx.lineWidth = 2.5;
+  ctx.shadowColor = color; ctx.shadowBlur = 8;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.quadraticCurveTo(cx, cy, x2, y2);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
 }
 
 function drawNetwork(ctx, now){
@@ -843,6 +887,15 @@ function selectItem(id){
   updateInfoPanel();
 }
 
+// Ranks every other embedded item by 2D cosine similarity of origin-vectors to `item` --
+// the same formula spec §3 defines for the ranked list, shared here with the on-canvas
+// most-/least-similar arcs so both are guaranteed to agree with each other.
+function rankOthers(item){
+  return state.items.filter(i => i.id !== item.id && i.embedding)
+    .map(i => ({ item: i, sim: cosine2D(item.pos.x, item.pos.y, i.pos.x, i.pos.y) }))
+    .sort((a, b) => b.sim - a.sim);
+}
+
 function updateInfoPanel(){
   const panel = document.getElementById('infoPanel');
   const item = state.items.find(i => i.id === state.selectedId);
@@ -851,9 +904,7 @@ function updateInfoPanel(){
   document.getElementById('infoTitle').textContent = item.text;
   document.getElementById('infoRaw').textContent =
     `raw similarity to "${state.axisXWord}": ${item.rawX.toFixed(3)}  •  raw similarity to "${state.axisYWord}": ${item.rawY.toFixed(3)}  •  plotted at (${item.pos.x.toFixed(2)}, ${item.pos.y.toFixed(2)})`;
-  const others = state.items.filter(i => i.id !== item.id && i.embedding)
-    .map(i => ({ item: i, sim: cosine2D(item.pos.x, item.pos.y, i.pos.x, i.pos.y) }))
-    .sort((a, b) => b.sim - a.sim);
+  const others = rankOthers(item);
   const ranksEl = document.getElementById('infoRanks');
   ranksEl.innerHTML = '';
   if(!others.length){ ranksEl.innerHTML = '<p class="status">Add more items to see what this is most like.</p>'; return; }
@@ -871,35 +922,6 @@ document.getElementById('viewToggle').addEventListener('click', e => {
   if(!btn) return;
   state.view = btn.dataset.view;
   [...document.querySelectorAll('#viewToggle button')].forEach(b => b.classList.toggle('active', b === btn));
-});
-
-// ---------- vector arithmetic ----------
-function populateArithSelects(){
-  const opts = state.items.filter(i => i.embedding).map(i => `<option value="${i.id}">${i.text}</option>`).join('');
-  for(const id of ['arithA', 'arithB']) document.getElementById(id).innerHTML = opts;
-  document.getElementById('arithC').innerHTML = '<option value="">(nothing)</option>' + opts;
-}
-document.getElementById('combineBtn').addEventListener('click', () => {
-  const A = state.items.find(i => i.id == document.getElementById('arithA').value);
-  const B = state.items.find(i => i.id == document.getElementById('arithB').value);
-  const C = state.items.find(i => i.id == document.getElementById('arithC').value);
-  if(!A || !B){ document.getElementById('arithResult').textContent = 'Pick at least two items.'; return; }
-  const opAB = document.getElementById('arithOpAB').value === '+' ? 1 : -1;
-  const opBC = document.getElementById('arithOpBC').value === '+' ? 1 : -1;
-  let x = A.pos.x + opAB * B.pos.x;
-  let y = A.pos.y + opAB * B.pos.y;
-  let label = `${A.text} ${opAB > 0 ? '+' : '−'} ${B.text}`;
-  if(C){ x += opBC * C.pos.x; y += opBC * C.pos.y; label += ` ${opBC > 0 ? '+' : '−'} ${C.text}`; }
-  x = clamp(x, -1, 1); y = clamp(y, -1, 1);
-  const prevGhost = state.ghost;
-  state.ghost = { x, y, label, animFrom: prevGhost ? { x: prevGhost.x, y: prevGhost.y } : { x: 0, y: 0 }, animStart: performance.now() };
-  const ranked = state.items.filter(i => i.embedding)
-    .map(i => ({ item: i, sim: cosine2D(x, y, i.pos.x, i.pos.y) }))
-    .sort((a, b) => b.sim - a.sim);
-  const best = ranked[0];
-  document.getElementById('arithResult').innerHTML = best
-    ? `<b>${label}</b> lands closest to <b>${best.item.text}</b> (cosine ${best.sim.toFixed(2)})`
-    : `<b>${label}</b> plotted — add more items to see what it's closest to.`;
 });
 
 // ---------- export ----------

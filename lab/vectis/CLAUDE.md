@@ -171,13 +171,43 @@ diagnostic, not example curation.
 - **Text-image cosine similarity lives in a completely different, much lower numeric range**
   than text-text (CLIP's well-documented "modality gap") — verified directly against a real
   photo during development: raw similarity to a word landed around 0.22-0.23, versus ~0.9 for
-  that same word against other words. Combined with the min/max rescale, this means dropping one
-  photo onto a text-heavy map tends to shove it straight into a corner, regardless of what the
-  photo actually shows — the image isn't reading as "extreme," it's reading as "a different
-  modality." `updateMerchGating()` also computes this and toggles `#modalityNote`, a plain
-  on-page warning, whenever the current item set mixes both kinds. Don't remove this note without
-  also fixing the underlying gap (a nontrivial, out-of-scope change) — without it, a mixed plot
-  looks broken instead of explained.
+  that same word against other words. Left uncorrected, this meant dropping one photo onto a
+  text-heavy map tends to shove it straight into a corner regardless of content, and crush every
+  word's real spread into a sliver near the opposite end (caught from a screenshot of six
+  spread-out words collapsing into one corner the instant a photo was added). This is now
+  actively corrected, not just documented — see `correctModalityGap()` below.
+
+### Modality-gap correction
+
+`correctModalityGap(items, axisXEmbed, axisYEmbed)`, called from `recomputeAxes()` right after
+raw embeddings are available and before any similarity is computed, implements the fix described
+in Liang et al., ["Mind the Gap: Understanding the Modality Gap in Multi-modal Contrastive
+Representation Learning"](https://arxiv.org/abs/2203.02053) (NeurIPS 2022): the offset between
+CLIP's image-embedding cloud and its text-embedding cloud is largely a fixed, structural artifact
+of training/initialization, not a meaningful content difference, so subtracting an estimate of
+that offset from image embeddings before comparing them to text is a legitimate, published
+correction rather than an invented rescaling.
+
+The paper estimates that offset from a large reference corpus of both modalities. There's no such
+corpus available in-browser, so the offset is estimated from whatever text and image embeddings
+happen to be on the page right now — the mean of all text embeddings (axis words always count,
+plus any text items) minus the mean of all image embeddings — and each image embedding gets
+shifted by that difference, then renormalized to unit length (`item.correctedEmbedding`). `cosine
+()`-based similarity to axis words uses `item.correctedEmbedding || item.embedding`, so text
+items are completely unaffected and only images change. With only one or two photos on the page
+this is a rough, small-sample estimate rather than a precise one — call this an honest reduction
+of the gap, not a guarantee it's fully closed, and `#modalityNote` says so directly rather than
+implying a perfect fix.
+
+**Why this replaced an earlier "normalize each kind separately" fix**: a first attempt at this
+problem split `normalizeGroup()` into two independent calls (one for text items, one for image
+items), which did stop one photo from crushing every word's spread — but it also meant a photo's
+plotted position could never be compared to a word's position again, since each was stretched to
+fill the range against only its own kind. That defeats the actual point of plotting photos and
+words together. Once the modality-gap correction pulls the two onto a genuinely comparable raw
+scale, going back to one combined `normalizeGroup()` call (see the "Rescaling" section above) is
+safe again and restores real cross-modal comparability — don't reintroduce the kind-split as a
+"safer" fallback without first checking whether the actual correction has regressed.
 
 ## Network view
 
@@ -205,13 +235,56 @@ allows "cosine similarity (or distance)" for this view, unlike §3's ranked list
 to origin-vector cosine and must stay that way. Don't swap the ranked list to distance to "match"
 this — they're allowed to differ on purpose.
 
-## Vector arithmetic
+## Vector arithmetic was removed
 
-`A op1 B [op2 C]` is computed directly on the already-rescaled positions (`A.pos.x + opAB *
-B.pos.x`, etc.), clamped to `[-1, 1]`, then run through the exact same `cosine2D()`-based ranking
-as a normal selection to report what it's closest to. No embedding call happens here — that's
-the point (spec §4). The result renders as a dashed line + diamond marker (`state.ghost`) so it
-reads visually as distinct from a real, embedded item.
+Spec §4 called for word-vector arithmetic (`A − B + C`, reporting the closest existing item to
+the result) via a dedicated panel with item/operator selects. It shipped, worked correctly, and
+was removed anyway on direct feedback ("remove the vector arithmetic. That's just confusing.").
+There's no bug history here — don't re-add it without being asked; if a future spec revision
+wants it back, `git log` has the original implementation (selects, `state.ghost` diamond marker,
+the arithmetic result readout) to resurrect rather than rebuild from scratch.
+
+## Most-/least-similar arcs
+
+When a point is selected in the compass view, `drawCompass()` draws a green arc from it to its
+single most-similar other item and a red arc to its single least-similar one — both via
+`rankOthers(item)`, the exact same origin-vector-cosine ranking function `updateInfoPanel()` uses
+for its ranked list (refactored out of `updateInfoPanel()` specifically so the two can never
+silently disagree). This is a direct visual echo of the top and bottom rows of that list, on the
+plot itself rather than only in the panel below it. `drawSimilarityArc()` bows the line into a
+quadratic-bezier arc (not a straight line) purely to distinguish it visually from the plain
+origin-to-point lines already on the compass — the curvature has no numeric meaning. Compass-view
+only; the network view has its own distance-based edges already serving a similar purpose there.
+
+## Layout
+
+Sections "2. your two axes" and "3. what's on the map" sit in a left `.col`, the compass/network
+plot in a right `.col`, both inside one `.row` (theme.css's generic flex row/column pair, reused
+rather than page-specific CSS) — added after direct feedback that adding a word and then having
+to scroll down to see it land made the core "type something, watch it plot" loop feel
+disconnected. `.row`'s `flex-wrap: wrap` collapses this to the original stacked order
+automatically on anything too narrow for both columns (roughly under ~865px, the two
+`flex-basis` values plus gap) — including every mobile width — so no separate mobile markup was
+needed.
+
+Within the left column, the static "pick topics, not traits" guidance paragraph and the
+`#spreadNote` diagnostic are tucked into a collapsed-by-default `<details class="disclosure">`
+("Tips for picking axis words"). They were originally always-visible paragraphs, but stacked
+together with the axis inputs and the live `#axisSimNote` line, they made that column
+dramatically taller than the plot beside it — reported directly as "all the explanation text on
+#2 is killing the layout." `#axisSimNote` (the one-line, always-current "these two words are
+X similar" readout) stays outside the accordion since it's short and the single most actionable
+diagnostic; the longer static tip and the multi-line spread breakdown are what got tucked away.
+
+## Intro copy
+
+The top-of-page intro used to spend two paragraphs on CLIP mechanics and the model-download
+privacy note before a first-time visitor ever saw the tool itself. Trimmed to two sentences —
+what an embedding is, and that picking two axes turns that into a map — with the CLIP mechanics,
+the privacy/download details, and the "same space of numbers" explanation all moved into the
+first paragraph of the "how this actually works" disclosure instead, ahead of the pre-existing
+cosine-similarity explanation there. Don't grow the top intro back into a mechanics lecture;
+if something's worth explaining in depth, it almost always belongs below the tool, not above it.
 
 ## Animation
 
@@ -271,13 +344,26 @@ pick up `/nav.js` or `/theme.css`, and module workers generally won't load over 
 
 Golden path: wait for "Language model ready," confirm the six example items
 (surfing/summit/coral reef/ski lodge/sailboat/hiking trail) land at distinct positions roughly
-matching their real-world domain, change an axis word
-and confirm both the label and every point's position update, click a point and confirm the raw
-numbers + ranked list appear, run a vector-arithmetic combination and confirm a dashed ghost
-point appears with a sensible "closest to" result, toggle to Network and confirm edges render,
-and download both PNGs. Separately, drop in an actual photo and confirm the vision-tower
-progress bar appears, the item eventually gets a real position (not stuck at pending), and the
-modality-gap note appears once the plot has both kinds. This was all verified end-to-end against
-the real hosted model during development (not mocked) — CDN/model-hub access is required for any
-of it to work, so if you're testing somewhere network-restricted, expect the text-model row to
-sit at "Loading language model…" forever and everything downstream of it to stay inert.
+matching their real-world domain, change an axis word and confirm the label, `#axisSimNote`, and
+every point's position update, click a point and confirm the raw numbers + ranked list appear
+alongside a green arc to its most-similar neighbor and a red arc to its least-similar one, expand
+the "Tips for picking axis words" accordion and confirm `#spreadNote` has live numbers in it,
+toggle to Network and confirm edges vary visibly in weight and some cross the plot's center
+(not just within one visual cluster), and download both PNGs. Separately, drop in an actual photo
+and confirm the vision-tower progress bar appears, the item eventually gets a real position, and
+the existing text items' spread doesn't collapse toward one corner once it's added (the
+modality-gap correction's whole job) — `#modalityNote` should still appear once the plot has both
+kinds, but the words shouldn't crush together the way they did before that fix.
+
+One easy-to-miss testing trap: this page's whole render loop runs on `requestAnimationFrame`,
+which browsers fully pause for backgrounded tabs — if you're driving a browser-automation tool
+that opens a new tab **in the background** (rather than switching to it), the compass/network
+canvas will never redraw and every visual check (arcs, animations, exported PNGs) will silently
+fail with no console error, even though everything else (model loading, item embedding, DOM
+updates) works fine, since those don't depend on rAF. Bring the tab to the foreground before
+checking anything that touches the canvas.
+
+This was all verified end-to-end against the real hosted model during development (not mocked) —
+CDN/model-hub access is required for any of it to work, so if you're testing somewhere
+network-restricted, expect the text-model row to sit at "Loading language model…" forever and
+everything downstream of it to stay inert.
