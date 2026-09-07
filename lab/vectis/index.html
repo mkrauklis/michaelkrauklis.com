@@ -78,7 +78,6 @@
   }
   .info-panel.visible{ display:block; }
   .info-panel h3{ font-size:0.95rem; margin:0 0 8px; }
-  .info-panel .raw{ font-size:0.8rem; color:var(--ink-dim); margin-bottom:12px; }
   .rank-row{ display:flex; align-items:center; gap:10px; font-size:0.82rem; padding:4px 0; }
   .rank-row .name{ flex:0 0 140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .rank-row .bar{ flex:1; height:6px; background:var(--bg-panel); border-radius:3px; overflow:hidden; }
@@ -204,10 +203,9 @@
       <span class="axis-label left" id="labelLeft"></span>
     </div>
     <p class="select-hint">Click any point (or its line back to the center) to see how it got
-    there, and what else on the map it's most like.</p>
+    there, and what else on the map it's most and least like.</p>
     <div class="info-panel" id="infoPanel">
       <h3 id="infoTitle"></h3>
-      <div class="raw" id="infoRaw"></div>
       <div id="infoRanks"></div>
     </div>
   </div>
@@ -769,18 +767,22 @@ function drawCompass(ctx, now){
 
   // When something's selected, sweep an arc -- centered on the origin, not point-to-point -- to
   // its most- and least-similar neighbor (by the same origin-vector cosine the ranked list uses)
-  // in green/red. Each arc's radius is capped below the *shorter* of the two vectors it connects
-  // (its own point and the selected point), scaled by a fraction distinct per arc -- both
-  // necessary, not just tidy: capping below the shorter vector keeps the arc from swinging out
-  // past whichever of the two points is closer to center, and giving green/red different
-  // fractions guarantees their circles never coincide. A first version shared one radius (the
-  // selected item's own distance) for both arcs, which put them on the *same* circle whenever
-  // that distance was the shorter vector for both -- so the arc drawn second (red) simply
-  // overpainted the first (green) wherever their sweeps overlapped, and sometimes only one arc
-  // appeared to render at all. The swept angle itself is still the exact angle between the two
-  // origin-vectors -- literally acos(similarity), the same relationship the "angle and cosine"
-  // demo below the tool teaches directly -- so a short arc means "very similar" and a long one
-  // (up to half the circle) means "very different," visibly, not just as a number in the panel.
+  // in green/red. The swept angle is the exact angle between the two origin-vectors -- literally
+  // acos(similarity), the same relationship the "angle and cosine" demo teaches by hand further
+  // down the page -- so a short arc means "very similar" and a long one (up to half the circle)
+  // means "very different," visibly, not just as a number in the panel.
+  //
+  // Both radii are derived from one shared cap, not computed independently per arc: `cap` is the
+  // smallest of all three distances involved (selected item, best match, worst match), and green
+  // and red each take a fixed, different fraction of it (0.45 / 0.75). Two earlier versions still
+  // let the arcs coincide: sharing one literal radius put them on the same circle outright, and
+  // later giving each arc its own fraction of its *own* min(selDist, targetDist) still let the
+  // two end up numerically close or equal by coincidence, since which distance was the limiting
+  // one for each arc varied independently with the data. Deriving both from the same `cap` value
+  // guarantees a fixed, non-coincidental gap between them regardless of where anything is
+  // plotted. Red is also drawn first and green second as a second line of defense -- green's
+  // sweep is always the shorter of the two, so if anything ever still overlaps, the smaller arc
+  // stays on top instead of disappearing under the larger one.
   const selectedItem = state.items.find(i => i.id === state.selectedId && i.embedding);
   if(selectedItem){
     const others = rankOthers(selectedItem);
@@ -791,19 +793,24 @@ function drawCompass(ctx, now){
       const selDist = Math.hypot(selX - ox, selY - oy);
       const selAngle = Math.atan2(selY - oy, selX - ox);
       const best = others[0], worst = others[others.length - 1];
-      drawSimilarityArc(ctx, ox, oy, selDist, selAngle, best.item, now, '#5fd88a', 0.5);
-      if(worst.item.id !== best.item.id) drawSimilarityArc(ctx, ox, oy, selDist, selAngle, worst.item, now, '#e0615a', 0.85);
+      const bestP = liveXY(best.item, now);
+      const [bx, by] = toScreen(bestP.x, bestP.y);
+      const bestDist = Math.hypot(bx - ox, by - oy);
+      const worstP = liveXY(worst.item, now);
+      const [wx, wy] = toScreen(worstP.x, worstP.y);
+      const worstDist = Math.hypot(wx - ox, wy - oy);
+      const cap = Math.min(selDist, bestDist, worstDist);
+      if(worst.item.id !== best.item.id) drawSimilarityArc(ctx, ox, oy, cap * 0.75, selAngle, worst.item, now, '#e0615a');
+      drawSimilarityArc(ctx, ox, oy, cap * 0.45, selAngle, best.item, now, '#5fd88a');
     }
   }
 }
 
-function drawSimilarityArc(ctx, ox, oy, selDist, selAngle, targetItem, now, color, fraction){
+function drawSimilarityArc(ctx, ox, oy, radius, selAngle, targetItem, now, color){
+  if(radius < 4) return; // too small (near-origin point) to draw meaningfully
   const p = liveXY(targetItem, now);
   const [tx, ty] = toScreen(p.x, p.y);
-  const targetDist = Math.hypot(tx - ox, ty - oy);
   const targetAngle = Math.atan2(ty - oy, tx - ox);
-  const radius = Math.min(selDist, targetDist) * fraction;
-  if(radius < 4) return; // too small (near-origin point) to draw meaningfully
   let diff = targetAngle - selAngle;
   while(diff > Math.PI) diff -= Math.PI * 2;
   while(diff < -Math.PI) diff += Math.PI * 2;
@@ -909,9 +916,7 @@ function updateInfoPanel(){
   const item = state.items.find(i => i.id === state.selectedId);
   if(!item || !item.embedding){ panel.classList.remove('visible'); return; }
   panel.classList.add('visible');
-  document.getElementById('infoTitle').textContent = item.text;
-  document.getElementById('infoRaw').textContent =
-    `raw similarity to "${state.axisXWord}": ${item.rawX.toFixed(3)}  •  raw similarity to "${state.axisYWord}": ${item.rawY.toFixed(3)}  •  plotted at (${item.pos.x.toFixed(2)}, ${item.pos.y.toFixed(2)})`;
+  document.getElementById('infoTitle').textContent = `${item.text} Similarity`;
   const others = rankOthers(item);
   const ranksEl = document.getElementById('infoRanks');
   ranksEl.innerHTML = '';

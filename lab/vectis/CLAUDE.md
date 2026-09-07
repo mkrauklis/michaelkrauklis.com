@@ -189,8 +189,13 @@ were tried and ruled out above.
   above for the full account (the phantom-pole bug it caused, the corpus-only fix, and why
   `#spreadNote` is permanent rather than conditional). This is expected model behavior, not a
   bug — resist the urge to "fix" it by, say, subtracting a baseline; that would be exactly the
-  kind of hidden per-item correction the spec's §6 constraint rules out. `updateInfoPanel()`'s
-  raw-numbers readout is what makes it checkable at all — don't remove it.
+  kind of hidden per-item correction the spec's §6 constraint rules out. The info panel used to
+  show each selected item's raw per-axis similarity numbers directly (`#infoRaw`) as the way to
+  check this — removed on direct feedback ("just make the title '{label} Similarity' and get rid
+  of the raw similarity stuff"), since the ranked list plus the always-visible `#axisSimNote` /
+  `#spreadNote` diagnostics already make the same point without a per-item number dump. If this
+  quirk ever needs to be checkable per-item again, that's what to extend — don't resurrect
+  `#infoRaw` itself, it was removed on purpose.
 - **Text-image cosine similarity lives in a completely different, much lower numeric range**
   than text-text (CLIP's well-documented "modality gap") — verified directly against a real
   photo during development: raw similarity to a word landed around 0.22-0.23, versus ~0.9 for
@@ -282,21 +287,30 @@ further down the page. A short arc means "very similar," a long one (up to half 
 similarity −1) means "very different" — length reads directly as dissimilarity, no separate
 number required.
 
-**Each arc gets its own radius, capped below the shorter of the two vectors it connects, with a
-different fraction per arc (`0.5` for the best match, `0.85` for the worst)** — both necessary,
-per direct feedback after the first version shipped with one shared radius (the selected item's
-own distance) for both arcs. That was wrong two ways at once: (1) if the selected item was
-*farther* from center than a target, the arc swept right past where that target's own point
-actually sat, since the shared radius had nothing to do with the target's distance; (2) worse,
-whenever that shared radius put both arcs on the *literally same circle*, the arc drawn second
-(red) simply painted over the first (green) wherever their sweeps overlapped — which is why the
-green arc sometimes appeared to not render at all. Capping each arc's own radius at
-`Math.min(selectedDist, targetDist) * fraction` fixes the first problem (the arc can never extend
-past whichever of its two endpoints is closer to center); giving the two arcs different fractions
-fixes the second (their circles can no longer coincide even in the degenerate case where the same
-distance is the limiting one for both). Below a small pixel threshold the arc is skipped entirely
-rather than drawing an invisible/degenerate sliver. Compass-view only; the network view has its
-own distance-based edges already serving a similar purpose there.
+**Both radii are derived from one shared cap, not computed independently per arc.** This took
+three iterations to actually fix, each caught from a real screenshot:
+1. *Shared literal radius* (the selected item's own distance, used for both arcs): put green and
+   red on the exact same circle whenever that distance happened to be the limiting one for both,
+   so the arc drawn second (red) painted directly over the first (green) wherever their sweeps
+   overlapped. Sometimes only one arc appeared to render at all.
+2. *Independent fraction per arc*, each of its own `Math.min(selectedDist, targetDist)`: fixed
+   the "arc swings past a closer point" problem, but not the overlap — reported directly as
+   "we're still sometimes drawing the red over the green." Which of the two distances (selected's
+   or that specific target's) was the limiting one varied independently per arc with the actual
+   data, so the two computed radii could still land close together or coincide by coincidence.
+3. **Current**: compute `cap = Math.min(selDist, bestDist, worstDist)` — the smallest of *all
+   three* distances involved — once, then derive both radii from that single shared value with
+   fixed, different fractions (`cap * 0.45` for green, `cap * 0.75` for red). Since both radii
+   scale off the same number, the ratio between them is fixed and guaranteed distinct regardless
+   of what's plotted, not just usually distinct. Red is also drawn *before* green (green is
+   z-ordered last) as a second line of defense per direct instruction — green's sweep is always
+   the shorter of the two, so if anything ever still overlaps, the smaller arc stays visibly on
+   top instead of disappearing under the larger one. Don't revert to independent per-arc radius
+   math without re-solving the coincidence problem this specifically fixes.
+
+Below a small pixel threshold the arc is skipped entirely rather than drawing an invisible/
+degenerate sliver. Compass-view only; the network view has its own distance-based edges already
+serving a similar purpose there.
 
 ## Layout
 
@@ -421,8 +435,9 @@ Golden path: wait for "Language model ready," confirm the six example items
 (surfing/summit/coral reef/ski lodge/sailboat/hiking trail) land at distinct positions roughly
 matching their real-world domain, change an axis word and confirm the label, `#axisSimNote`, and
 every point's position update and `#embeddingTable` (in "how this actually works") updates its
-rows to match, click a point and confirm the raw numbers + ranked list appear alongside a green
-arc and a red arc both centered on the origin (not point-to-point) with the red one visibly
+rows to match, click a point and confirm the "{label} Similarity" title and ranked list appear
+alongside a green arc and a red arc, both centered on the origin (not point-to-point) and at
+visibly different radii (never overlapping/overpainting each other), with the red one visibly
 longer whenever its similarity is more negative than the green one's is positive, expand
 the "Tips for picking axis words" accordion and confirm `#spreadNote` has live numbers in it,
 toggle to Network and confirm edges vary visibly in weight and some cross the plot's center
