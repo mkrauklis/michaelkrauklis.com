@@ -183,6 +183,24 @@ worse-than-average case, on top of "topics beat traits." Don't spend more effort
 phrasing or template trick for this specific complaint without new evidence — both obvious ones
 were tried and ruled out above.
 
+**The "topics beat traits" framing itself got corrected** after direct pushback: the on-page
+examples (good: ocean/mountain; bad: calm/chaotic, hairy/safe) read as "pick a topic, not a
+trait," but that's not actually the tool's intended semantics, and "hairy"/"safe" was never a
+pair of opposite traits in the first place — it's two *unrelated* trait words that happened to
+also perform badly (see the person/crowd finding above). What Vectis's axes are actually meant to
+be is two **independent** dimensions, the way you'd pick two features to classify something by
+("hot" and "furry," "kind" and "fast") — not two ends of one spectrum ("hot" and "cold"), which
+are redundant with each other by construction, not independent. Checked directly before rewriting
+anything: `cosine(hot, cold)` = 0.97, `cosine(kind, unkind)` = 0.99, `cosine(loud, quiet)` = 0.97
+(antonym pairs) versus `cosine(hot, furry)` = 0.95, `cosine(loud, furry)` = 0.95, `cosine(kind,
+fast)` = 0.98 (unrelated pairs) — genuinely independent adjective pairs score only marginally
+better than antonym pairs, nowhere near as well as concrete topic nouns (ocean/mountain 0.91).
+So both lessons are true and stay in the tips text together: prefer independent dimensions over
+spectrum endpoints (the *correct mental model* for how this tool's axes work, regardless of raw
+numbers), and prefer concrete/specific words over broad/generic ones (the stronger *empirical*
+lever, per the finding above) — don't collapse back to a single "topics vs. traits" axis of
+advice, the two corrections address different failure modes and both are worth keeping.
+
 ## Two real CLIP quirks this surfaces, on purpose
 
 - **Raw text-text cosine similarity runs hot and clusters tight** — see the rescaling section
@@ -345,9 +363,17 @@ tracks every add/remove/axis-change automatically), lists every currently-plotte
 `(x, y)` position — added on direct request specifically to tie the abstract explanation above it
 to the visitor's own concrete session, and to open with a plain "you just generated N real CLIP
 embeddings" line rather than assuming the reader already believes something happened. It's
-deliberately just a restatement of `item.pos`, the exact same numbers the compass plot and the
-info panel's raw-similarity line already use — not a new computation, so it can't drift from what
-'s actually plotted.
+deliberately just a restatement of `item.pos`, the exact same numbers the compass plot uses — not
+a new computation, so it can't drift from what's actually plotted. (The info panel used to show
+this same kind of raw-number breakdown per selected item too, via `#infoRaw` — removed since,
+see "Two real CLIP quirks" above; this table is now the only place the literal numbers live.)
+
+Immediately after the table, a short paragraph makes clear this 2-axis view is a teaching
+simplification, not how embeddings work in the wild: production systems use the full, uncurated
+vector directly (hundreds of numbers) rather than two hand-picked, human-readable axes — added on
+direct request ("a little blurb about how real embeddings aren't typically curated and often
+have hundreds of dimensions"). Keep this near the table, since the table is what makes "only two
+numbers" concrete enough for the caveat to land.
 
 **Built via DOM methods (`createElement`/`textContent`), not template-string `innerHTML`** — same
 reasoning as the ranked-list fix below. `item.text` is unescaped user input (typed text or a
@@ -372,6 +398,19 @@ the privacy/download details, and the "same space of numbers" explanation all mo
 first paragraph of the "how this actually works" disclosure instead, ahead of the pre-existing
 cosine-similarity explanation there. Don't grow the top intro back into a mechanics lecture;
 if something's worth explaining in depth, it almost always belongs below the tool, not above it.
+
+**The hero paragraph (in `<header class="hero">`, above everything else) is a separate piece of
+copy from that trimmed intro**, and got rewritten for a different reason: it explained what the
+tool *does* (pick two words, plot things) without ever saying what it's *for* — direct feedback
+("we need a blurb at the top that explains what this is for, not just what it does"). It now
+opens with the real-world hook (search/recommendation/classification systems all place things in
+a similarity space; this is that trick shrunk to two dimensions you can see) before getting to
+the mechanics. It also carried the site's original "chaotic"/"calm" example pairing — an antonym
+pair, the exact thing "Choosing axis words" above documents as bad practice — so it picked up the
+same "hot"/"furry", "kind"/"fast" independent-dimension examples used in the axis-word tips,
+for consistency across the page. Keep both pieces of copy's examples in sync if either changes
+again; having the hero pitch model the opposite of what the tips paragraph recommends undercuts
+the tips.
 
 ## Animation
 

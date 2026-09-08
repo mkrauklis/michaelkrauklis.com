@@ -108,11 +108,16 @@
     <div>
       <span class="hero-line">two words become a map, and you can watch anything land on it</span>
       <h1>Vectis</h1>
-      <p>Pick two words — anything, "formal" and "playful," "chaotic" and "calm." Each one becomes
-      an axis. Drop in words, phrases, or your own photos, and each one gets placed on the map
-      based on nothing but how close it sits to each of your two words. There's no dataset, no
-      pretrained categories — just one repeated operation, similarity to a word you chose, done
-      twice per item.</p>
+      <p>Search engines, recommendation feeds, and image classifiers all lean on the same trick:
+      turn everything into a point in a space of numbers, positioned so that similar things land
+      near each other, then measure distance instead of writing rules. This is that trick, shrunk
+      down to two dimensions you pick yourself so you can actually watch it work. Choose two
+      independent properties as your axes — things you might genuinely use to classify or
+      describe something, like "hot" and "furry," or "kind" and "fast," not two ends of the same
+      idea like "hot" and "cold." Drop in words, phrases, or your own photos, and each one gets
+      placed on the map based on nothing but how much of each property it has. There's no
+      dataset, no pretrained categories — just one repeated operation, similarity to a word you
+      chose, done twice per item.</p>
     </div>
     <canvas id="heroCanvas"></canvas>
   </div>
@@ -154,14 +159,15 @@
     <details class="disclosure" style="margin-top:10px;">
       <summary>Tips for picking axis words</summary>
       <div class="disclosure-body">
-        <p class="status">Works best with two different, specific, concrete <i>topics</i>
-        ("ocean" / "mountain", "food" / "technology") rather than opposite personality traits or
-        physical properties ("calm" / "chaotic", "hairy" / "safe") — CLIP's raw text similarity
-        is much better at recognizing what something is about than judging whether it literally
-        has a trait. Broad, generic category words ("person," "crowd," "thing") tend to do
-        especially poorly, even as plain topics — they're too common across everything to anchor
-        a specific direction, so a word like "person" can score packed and empty scenes almost
-        identically. More on why below the tool.</p>
+        <p class="status">Works best with two independent properties — things you might
+        genuinely use to classify or describe something ("hot" / "furry", "kind" / "fast",
+        "ocean" / "mountain") — rather than opposite ends of one spectrum ("hot" / "cold",
+        "calm" / "chaotic"). CLIP naturally reads two ends of the same idea as nearly the same
+        direction, which makes them redundant instead of independent axes. Specific, concrete
+        words also separate more reliably than broad, generic ones ("person," "crowd," "thing")
+        — those are too common across everything to anchor a specific direction, so even a
+        genuinely independent pair like "hot" / "furry" can come out noisier than "ocean" /
+        "mountain." More on why below the tool.</p>
         <p class="status" id="spreadNote" style="margin-top:10px; display:none;"></p>
       </div>
     </details>
@@ -296,6 +302,13 @@
         </div>
       </div>
 
+      <p style="margin-top:24px;">One thing worth being clear about: real embeddings aren't
+      curated like this. A production search engine, recommender, or classifier doesn't pick two
+      labeled axes and read off two numbers — it works directly with the full, uncurated vector
+      CLIP (or a model like it) produces, often several hundred numbers long, and lets an
+      algorithm find patterns across all of them at once. Reducing that down to two axes you
+      chose and can actually see is what makes this tool understandable — it's a teaching
+      simplification, not how embeddings get used in practice.</p>
     </div>
   </details>
 
