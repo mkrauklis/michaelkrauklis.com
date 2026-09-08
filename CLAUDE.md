@@ -33,3 +33,6 @@ Two root-level files are included, unmodified, by every page on the site (root `
 When adding a new lab tool, link both files and rely on `theme.css`'s defaults before writing
 new CSS — copying a whole `<style>` block from an existing tool page (the old pattern) is how
 the palette and the paragraph-width bug drifted out of sync across pages in the first place.
+
+`lab/index.html`'s tool list is ordered newest-first, top to bottom (currently Vectis,
+Afterimage, Ridgeline) — add a new tool's card at the *top* of `.tool-list`, not the bottom.
