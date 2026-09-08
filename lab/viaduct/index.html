@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="google-adsense-account" content="ca-pub-5936916546458743">
+<title>Neural Viaduct — why skip connections let networks go deeper</title>
+<link rel="stylesheet" href="/theme.css">
+<style>
+  :root{ --accent: #c9553d; --accent-dim: #6b3226; }
+
+  .wrap{ max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+  .arch-scroll{ overflow-x: auto; }
+  canvas#archCanvas{
+    display:block; background:#0c0e13; border:1px solid var(--line); border-radius:6px;
+    width: 100%; min-width: 720px;
+  }
+  .arch-legend{ display:flex; gap:22px; flex-wrap:wrap; margin-top:10px; font-size:0.8rem; color:var(--ink-dim); }
+  .arch-legend span.sw{ display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:-1px; }
+
+  .pred-cols{ display:flex; gap:24px; flex-wrap:wrap; margin-top:18px; }
+  .pred-col{ flex:1; min-width:280px; }
+  .pred-col h3{ font-size:1rem; margin-bottom:4px; }
+  .pred-col .sub{ font-size:0.8rem; color:var(--ink-dim); margin-bottom:12px; display:block; }
+  .pred-row{ display:flex; align-items:center; gap:10px; margin-bottom:8px; font-size:0.85rem; }
+  .pred-row .name{ flex:0 0 46%; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pred-row .bar-track{ flex:1; height:8px; background:var(--bg-panel-2); border-radius:4px; overflow:hidden; }
+  .pred-row .bar-fill{ height:100%; background:var(--accent); width:0%; }
+  .pred-row .pct{ flex:0 0 42px; text-align:right; color:var(--ink-dim); font-size:0.78rem; }
+
+  .stat-table{ width:100%; border-collapse:collapse; margin-top:14px; font-size:0.9rem; }
+  .stat-table th, .stat-table td{ text-align:left; padding:10px 14px; border-bottom:1px solid var(--line); }
+  .stat-table th{ color:var(--ink-dim); font-weight:600; font-size:0.8rem; text-transform:uppercase; letter-spacing:0.03em; }
+  .stat-table td.hi{ color:var(--accent); font-weight:600; }
+  .stat-table tr:last-child td{ border-bottom:none; }
+
+  #previewRow{ display:flex; gap:20px; align-items:center; margin-top:14px; flex-wrap:wrap; }
+  #previewCanvas{ width:120px; height:120px; border-radius:6px; border:1px solid var(--line); background:#0c0e13; }
+</style>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5936916546458743"
+     crossorigin="anonymous"></script>
+</head>
+<body>
+<script src="/nav.js"></script>
+
+<header class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <span class="hero-line">why the deep one wins: two real networks, one photo, watch what a shortcut buys</span>
+      <h1>Neural Viaduct</h1>
+      <p>Two real, off-the-shelf networks run on your own photo, side by side. One is a plain
+      stack of layers, straight through, no exceptions. The other has the same kind of layers,
+      but every so often, a shortcut arcs over one and hands its input forward unchanged.
+      That one small difference is most of the reason modern vision networks can be dozens of
+      layers deep without falling apart. This page shows you the shortcuts actually happening,
+      not just tells you about them.</p>
+    </div>
+    <canvas id="heroCanvas"></canvas>
+  </div>
+</header>
+
+<div class="wrap" style="padding-top:40px;">
+  <p>Upload a photo below and it never leaves your browser — both networks, and every
+  computation on this page, run entirely client-side. What you get back is real: the actual
+  intermediate output of each block in each network, from a genuine forward pass on your
+  actual photo, plus each network's real top-5 guess at what it's looking at. The full story —
+  what a "skip connection" is, why deep plain networks get harder to train the deeper they go,
+  and the historical result that motivated all of this — is in "how this actually works,"
+  further down.</p>
+</div>
+
+<main class="wrap">
+
+  <section>
+    <span class="step-tag">01 — upload</span>
+    <h2>Give it a photo</h2>
+    <p>Any photo works. A single clear subject fills the frame better than a busy scene — both
+    networks were trained on ImageNet's thousand object/animal/vehicle categories, so a coffee
+    mug, a dog, or a bicycle will get a more confident (and more interesting) guess than an
+    abstract scene or a group of people.</p>
+    <div class="dropzone" id="dropzone">
+      <input type="file" id="fileInput" accept="image/*">
+      <div><span class="cta">Choose a photo</span> or drag one here</div>
+    </div>
+    <div id="previewRow" style="display:none;">
+      <canvas id="previewCanvas" width="120" height="120"></canvas>
+      <div>
+        <div class="status" id="loadStatus">loading both networks…</div>
+        <div class="actions" style="margin-top:8px;">
+          <button class="primary" id="runBtn" disabled>Send it through both networks</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="archSection" style="display:none;">
+    <span class="step-tag">02 — watch it flow</span>
+    <h2>The same photo, through two different paths</h2>
+    <p><b style="color:var(--ink);">MobileNetV1</b> (top) is a <b style="color:var(--ink);">plain</b>
+    network — every block feeds straight into the next, no exceptions. <b
+    style="color:var(--ink);">MobileNetV2</b> (bottom) is a <b style="color:var(--ink);">residual</b>
+    network built from the same lineage — most of its blocks also have an identity shortcut (the
+    arcs) carrying the block's input forward unchanged, in parallel with the transformed version,
+    so the block only has to learn the <i>difference</i> a real one would need to add. Each
+    thumbnail is that block's actual output on your photo, reduced to a single brightness map —
+    darker means the block responded weakly there, brighter means strongly. Some of MobileNetV2's
+    blocks don't have a shortcut either — that's real too, not an oversight; a block that changes
+    the number of channels or the spatial size can't just add its input back unchanged, so the
+    shortcut only appears exactly where the shapes actually line up.</p>
+    <div class="panel">
+      <div class="arch-scroll">
+        <canvas id="archCanvas" width="1400" height="360"></canvas>
+      </div>
+      <div class="arch-legend">
+        <span><span class="sw" style="background:var(--accent);"></span>block output (brighter = stronger activation)</span>
+        <span><span class="sw" style="background:var(--ink-dim);"></span>identity shortcut — this block's input, carried over unchanged</span>
+      </div>
+    </div>
+  </section>
+
+  <section id="predSection" style="display:none;">
+    <span class="step-tag">03 — what each one guesses</span>
+    <h2>Real predictions, from real forward passes</h2>
+    <p>Both bar charts come straight from each network's own final layer — nothing scripted,
+    nothing picked to make a point. Whatever your photo actually is, this is genuinely what each
+    network thinks it's looking at, and how confident it is.</p>
+    <div class="panel">
+      <div class="pred-cols">
+        <div class="pred-col">
+          <h3>MobileNetV1 — plain</h3>
+          <span class="sub">no skip connections</span>
+          <div id="predV1"></div>
+        </div>
+        <div class="pred-col">
+          <h3>MobileNetV2 — residual</h3>
+          <span class="sub">10 of 17 blocks have a skip connection</span>
+          <div id="predV2"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="statSection" style="display:none;">
+    <span class="step-tag">04 — the payoff</span>
+    <h2>Smaller, and more accurate, at the same time</h2>
+    <p>This is the real, published, sourced comparison these two specific networks make possible
+    — not a hypothetical. Adding skip connections didn't just make training deeper networks
+    possible; on this pair, it also came with fewer parameters and higher accuracy, at once.</p>
+    <div class="panel">
+      <table class="stat-table">
+        <thead><tr><th></th><th>MobileNetV1 (plain)</th><th>MobileNetV2 (residual)</th></tr></thead>
+        <tbody>
+          <tr><td>Parameters</td><td>4.2 million</td><td class="hi">3.4 million</td></tr>
+          <tr><td>ImageNet top-1 accuracy</td><td>70.6%</td><td class="hi">72.0%</td></tr>
+          <tr><td>Blocks with a skip connection</td><td>0 of 13</td><td class="hi">10 of 17</td></tr>
+          <tr><td>Published</td><td>Howard et al., 2017</td><td>Sandler et al., 2018</td></tr>
+        </tbody>
+      </table>
+      <p style="font-size:0.8rem; margin-top:14px;">One honest note: this is a subtler story than
+      the classic "twice as deep, a sixth of the parameters" comparisons you'll see elsewhere
+      (usually VGG vs. ResNet50) — those two networks are together over 600MB to download, which
+      didn't feel right to ship just for this page. MobileNetV1 and V2 are real, published,
+      widely-deployed networks from the same lineage, small enough to load in seconds, and the
+      one variable that actually changed between them — the skip connection — is exactly the
+      thing this page is about.</p>
+    </div>
+  </section>
+
+  <section id="shareSection" style="display:none;">
+    <span class="step-tag">05 — save &amp; share</span>
+    <h2>Take the comparison with you</h2>
+    <p>Downloads a single image: both block-flow diagrams and the stat table, exactly as they
+    look above, with your photo's actual results baked in.</p>
+    <div class="actions">
+      <button class="primary" id="downloadBtn">Download PNG</button>
+      <span class="status">architecture diagram + stat card</span>
+    </div>
+    <div class="panel" style="margin-top:24px;">
+      <span class="step-tag">make it a gift</span>
+      <p style="font-size:0.9rem;">Since every image here is built from your own uploaded photo,
+      this one's best kept personal rather than worn — a magnet, not a t-shirt.</p>
+      <ol style="color:var(--ink-dim); font-size:0.9rem; padding-left:1.2em; margin:0 0 4px;">
+        <li>Download the PNG above.</li>
+        <li>Open a Zazzle "upload your own image" template and personalize it with that file.</li>
+      </ol>
+      <p style="font-size:0.85rem;">
+        <a href="https://www.zazzle.com/design_your_own_logo_design_coffee_mug-256206116898885602?rf=238054754631086278" target="_blank" rel="noopener">Open a Zazzle "upload your own image" template &rarr;</a>
+        — pick a magnet-style product; most of Zazzle's blank templates accept any uploaded image the same way.
+      </p>
+    </div>
+  </section>
+
+  <details id="learnSection" class="disclosure advanced" style="display:none;">
+    <summary>How this actually works <span class="adv-sub">— skip connections, and why depth used to break</span></summary>
+    <div class="disclosure-body">
+      <div class="panel">
+        <p>Stack enough layers on a plain network and, past a certain depth, accuracy gets
+        <i>worse</i>, not better — and not from overfitting (training error rises too, not just
+        validation error). This is the <b style="color:var(--ink);">degradation problem</b>: past
+        some depth, plain networks get measurably harder to optimize, not just harder to
+        generalize. It's counterintuitive, because a deeper plain network can always, in
+        principle, just learn to copy its input forward through the extra layers and match the
+        shallower network's accuracy exactly — that's a function every one of those extra layers
+        is fully capable of representing. In practice, plain networks trained with ordinary
+        gradient descent don't reliably find that solution once they get deep enough. Learning to
+        pass a signal through completely unchanged turns out to be a surprisingly awkward thing
+        to ask an ordinary stack of layers to do.</p>
+        <p>A <b style="color:var(--ink);">residual</b> or <b style="color:var(--ink);">skip
+        connection</b> sidesteps the problem by making "pass it through unchanged" the network's
+        default, free of charge: instead of asking a block to learn some function <code>F(x)</code>
+        outright, it computes <code>F(x) + x</code> — the block's own transformation, plus an
+        identity copy of its input, added back in via the shortcut arcs you saw above. If the
+        best thing a block can do is nothing, it just has to learn to output zero, which turns
+        out to be a far easier thing for gradient descent to settle into than learning an exact
+        identity mapping through an ordinary stack of weights. That's the entire mechanism — one
+        addition, in parallel with the block's normal path — and it's what let networks
+        confidently go from a few dozen layers to over a hundred without the accuracy collapse
+        plain networks were already starting to show well before that.</p>
+        <div class="panel" style="margin-top:4px; background:var(--bg-panel-2);">
+          <span class="step-tag" style="color:var(--accent);">the historical result this is built around</span>
+          <p style="margin-bottom:0;">This page can't reproduce the classic degradation result
+          live — the plain 18/34-layer networks it was originally measured on were never
+          released as pretrained weights, since nobody had a reason to publish a network they'd
+          deliberately shown was worse. But the original numbers are public record: on ImageNet,
+          He et al.'s <b style="color:var(--ink);">plain-34</b> network scored a <i>higher</i> (worse)
+          top-1 error than the shallower <b style="color:var(--ink);">plain-18</b> — 28.54% vs.
+          27.94% — despite having nearly twice the layers. Adding residual connections to the same
+          34-layer design (<b style="color:var(--ink);">ResNet-34</b>) dropped that error to
+          25.03%, beating both plain networks outright. Depth alone made things worse; depth plus
+          shortcuts made things much better.</p>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:18px;">
+        <span class="step-tag">further reading</span>
+        <p style="font-size:0.85rem;">The line of research this page sits inside, in order:</p>
+        <ul style="color:var(--ink-dim); font-size:0.85rem; padding-left:1.2em;">
+          <li>Rumelhart, D. E., Hinton, G. E., &amp; Williams, R. J. (1986). "Learning
+          representations by back-propagating errors." <i>Nature</i>, 323(6088), 533–536. — the
+          foundational result behind training any multi-layer network at all.</li>
+          <li>LeCun, Y., Bottou, L., Bengio, Y., &amp; Haffner, P. (1998). "Gradient-Based
+          Learning Applied to Document Recognition." <i>Proceedings of the IEEE</i>, 86(11),
+          2278–2324. — introduces the convolutional architecture (LeNet-5).
+          <a href="http://yann.lecun.com/exdb/publis/pdf/lecun-01a.pdf" target="_blank" rel="noopener">PDF</a></li>
+          <li>Krizhevsky, A., Sutskever, I., &amp; Hinton, G. E. (2012). "ImageNet Classification
+          with Deep Convolutional Neural Networks." <i>NeurIPS</i> 2012. — AlexNet, the moment
+          CNNs overtook prior approaches on real vision benchmarks.
+          <a href="https://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks" target="_blank" rel="noopener">Paper</a></li>
+          <li>Simonyan, K., &amp; Zisserman, A. (2014). "Very Deep Convolutional Networks for
+          Large-Scale Image Recognition." <i>arXiv:1409.1556</i>. — the VGG family, the last major
+          "just stack more plain layers" architecture before the degradation problem caught up
+          with it.
+          <a href="https://arxiv.org/abs/1409.1556" target="_blank" rel="noopener">arXiv:1409.1556</a></li>
+          <li>He, K., Zhang, X., Ren, S., &amp; Sun, J. (2016). "Deep Residual Learning for Image
+          Recognition." <i>CVPR</i> 2016, 770–778. — residual connections and the degradation
+          problem this page is built around.
+          <a href="https://arxiv.org/abs/1512.03385" target="_blank" rel="noopener">arXiv:1512.03385</a></li>
+          <li>Howard, A. G. et al. (2017). "MobileNets: Efficient Convolutional Neural Networks
+          for Mobile Vision Applications." <i>arXiv:1704.04861</i>. — MobileNetV1, the plain
+          network running on this page.
+          <a href="https://arxiv.org/abs/1704.04861" target="_blank" rel="noopener">arXiv:1704.04861</a></li>
+          <li>Sandler, M., Howard, A., Zhu, M., Zhmoginov, A., &amp; Chen, L.-C. (2018).
+          "MobileNetV2: Inverted Residuals and Linear Bottlenecks." <i>CVPR</i> 2018. —
+          MobileNetV2, the residual network running on this page, and its own account of why
+          adding shortcuts to V1's design helped.
+          <a href="https://arxiv.org/abs/1801.04381" target="_blank" rel="noopener">arXiv:1801.04381</a></li>
+        </ul>
+      </div>
+    </div>
+  </details>
+
+  <hr class="divider">
+</main>
+
+<footer>
+  <div class="wrap">
+    Neural Viaduct runs entirely in your browser — no photo is uploaded to a server.
+    Part of <a href="/lab/">The Concept Lab</a> by <a href="/">Michael Krauklis</a>.
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@4.22.0/dist/tf-backend-wasm.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.1/dist/mobilenet.min.js"></script>
+<script>
+(async function(){
+  tf.wasm.setWasmPaths('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@4.22.0/dist/');
+  async function chooseBackend(){
+    try { await tf.setBackend('webgl'); await tf.ready(); return 'webgl'; }
+    catch(e){ console.warn('webgl unavailable', e); }
+    try { await tf.setBackend('wasm'); await tf.ready(); return 'wasm'; }
+    catch(e){ console.warn('wasm unavailable', e); await tf.setBackend('cpu'); await tf.ready(); return 'cpu'; }
+  }
+  const backendUsed = await chooseBackend();
+  console.log('backend:', backendUsed);
+
+  // ---------- Hero decorative canvas: an arc "bridging" over a gap in a line of dots ----------
+  function drawHero(){
+    const c = document.getElementById('heroCanvas');
+    const dpr = window.devicePixelRatio || 1;
+    const w = c.clientWidth, h = c.clientHeight;
+    c.width = w*dpr; c.height = h*dpr;
+    const ctx = c.getContext('2d');
+    ctx.scale(dpr,dpr);
+    ctx.clearRect(0,0,w,h);
+    const n = 9, y = h*0.62, pad = 30;
+    const step = (w-pad*2)/(n-1);
+    ctx.strokeStyle = 'rgba(233,231,222,0.18)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(w-pad,y); ctx.stroke();
+    for (let i=0;i<n;i++){
+      const x = pad+i*step;
+      ctx.fillStyle = 'rgba(233,231,222,0.35)';
+      ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2); ctx.fill();
+    }
+    // one skip arc, over the middle span
+    const a = pad+3*step, b = pad+5*step;
+    ctx.strokeStyle = '#c9553d'; ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(a,y);
+    ctx.quadraticCurveTo((a+b)/2, y-h*0.32, b, y);
+    ctx.stroke();
+    ctx.fillStyle = '#c9553d';
+    ctx.beginPath(); ctx.arc(a,y,4.5,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(b,y,4.5,0,Math.PI*2); ctx.fill();
+  }
+  window.addEventListener('resize', drawHero);
+  drawHero();
+
+  // ---------- Load both networks ----------
+  let net1, net2;
+  async function loadModels(){
+    [net1, net2] = await Promise.all([
+      mobilenet.load({version:1, alpha:1.0}),
+      mobilenet.load({version:2, alpha:1.0}),
+    ]);
+  }
+  const modelsReady = loadModels();
+
+  // ---------- Block node names, generated from the graph structure verified against the
+  // real loaded models (see lab/viaduct/CLAUDE.md for how these were confirmed) ----------
+  const V1_NODES = ['module_apply_default/MobilenetV1/MobilenetV1/Conv2d_0/Relu6'];
+  for (let i=1;i<=13;i++) V1_NODES.push(`module_apply_default/MobilenetV1/MobilenetV1/Conv2d_${i}_pointwise/Relu6`);
+  const V1_RESIDUAL = V1_NODES.map(()=>false);
+
+  const V2_RESIDUAL_BLOCKS = new Set([2,4,5,7,8,9,11,12,14,15]);
+  const V2_NODES = ['module_apply_default/MobilenetV2/Conv/Relu6'];
+  const V2_RESIDUAL = [false];
+  for (let b=0;b<=16;b++){
+    const suffix = b===0 ? '' : `_${b}`;
+    V2_NODES.push(`module_apply_default/MobilenetV2/expanded_conv${suffix}/project/BatchNorm/FusedBatchNorm`);
+    V2_RESIDUAL.push(V2_RESIDUAL_BLOCKS.has(b));
+  }
+
+  // ---------- Forward pass: one execute() call per network returns every block's real
+  // activation map from a single genuine pass over the photo ----------
+  function preprocess(imgEl){
+    return tf.tidy(() => {
+      let x = tf.browser.fromPixels(imgEl);
+      x = tf.image.resizeBilinear(x, [224,224]);
+      x = x.toFloat().div(255);
+      return x.expandDims(0);
+    });
+  }
+
+  async function getBlockMaps(net, nodeNames, input){
+    const outs = net.model.execute({images: input}, nodeNames);
+    const maps = [];
+    for (const t of outs){
+      const [,h,w,c] = t.shape;
+      const data = await t.data();
+      const mean = new Float32Array(h*w);
+      for (let p=0; p<h*w; p++){
+        let s = 0; const base = p*c;
+        for (let ch=0; ch<c; ch++) s += data[base+ch];
+        mean[p] = s/c;
+      }
+      maps.push({h, w, data: mean});
+      t.dispose();
+    }
+    return maps;
+  }
+
+  // ---------- Diagram rendering ----------
+  const THUMB = 40, GAP = 14, ROW1_Y = 70, ROW2_Y = 230, LABEL_OFFSET = -26;
+  const START_X = 60;
+  const ACCENT_RGB = [201, 85, 61];
+
+  function blockX(i){ return START_X + i*(THUMB+GAP); }
+
+  function renderThumbToCanvas(map){
+    const off = document.createElement('canvas');
+    off.width = map.w; off.height = map.h;
+    const octx = off.getContext('2d');
+    let min = Infinity, max = -Infinity;
+    for (const v of map.data){ if (v<min) min=v; if (v>max) max=v; }
+    const range = (max-min) || 1;
+    const imgData = octx.createImageData(map.w, map.h);
+    for (let p=0; p<map.w*map.h; p++){
+      const t = (map.data[p]-min)/range;
+      imgData.data[p*4+0] = Math.round(ACCENT_RGB[0]*t + 18*(1-t));
+      imgData.data[p*4+1] = Math.round(ACCENT_RGB[1]*t + 20*(1-t));
+      imgData.data[p*4+2] = Math.round(ACCENT_RGB[2]*t + 28*(1-t));
+      imgData.data[p*4+3] = 255;
+    }
+    octx.putImageData(imgData, 0, 0);
+    return off;
+  }
+
+  function drawRow(ctx, maps, residualFlags, y, revealCount, label){
+    ctx.fillStyle = '#9aa0ae'; ctx.font = '12px Inter, sans-serif';
+    ctx.fillText(label, START_X, y+LABEL_OFFSET-6);
+
+    // baseline
+    ctx.strokeStyle = 'rgba(233,231,222,0.15)'; ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(blockX(0)+THUMB/2, y+THUMB/2);
+    ctx.lineTo(blockX(maps.length-1)+THUMB/2, y+THUMB/2);
+    ctx.stroke();
+
+    // residual arcs (drawn first, under the thumbnails)
+    for (let i=0;i<residualFlags.length;i++){
+      if (!residualFlags[i]) continue;
+      if (i > revealCount) continue;
+      const x1 = blockX(i-1)+THUMB/2, x2 = blockX(i)+THUMB/2;
+      const midY = y+THUMB/2 - 30;
+      ctx.strokeStyle = 'rgba(154,160,174,0.55)'; ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(x1, y+THUMB/2);
+      ctx.quadraticCurveTo((x1+x2)/2, midY, x2, y+THUMB/2);
+      ctx.stroke();
+    }
+
+    for (let i=0;i<maps.length;i++){
+      const x = blockX(i);
+      if (i > revealCount){
+        ctx.strokeStyle = 'rgba(233,231,222,0.10)'; ctx.lineWidth = 1;
+        ctx.strokeRect(x, y, THUMB, THUMB);
+        continue;
+      }
+      const thumb = renderThumbToCanvas(maps[i]);
+      ctx.drawImage(thumb, x, y, THUMB, THUMB);
+      if (residualFlags[i]){
+        ctx.strokeStyle = '#e9e7de'; ctx.lineWidth = 1.5;
+        ctx.strokeRect(x-1.5, y-1.5, THUMB+3, THUMB+3);
+      }
+    }
+  }
+
+  let v1Maps = null, v2Maps = null;
+  function renderArch(revealFrac){
+    const canvas = document.getElementById('archCanvas');
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#0c0e13'; ctx.fillRect(0,0,canvas.width,canvas.height);
+    if (!v1Maps || !v2Maps) return;
+    const r1 = Math.floor(revealFrac * (v1Maps.length-1));
+    const r2 = Math.floor(revealFrac * (v2Maps.length-1));
+    drawRow(ctx, v1Maps, V1_RESIDUAL, ROW1_Y, r1, 'MobileNetV1 — plain (14 stages, 0 shortcuts)');
+    drawRow(ctx, v2Maps, V2_RESIDUAL, ROW2_Y, r2, 'MobileNetV2 — residual (18 stages, 10 shortcuts)');
+  }
+
+  let animId = null;
+  function animateReveal(durationMs){
+    const start = performance.now();
+    function step(now){
+      const t = Math.min(1, (now-start)/durationMs);
+      renderArch(t);
+      if (t < 1) animId = requestAnimationFrame(step);
+    }
+    animId = requestAnimationFrame(step);
+  }
+  window.__forceRenderArch = (frac) => renderArch(frac); // testing hook, see CLAUDE.md
+
+  // ---------- Predictions ----------
+  function renderPreds(container, preds){
+    container.innerHTML = '';
+    for (const p of preds){
+      const row = document.createElement('div');
+      row.className = 'pred-row';
+      const name = document.createElement('span');
+      name.className = 'name'; name.textContent = p.className;
+      const track = document.createElement('span');
+      track.className = 'bar-track';
+      const fill = document.createElement('span');
+      fill.className = 'bar-fill';
+      fill.style.width = (p.probability*100).toFixed(1)+'%';
+      track.appendChild(fill);
+      const pct = document.createElement('span');
+      pct.className = 'pct'; pct.textContent = (p.probability*100).toFixed(1)+'%';
+      row.appendChild(name); row.appendChild(track); row.appendChild(pct);
+      container.appendChild(row);
+    }
+  }
+
+  // ---------- Main pipeline ----------
+  let lastImg = null;
+  async function runViaduct(imgEl){
+    document.getElementById('runBtn').disabled = true;
+    document.getElementById('loadStatus').textContent = 'running both networks…';
+
+    const input = preprocess(imgEl);
+    const [maps1, maps2, preds1, preds2] = await Promise.all([
+      getBlockMaps(net1, V1_NODES, input),
+      getBlockMaps(net2, V2_NODES, input),
+      net1.classify(imgEl, 5),
+      net2.classify(imgEl, 5),
+    ]);
+    input.dispose();
+    v1Maps = maps1; v2Maps = maps2;
+
+    document.getElementById('archSection').style.display = 'block';
+    document.getElementById('predSection').style.display = 'block';
+    document.getElementById('statSection').style.display = 'block';
+    document.getElementById('shareSection').style.display = 'block';
+    document.getElementById('learnSection').style.display = 'block';
+
+    if (animId) cancelAnimationFrame(animId);
+    animateReveal(2600);
+    renderPreds(document.getElementById('predV1'), preds1);
+    renderPreds(document.getElementById('predV2'), preds2);
+
+    document.getElementById('loadStatus').textContent = 'done — scroll down to see it flow';
+    document.getElementById('runBtn').disabled = false;
+  }
+
+  // ---------- Upload wiring ----------
+  const dropzone = document.getElementById('dropzone');
+  const fileInput = document.getElementById('fileInput');
+  function handleFile(file){
+    if (!file || !file.type.startsWith('image/')) return;
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      lastImg = img;
+      const pc = document.getElementById('previewCanvas');
+      const pctx = pc.getContext('2d');
+      const side = Math.min(img.width, img.height);
+      pctx.drawImage(img, (img.width-side)/2, (img.height-side)/2, side, side, 0, 0, 120, 120);
+      document.getElementById('previewRow').style.display = 'flex';
+      URL.revokeObjectURL(url);
+      modelsReady.then(() => {
+        document.getElementById('runBtn').disabled = false;
+        document.getElementById('loadStatus').textContent = 'ready';
+      });
+    };
+    img.src = url;
+  }
+  dropzone.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
+  dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag'); });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault(); dropzone.classList.remove('drag');
+    handleFile(e.dataTransfer.files[0]);
+  });
+  document.getElementById('runBtn').addEventListener('click', () => { if (lastImg) runViaduct(lastImg); });
+
+  modelsReady.then(() => {
+    if (document.getElementById('previewRow').style.display !== 'none'){
+      document.getElementById('runBtn').disabled = false;
+    }
+    document.getElementById('loadStatus').textContent = lastImg ? 'ready' : 'both networks loaded — add a photo';
+  });
+
+  // ---------- Download composite PNG ----------
+  document.getElementById('downloadBtn').addEventListener('click', () => {
+    const arch = document.getElementById('archCanvas');
+    const out = document.createElement('canvas');
+    out.width = arch.width;
+    out.height = arch.height + 220;
+    const octx = out.getContext('2d');
+    octx.fillStyle = '#0c0e13'; octx.fillRect(0,0,out.width,out.height);
+    octx.drawImage(arch, 0, 0);
+    octx.fillStyle = '#e9e7de'; octx.font = 'bold 22px Georgia, serif';
+    octx.fillText('Neural Viaduct — plain vs. residual', 24, arch.height+34);
+    octx.font = '14px Arial, sans-serif'; octx.fillStyle = '#9aa0ae';
+    const rows = [
+      ['Parameters', '4.2M (V1)', '3.4M (V2)'],
+      ['ImageNet top-1', '70.6% (V1)', '72.0% (V2)'],
+      ['Shortcuts', '0 of 13 (V1)', '10 of 17 (V2)'],
+    ];
+    rows.forEach((r,i) => {
+      octx.fillText(`${r[0]}:  ${r[1]}   vs   ${r[2]}`, 24, arch.height+70+i*30);
+    });
+    const a = document.createElement('a');
+    a.download = 'neural-viaduct.png';
+    a.href = out.toDataURL('image/png');
+    a.click();
+  });
+})();
+</script>
+</body>
+</html>
