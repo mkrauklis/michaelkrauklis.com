@@ -177,9 +177,14 @@
     <span class="step-tag">02 — trace the outline</span>
     <h2>Here's what we found</h2>
     <p id="extractIntro">Ridgeline found the line where sky meets land automatically. If the
-    amber outline doesn't hug your ridge, fine-tune it below.</p>
+    amber outline doesn't hug your ridge, click and drag directly on the photo to draw it
+    yourself — or fine-tune the detector below.</p>
     <div class="panel">
-      <canvas class="stage" id="sourceCanvas"></canvas>
+      <canvas class="stage" id="sourceCanvas" style="cursor:crosshair;"></canvas>
+      <div class="actions" style="margin-top:10px;">
+        <span class="status">Click and drag on the photo to draw the line by hand.</span>
+        <button class="secondary" id="resetLineBtn" style="padding:6px 14px; font-size:0.82rem;">Reset to auto-detected</button>
+      </div>
       <details class="disclosure" id="fineTuneDisclosure">
         <summary>Doesn't look right? Fine-tune it</summary>
         <div class="disclosure-body">
@@ -537,8 +542,21 @@
     // smoothness score is used to rule out sensitivities that are clearly too strict (visibly
     // erratic), not to go looking for the single smoothest result on offer.
     const candidates = [30, 70, 110, 150, 190, 230];
-    const results = candidates.map(s => ({ s, ...detectSkyline(s, false, 90) }));
-    const valid = results.filter(r => r.fallbackRate <= 0.15);
+    const results = candidates.map(s => {
+      const r = detectSkyline(s, false, 90);
+      const span = Math.max(...r.elevations) - Math.min(...r.elevations);
+      return { s, span, ...r };
+    });
+    // Roughness alone isn't enough: on a sufficiently adversarial sky (heavy, bright cloud
+    // sitting exactly where the reference bands sample from -- see detectSkyline), a too-lenient
+    // threshold can make the whole line trigger almost immediately and nearly uniformly, which
+    // reads as *very* smooth (low roughness) despite being flatly wrong. A real ridge has genuine
+    // vertical variation; a falsely-uniform line collapses to just a few pixels of span
+    // regardless of how smooth it looks. Confirmed directly against a test photo built to trigger
+    // this: the correct candidates had 40-85% of the photo's height in span, the falsely-flat one
+    // had under 2% -- a clean, unambiguous gap, not a borderline call.
+    const h = sourceCanvas.height;
+    const valid = results.filter(r => r.fallbackRate <= 0.3 && r.span >= h*0.05);
     const pool = valid.length ? valid : results;
     const bestRoughness = Math.min(...pool.map(r => r.roughness));
     const good = pool.find(r => r.roughness <= bestRoughness + 1.5) || pool[0];
@@ -549,24 +567,6 @@
     sampleVal.textContent = 220;
 
     extractAndPreview();
-  }
-
-  // Median and MAD (median absolute deviation, scaled to be comparable to a standard
-  // deviation) of the rectangle [x0,x1) x [y0,y1) -- unlike mean/variance, these aren't
-  // dragged around by a skewed mix of populations in the same window, which a plain blue sky
-  // dotted with much brighter clouds always is. Only used once per extraction, on the
-  // reference band, so an exact sort is cheap enough.
-  function bandMedianMad(data, w, x0, x1, y0, y1){
-    const vals = [];
-    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++){
-      const idx = (y*w+x)*4;
-      vals.push(Math.round(0.299*data[idx] + 0.587*data[idx+1] + 0.114*data[idx+2]));
-    }
-    vals.sort((a,b)=>a-b);
-    const median = vals[Math.floor(vals.length/2)] || 0;
-    const devs = vals.map(v=>Math.abs(v-median)).sort((a,b)=>a-b);
-    const mad = Math.max(1, (devs[Math.floor(devs.length/2)] || 0) * 1.4826);
-    return { median, mad };
   }
 
   // Removes single-column spikes (a bird, a glint, a JPEG artifact) that a per-column
@@ -584,21 +584,57 @@
     return out;
   }
 
+  // Median of the luminance in rectangle [x0,x1) x [y0,y1) -- unlike a mean, this isn't dragged
+  // around by a skewed mix of populations in the same window (a plain blue sky dotted with much
+  // brighter clouds is exactly that). Only called a handful of times per extraction (building the
+  // reference), so an exact sort is cheap enough.
+  function bandMedian(data, w, x0, x1, y0, y1){
+    const vals = [];
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++){
+      const idx = (y*w+x)*4;
+      vals.push(Math.round(0.299*data[idx] + 0.587*data[idx+1] + 0.114*data[idx+2]));
+    }
+    vals.sort((a,b)=>a-b);
+    return vals[Math.floor(vals.length/2)] || 0;
+  }
+  function bandMad(data, w, x0, x1, y0, y1, median){
+    const devs = [];
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++){
+      const idx = (y*w+x)*4;
+      const lum = Math.round(0.299*data[idx] + 0.587*data[idx+1] + 0.114*data[idx+2]);
+      devs.push(Math.abs(lum-median));
+    }
+    devs.sort((a,b)=>a-b);
+    return Math.max(1, (devs[Math.floor(devs.length/2)] || 0) * 1.4826);
+  }
+
   // A local step test (comparing a row's own above/below neighborhood) can't tell a real
   // sky/land boundary apart from a hard cloud edge -- a dramatic sky is full of those, and the
-  // very first one from the top used to win. The fix is a reference sample of "what sky looks
-  // like" -- the top strip of the photo, which is sky far more often than not -- that each
-  // column is scanned against for where the brightness permanently, not just briefly, leaves
-  // that range. Mean/standard-deviation isn't a good enough summary of that reference, though:
-  // a blue sky dotted with bright clouds is two populations in one sample, and their mix drags
-  // the mean toward the clouds and inflates the spread, which is exactly what let a bright
-  // cumulus mid-frame register as "still sky" while under-reacting to real, softer ridgelines.
-  // Median and MAD (median absolute deviation) aren't dragged around by that mix the way a
-  // mean and standard deviation are, so the reference and the per-row z-score below both use
-  // them. Returns the smoothed elevation array plus two quality signals `autoTuneAndExtract()`
-  // uses to pick a sensitivity automatically: `roughness` (mean column-to-column jump -- a real
-  // skyline is gradual, so a high value means the detector is reacting to noise, not ridge) and
-  // `fallbackRate` (how often no boundary was found at all).
+  // very first one from the top used to win. The fix compares each row against a reference for
+  // "what sky looks like" -- but a single fixed sample (one band, sampled once from the top of
+  // the photo) is blind to a smooth vertical gradient, which most real skies have (they routinely
+  // get lighter toward the horizon): the gradient drifts true sky brightness away from that fixed
+  // sample just as surely as a real boundary does, so every column falsely "left the sky" at
+  // nearly the same row regardless of sensitivity, long before the actual ridge (confirmed
+  // against a synthetic gradient-sky test photo -- a flat, sensitivity-independent false line is
+  // the signature of this specific bug, and an earlier attempt at an *adaptive* per-row reference
+  // fixed the gradient case but broke the cloudy-sky case instead: an adaptive reference
+  // re-centers on whatever it just passed, which erases the very thing that let a fixed reference
+  // tell a permanent land boundary apart from a transient cloud blip -- both looked like brief
+  // spikes once the reference could catch up to either one).
+  //
+  // The actual fix: sample the reference from **two** bands near the top (or bottom, with "flip
+  // it") of the photo instead of one, and fit a straight line through their two median
+  // brightnesses -- a linear model of "what sky looks like at row y," extrapolated down the whole
+  // column. This detrends a smooth gradient out before it ever accumulates into a false
+  // departure, while keeping the reference otherwise *fixed* (not re-adapted every row), which is
+  // what makes a real boundary's departure permanent and a cloud edge's departure transient
+  // against it -- the distinction the majority/lookahead vote below depends on. Median (not mean)
+  // still keeps a two-population band (blue sky plus a brighter cloud) from dragging either
+  // sample toward the cloud. Returns the smoothed elevation array plus two quality signals
+  // `autoTuneAndExtract()` uses to pick a sensitivity automatically: `roughness` (mean
+  // column-to-column jump -- a real skyline is gradual, so a high value means the detector is
+  // reacting to noise, not ridge) and `fallbackRate` (how often no boundary was found at all).
   function detectSkyline(sensitivity, preferFarthest, N){
     const ctx = sourceCanvas.getContext('2d');
     const w = sourceCanvas.width, h = sourceCanvas.height;
@@ -611,11 +647,34 @@
     const yMax = h - winRows;
     const lookahead = Math.max(winRows, Math.round(h*0.08));
     const refRows = Math.max(3, Math.round(h*0.08));
-    const ref = preferFarthest
-      ? bandMedianMad(data, w, 0, w, h-refRows, h)
-      : bandMedianMad(data, w, 0, w, 0, refRows);
-    // Sensitivity slider scales how many MADs from the reference band counts as "no longer
-    // sky": higher accepts a smaller, subtler departure; lower requires a starker one.
+
+    // Two bands, each refRows tall, stacked toward whichever side is presumed sky -- their
+    // median brightnesses at their vertical centers define a line extrapolated to every row.
+    let band1Med, band2Med, y1, y2, mad;
+    if (preferFarthest){
+      band1Med = bandMedian(data, w, 0, w, h-refRows, h);
+      y1 = h - refRows/2;
+      band2Med = bandMedian(data, w, 0, w, h-2*refRows, h-refRows);
+      y2 = h - refRows - refRows/2;
+      // Pooled across *both* bands (not just band1) and floored a little above zero -- a single
+      // large, flat-colored cloud sitting entirely inside one narrow band can otherwise produce
+      // an almost-zero MAD, which turns any tiny real variation elsewhere into an enormous,
+      // meaningless z-score and makes the detector trigger on the very first row it checks.
+      mad = Math.max(3, bandMad(data, w, 0, w, h-2*refRows, h, (band1Med+band2Med)/2));
+    } else {
+      band1Med = bandMedian(data, w, 0, w, 0, refRows);
+      y1 = refRows/2;
+      band2Med = bandMedian(data, w, 0, w, refRows, 2*refRows);
+      y2 = refRows + refRows/2;
+      mad = Math.max(3, bandMad(data, w, 0, w, 0, 2*refRows, (band1Med+band2Med)/2));
+    }
+    const slope = (band2Med-band1Med)/(y2-y1);
+    const intercept = band1Med - slope*y1;
+    function expectedSky(y){ return intercept + slope*y; }
+
+    // Sensitivity slider scales how many MADs from the expected (detrended) sky brightness
+    // counts as "no longer sky": higher accepts a smaller, subtler departure; lower requires a
+    // starker one.
     const zThreshold = 3.3 - (sensitivity/254)*2.0; // 3.3 (strict) .. 1.3 (lenient)
     const MAJORITY = 0.75; // fraction of the lookahead window that must agree before a break counts
     // Both the sliding window and the majority-vote lookahead only register a break once *most*
@@ -653,7 +712,7 @@
       if (preferFarthest){
         for (let yy = yMax-winRows; yy < yMax; yy++) addRow(yy, 1);
         for (let y = yMax; y >= yMin; y--){
-          z[y] = Math.abs(histMedian()-ref.median)/ref.mad;
+          z[y] = Math.abs(histMedian()-expectedSky(y))/mad;
           const leaving = y-1, entering = y-winRows-1;
           addRow(leaving, -1);
           if (entering >= 0) addRow(entering, 1);
@@ -661,7 +720,7 @@
       } else {
         for (let yy = yMin; yy < yMin+winRows; yy++) addRow(yy, 1);
         for (let y = yMin; y <= yMax; y++){
-          z[y] = Math.abs(histMedian()-ref.median)/ref.mad;
+          z[y] = Math.abs(histMedian()-expectedSky(y))/mad;
           addRow(y, -1);
           if (y+winRows < h) addRow(y+winRows, 1);
         }
@@ -695,10 +754,26 @@
     return { elevations: smoothed, roughness, fallbackRate: fallbackCount/N };
   }
 
+  // Shared by both the auto-detected path and the manual-drag path below -- draws whatever is
+  // currently in state.elevations, since that's the single source of truth every downstream
+  // step (Fourier decomposition, merch preview) actually reads from.
+  function redrawLineOverlay(){
+    const ctx = sourceCanvas.getContext('2d');
+    const w = sourceCanvas.width;
+    drawSource();
+    ctx.beginPath();
+    for (let i = 0; i < state.N; i++){
+      const x = i*w/state.N;
+      const y = state.elevations[i];
+      if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.strokeStyle = '#e0a54c';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
   function extractAndPreview(){
     if (!state.img) return;
-    const ctx = sourceCanvas.getContext('2d');
-    const w = sourceCanvas.width, h = sourceCanvas.height;
     const N = parseInt(sampleSlider.value, 10);
     const sensitivity = parseInt(threshSlider.value, 10); // repurposed, see detectSkyline()
     const preferFarthest = invertCheck.checked;
@@ -706,22 +781,76 @@
     state.elevations = detectSkyline(sensitivity, preferFarthest, N).elevations;
     state.N = N;
 
-    // redraw source with overlay line -- draw the smoothed line, since that's what every
-    // downstream step (Fourier decomposition, merch preview) actually uses
-    drawSource();
-    ctx.beginPath();
-    for (let i = 0; i < N; i++){
-      const x = i*w/N;
-      const y = state.elevations[i];
-      if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-    }
-    ctx.strokeStyle = '#e0a54c';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
+    redrawLineOverlay();
     computeFourier();
     document.getElementById('composeSection').style.display = 'block';
   }
+
+  // ---------- Manual override: click-and-drag directly on the photo to draw the line by hand.
+  // Automatic detection can't win every photo (fog, a ridge nearly the same tone as the sky, a
+  // foreground object crossing the horizon) -- when it doesn't, this is the actual fix, not
+  // another slider. Dragging always overrides whatever's currently in state.elevations,
+  // whether that came from auto-detection or an earlier manual stroke; touching a sensitivity
+  // slider re-runs auto-detection and replaces manual edits the same way it always replaced the
+  // previous auto-detected line -- one line, two ways to set it. ----------
+  let manualDragging = false, manualLastPt = null;
+
+  function canvasPointFromEvent(e){
+    const rect = sourceCanvas.getBoundingClientRect();
+    const t = e.touches && e.touches[0];
+    const clientX = t ? t.clientX : e.clientX, clientY = t ? t.clientY : e.clientY;
+    return {
+      x: (clientX-rect.left) * (sourceCanvas.width/rect.width),
+      y: (clientY-rect.top) * (sourceCanvas.height/rect.height),
+    };
+  }
+  function setElevationAtX(x, y){
+    const w = sourceCanvas.width, h = sourceCanvas.height;
+    const i = Math.max(0, Math.min(state.N-1, Math.round(x*state.N/w)));
+    state.elevations[i] = Math.max(0, Math.min(h-1, Math.round(y)));
+  }
+  // Fast drags skip pixel columns between two mousemove events -- interpolate along the
+  // segment so the drawn line has no gaps, matching what the cursor visually traced.
+  function manualDrawSegment(p0, p1){
+    const steps = Math.max(1, Math.ceil(Math.abs(p1.x-p0.x)));
+    for (let s = 0; s <= steps; s++){
+      const t = s/steps;
+      setElevationAtX(p0.x+(p1.x-p0.x)*t, p0.y+(p1.y-p0.y)*t);
+    }
+  }
+  function manualStart(e){
+    if (!state.elevations) return;
+    e.preventDefault();
+    manualDragging = true;
+    manualLastPt = canvasPointFromEvent(e);
+    setElevationAtX(manualLastPt.x, manualLastPt.y);
+    redrawLineOverlay();
+  }
+  function manualMove(e){
+    if (!manualDragging) return;
+    e.preventDefault();
+    const p = canvasPointFromEvent(e);
+    manualDrawSegment(manualLastPt, p);
+    manualLastPt = p;
+    redrawLineOverlay();
+  }
+  function manualEnd(){
+    if (!manualDragging) return;
+    manualDragging = false;
+    // Light smoothing only -- enough to clean up mouse-movement jitter without erasing
+    // the shape the person actually drew (contrast with the auto path's window of 5).
+    state.elevations = medianSmooth(state.elevations, 3);
+    redrawLineOverlay();
+    computeFourier();
+  }
+  sourceCanvas.addEventListener('mousedown', manualStart);
+  window.addEventListener('mousemove', manualMove);
+  window.addEventListener('mouseup', manualEnd);
+  sourceCanvas.addEventListener('touchstart', manualStart, {passive:false});
+  sourceCanvas.addEventListener('touchmove', manualMove, {passive:false});
+  window.addEventListener('touchend', manualEnd);
+
+  document.getElementById('resetLineBtn').addEventListener('click', extractAndPreview);
 
   function computeFourier(){
     const el = state.elevations;

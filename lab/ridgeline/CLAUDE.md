@@ -28,9 +28,9 @@ script tag. That's the entire dependency surface.
 
 1. **Upload** — drag/drop or file picker, read via `FileReader` → `Image`.
 2. **Silhouette extraction** — for each of `N` x-samples, scan down the column for the
-   sky/land boundary. This went through three real designs before landing on one that held up
-   against actual test photos (not just synthetic ones — see the note at the end of this
-   section on why that distinction mattered here):
+   sky/land boundary. This went through four real designs, each one fixing a real failure the
+   previous one had (see the note at the end of this section on why synthetic tests alone
+   didn't catch most of these):
    - **A brightness threshold** (with a per-column adaptive shift) assumes sky and land fall
      on opposite sides of some cutoff — true for a dark ridge on a bright sky, false for a
      snow-bright peak on a darker sky, shaky for a hazy far ridge nearly the same brightness
@@ -42,36 +42,73 @@ script tag. That's the entire dependency surface.
      just as high as real land), so the very first cloud edge from the top used to win,
      collapsing the whole line into the sky. This is the one that looked fine on synthetic
      flat-fill test images and then failed badly on an actual dramatic mountain-lake photo.
-   - **The current design**: sample a reference band from the very top strip of the photo (sky,
-     almost always), and walk each column down looking for where the brightness *permanently*
-     leaves that reference, not just locally steps away from its immediate neighbors. The
-     reference is summarized by **median and MAD** (median absolute deviation), not mean and
-     standard deviation (`bandMedianMad()`) — a sky that's part blue, part bright cloud is two
-     populations in one sample, and a mean/stdev gets dragged toward the cloud population
-     enough to make a second, brighter cloud further down the frame look like it's still
-     within range. Median/MAD aren't dragged the same way. Per column, a sliding-window
-     median (`histMedian()`, over an incrementally-updated 256-bin luminance histogram — an
-     exact sort per window, at `N` columns × up to `h` rows per extraction, was too slow) gives
-     a z-score against that reference at every row; the boundary is the first row (scanning
-     from the sky side down) where *most* of a lookahead window — not just that one row — has
-     cleared the z-score cutoff. "Most, not all" absorbs a single sunlit rock face or gap that
-     would otherwise read as a brief return to "sky." "First, not strongest" is what makes a
-     weak-but-real ridge higher up beat a stronger edge lower in the same column, like a lake
-     reflecting the same ridge a second time near the bottom of the frame.
-   - The **"Sensitivity" slider** scales how many MADs from the reference counts as "no longer
-     sky" (higher accepts a smaller departure). **"Flip it"** now means "trace the boundary as
-     seen from the far side" — it samples the reference band from the *bottom* strip instead
-     and scans upward — rather than assuming an inverted brightness polarity, since the
-     detector no longer cares which side is darker. The elevation array still gets a 5-wide
-     median filter (`medianSmooth`) afterward for single-column noise (a bird, a lens
-     artifact) on top of all of this.
-   - **Why synthetic tests weren't enough**: the second design above was validated against
-     flat-fill synthetic images (a clean two-tone ridge, a low-contrast ridge above a stronger
-     treeline) and looked correct — those tests just don't have the thing that broke it, a
-     genuinely textured/dramatic sky. The fix came from running the actual code against real
-     test photos (a phone shot with light cirrus clouds, a dramatic stock photo with heavy
-     cumulus and a lake). If you change this algorithm again, validate against a real, busy-sky
-     photo, not only clean synthetic fills — they will not catch this failure mode.
+   - **The third design** (median/MAD against a single fixed reference band) sampled a
+     reference from the very top strip of the photo (sky, almost always), and walked each
+     column down looking for where the brightness *permanently* left that reference. The
+     reference was summarized by **median and MAD** (median absolute deviation), not mean and
+     standard deviation — a sky that's part blue, part bright cloud is two populations in one
+     sample, and a mean/stdev gets dragged toward the cloud population enough to make a second,
+     brighter cloud further down the frame look like it's still within range. This shipped, was
+     validated against real cloudy test photos, and worked — until a real photo with a smooth
+     vertical sky gradient (skies routinely get lighter toward the horizon) showed it was
+     fundamentally blind to gradients: a fixed reference has no way to tell "the sky is
+     gradually getting lighter" apart from "we've left the sky," so every column falsely
+     triggered at nearly the same row regardless of sensitivity, long before the real ridge. A
+     user report ("I can't get the line to even go down to the ridge line") is what surfaced
+     this — the failure was invisible in this project's own prior test photos, which happened
+     not to have a pronounced gradient.
+   - **The current design** keeps the median/MAD idea but **detrends the reference**: instead
+     of one fixed band, it samples **two** bands (`bandMedian()`) near the presumed-sky edge of
+     the photo and fits a straight line through their two median brightnesses, extrapolated to
+     every row (`expectedSky(y)`) — this cancels a smooth gradient out before it can accumulate
+     into a false departure, while keeping the reference otherwise fixed (not re-adapted every
+     row it scans past). That "fixed, not adaptive" property is load-bearing, not incidental —
+     an intermediate attempt at this fix made the reference *adaptively track* whatever the scan
+     had recently passed (to chase gradients), which did fix the gradient case but broke the
+     cloudy-sky case: an adaptive reference re-centers on a cloud just as readily as it
+     re-centers on land, so it lost the one thing that let a fixed reference tell a *permanent*
+     land boundary apart from a *transient* cloud edge (see "Bias correction" below — the
+     majority/lookahead vote depends on that permanence). Detrending fixes the gradient blindness
+     without touching that property. `mad` is pooled across both reference bands together and
+     floored at a small absolute minimum (`Math.max(3, ...)`) rather than the bare
+     mathematical floor of 1 — a single very large, very uniform, very bright cloud sitting
+     exactly where both reference bands sample from can otherwise produce a near-zero MAD, which
+     turns any tiny real variation elsewhere into an enormous, meaningless z-score.
+   - Per column, a sliding-window median (`histMedian()`, over an incrementally-updated 256-bin
+     luminance histogram — an exact sort per window, at `N` columns × up to `h` rows per
+     extraction, was too slow) gives a z-score against `expectedSky(y)` at every row; the
+     boundary is the first row (scanning from the sky side down) where *most* of a lookahead
+     window — not just that one row — has cleared the z-score cutoff. "Most, not all" absorbs a
+     single sunlit rock face or gap that would otherwise read as a brief return to "sky."
+     "First, not strongest" is what makes a weak-but-real ridge higher up beat a stronger edge
+     lower in the same column, like a lake reflecting the same ridge a second time near the
+     bottom of the frame.
+   - The **"Sensitivity" slider** scales how many MADs from the expected (detrended) sky
+     brightness counts as "no longer sky" (higher accepts a smaller departure). **"Flip it"**
+     means "trace the boundary as seen from the far side" — it samples both reference bands from
+     the *bottom* of the photo instead and scans upward — rather than assuming an inverted
+     brightness polarity, since the detector no longer cares which side is darker. The elevation
+     array still gets a 5-wide median filter (`medianSmooth`) afterward for single-column noise
+     (a bird, a lens artifact) on top of all of this.
+   - **A known remaining limit**: if a real photo has heavy, bright, uniform cloud covering
+     *exactly* the top ~16% of the frame that both reference bands sample from (not light cirrus
+     with real blue gaps, but dense, near-total coverage right at the very top edge), the
+     detrended reference can still be built from cloud rather than sky and mislead the detector —
+     confirmed with a deliberately adversarial synthetic test photo, not just theorized. This is
+     a harder case than any of the three real photos this algorithm has been validated against
+     so far. The **manual override** below exists specifically for cases like this, where no
+     automatic threshold gets it right — reach for that rather than chasing a fully general
+     automatic fix for every possible sky.
+   - **Why synthetic tests weren't enough (repeatedly)**: the second design was validated
+     against flat-fill synthetic images and looked correct until it met a real dramatic sky. The
+     third design was validated against real cloudy photos and looked correct until it met a
+     real gradient sky. Both times, the synthetic tests used to build confidence just didn't
+     contain the specific thing that broke the design in the field. If you change this algorithm
+     again: validate against a real photo with the *specific* property the previous fix already
+     handles (a busy/cloudy sky) *and* a synthetic gradient-sky test *and* a synthetic
+     heavy-uniform-cloud-at-the-top test — this history has now produced three separate,
+     unrelated failure modes, and a change that silently regresses any one of them is exactly
+     the kind of bug that hides until a real user hits it.
    - **Bias correction**: both the sliding-window median and the majority-vote lookahead only
      register a break once *most* of what they're looking at has crossed into land, so the raw
      row they land on is already partway into land — a predictable overshoot of about
@@ -83,14 +120,18 @@ script tag. That's the entire dependency surface.
      runs `detectSkyline()` at a spread of sensitivities and uses roughness (mean column-to-
      column jump) to pick one, because a wrong sensitivity reacts to noise and visibly jumps
      around — a real skyline doesn't. But the single smoothest candidate isn't always the most
-     correct one: a *lenient* sensitivity triggers on weak evidence, and a cloud-vs-cloud
-     transition high in a busy sky can be just as consistent column-to-column as the real ridge
-     is, so "lowest roughness wins" outright would happily pick that early, wrong answer over a
-     later, right one at a stricter setting. So it finds the best roughness achievable first,
-     then walks candidates strict-to-lenient and stops at the first one already close to that
-     best (see the `+1.5` tolerance) — roughness rules out sensitivities that are clearly too
-     strict (visibly erratic), it isn't used to go hunting for the single smoothest result on
-     offer.
+     correct one: a *lenient* sensitivity triggers on weak evidence, and on a sufficiently
+     adversarial sky (see the known remaining limit above) that early, wrong trigger can be just
+     as consistent column-to-column as the real ridge is — or more so, collapsing to a nearly
+     flat line that reads as *extremely* smooth despite being flatly wrong. So it finds the best
+     roughness achievable first, then walks candidates strict-to-lenient and stops at the first
+     one already close to that best (see the `+1.5` tolerance) — roughness rules out
+     sensitivities that are clearly too strict (visibly erratic), it isn't used to go hunting for
+     the single smoothest result on offer. It also filters out any candidate whose elevation
+     span is under 5% of the photo's height before roughness is even considered: a real ridge has
+     genuine vertical variation, and a falsely-uniform line collapses to just a few pixels of
+     span no matter how smooth it looks — confirmed directly against a test photo built to
+     trigger this (correct candidates: 40-85% of height in span; the falsely-flat one: under 2%).
 3. **Fourier decomposition** — the elevation profile is mirrored (`M = 2N`) to force
    periodicity, then run through a hand-rolled DFT (`dft()`). Components are sorted by
    amplitude, largest first, so reconstructions add the most structurally important
@@ -101,6 +142,31 @@ script tag. That's the entire dependency surface.
    rotating epicycle arms).
 5. **Export** — high-res PNG for the merch design; PNG for the step panels; WebM
    (via `MediaRecorder` + `canvas.captureStream`) for the animation.
+
+## Manual override: drawing the line by hand
+
+Automatic detection can't win every photo — see the known remaining limit above, plus fog, a
+ridge nearly the same tone as the sky, or a foreground object crossing the horizon. Rather than
+chasing a fully general automatic fix for all of these, `sourceCanvas` accepts a direct
+click-and-drag: `manualStart`/`manualMove`/`manualEnd` write straight into `state.elevations` at
+whatever sample index the cursor's x maps to (`setElevationAtX`), interpolating between mousemove
+events (`manualDrawSegment`) so a fast drag doesn't leave gaps. `redrawLineOverlay()` — the same
+function `extractAndPreview()` uses — is called on every move for live feedback, and
+`computeFourier()` re-runs once on mouseup so the rest of the pipeline (merch preview, step
+panels, video) picks up the hand-drawn shape immediately. A light `medianSmooth(elevations, 3)`
+runs on mouseup only (not during the drag itself, which would fight the cursor) to clean up
+mouse-jitter without erasing the shape actually drawn — a much smaller window than the auto
+path's 5, since the input here is already a human's intentional line, not noisy per-column
+detection.
+
+There's no special "manual mode" toggle — dragging on the canvas always overrides whatever's
+currently in `state.elevations`, and touching a sensitivity/outline-detail slider always
+re-runs `detectSkyline()` and replaces it right back, the same as it always did. One line, two
+ways to set it, no mode state to get out of sync. `#resetLineBtn` just calls `extractAndPreview()`
+again to discard a manual edit and go back to auto-detection. Both `mousemove`/`mouseup` (and
+`touchend`) listen on `window`, not `sourceCanvas`, so a drag that leaves the canvas mid-gesture
+still completes correctly — mirrors the window-level-listener pattern already used for
+Afterimage's crop-box dragger.
 
 ## Conventions specific to this file
 
@@ -146,3 +212,14 @@ Run the golden path: upload a photo → check the auto-extracted outline looks r
 steps/video → download. Check both the "Line" and "Stack" merch styles, and both video styles
 (sequential summation, epicycle arms), since they share the reconstruction math but have
 separate drawing code paths.
+
+If you touch `detectSkyline()` or `autoTuneAndExtract()`, also check: a synthetic photo with a
+smooth vertical sky gradient and a jagged silhouette (a `<canvas>` gradient fill plus a filled
+path is enough — no real photo needed) extracts a line that actually follows the silhouette, not
+a flat line near the top, at every sensitivity from strict to lenient; a synthetic photo with
+scattered soft-edged clouds and real gaps of blue between them still finds the real ridge, not a
+cloud edge; and the manual override actually works end-to-end — drag across the photo, confirm
+the line follows the cursor live, release, confirm the step-panel/video preview downstream picks
+up the hand-drawn shape (not silently still using the old auto-detected one), then click "Reset
+to auto-detected" and confirm it goes back to the varying, ridge-following line rather than the
+flat manually-drawn one.
