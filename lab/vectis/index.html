@@ -230,29 +230,26 @@
     <summary>How this actually works <span class="adv-sub">— the geometry, and two things to try by hand</span></summary>
     <div class="disclosure-body">
       <p>Everything on this page runs a small vision-and-language model called CLIP entirely in
-      your browser tab. The one exception, worth being upfront about: the very first time you use
-      this page, your browser downloads the model's weights (a few tens of megabytes) from a
-      public model host, the same way it would download a font or a script. That's the model
-      learning nothing from you — it's already finished learning, from millions of captioned
-      photos, before it ever reached your machine. After that first download your browser caches
-      it, and every photo or phrase you plot from then on never leaves this tab. CLIP maps images
-      and text into the <i>same</i> space of numbers, trained so that a photo of a dog and the
-      word "dog" land near each other in that space. In practice its raw similarity numbers for
-      photos and for words don't sit on quite the same scale, so this page keeps you plotting one
-      kind at a time rather than mixing the two — see "picking axis words" for more on how raw
-      CLIP similarity behaves.</p>
+      your browser tab. The very first time you use this page, your browser downloads the
+      model's weights (a few tens of megabytes) from a public model host, the same way it would
+      download a font or a script. CLIP was taught (trained) from millions of captioned photos
+      before it ever reached your machine. After that first download your browser caches it, and
+      every photo or phrase you plot from then on never leaves this tab. CLIP maps images and
+      text into the <i>same</i> space of numbers, trained so that a photo of a dog and the word
+      "dog" land near each other in that space.</p>
       <p>A word doesn't mean anything to a computer by itself — but CLIP has seen enough
       captioned photos that it's learned to place any word, phrase, or image as a point in a
       space with a few hundred dimensions, positioned so that things which mean similar things
       end up near each other. "Dog" and a photo of a golden retriever land close together; "dog"
-      and "spreadsheet" land far apart. That's the entire premise of the tool above: pick two
-      words, use them as two directions in that space, and read off how far along each direction
-      everything else falls.</p>
+      and "spreadsheet" land far apart. The tool can use the numbers of the labels compared to
+      the numbers of the axis to generate a similarity score. This is what allows us to generate
+      "on-the-fly" embeddings for any set of labels against any set of axis-pairs.</p>
       <p><b style="color:var(--ink);">Cosine similarity</b> is the specific way "how close" gets
       measured. Instead of straight-line distance, it looks at the <i>angle</i> between two
       vectors — two things pointing the same direction score 1, perpendicular scores 0, opposite
       directions score −1, regardless of how long either vector is. That's what the widget below
-      lets you feel directly, with no model involved at all.</p>
+      lets you feel directly, with no model involved at all. Why we used cosine similarity
+      instead of any other vector difference metric is a discussion for another day.</p>
 
       <div class="row" style="margin-top:20px;">
         <div class="col">
