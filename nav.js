@@ -20,7 +20,7 @@
 
   var crumbs = [{ label: 'Michael Krauklis', href: '/' }];
   if (!onHome) {
-    crumbs.push({ label: 'Lab', href: '/lab/' });
+    crumbs.push({ label: 'Concept Lab', href: '/lab/' });
     if (!onLabIndex) {
       var title = (document.title || '').split(/[—-]/)[0].trim();
       crumbs.push({ label: title || 'Tool', href: null });

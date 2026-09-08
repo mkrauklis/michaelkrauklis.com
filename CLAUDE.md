@@ -12,7 +12,13 @@ Two root-level files are included, unmodified, by every page on the site (root `
 
 - **`/nav.js`** — the shared breadcrumb header. Reads `location.pathname` and the page's
   `<title>` to build its trail, so a new page needs nothing beyond the one `<script>` tag to
-  get a correct breadcrumb.
+  get a correct breadcrumb. The `/lab/` section is displayed to visitors as **"The Concept
+  Lab"** (breadcrumb crumb reads "Concept Lab"; page titles, headings, and footer credit lines
+  use the full "The Concept Lab") — this was renamed from the generic "The Lab" specifically to
+  signal what the tools are *for*: taking a concept and making it something you build, break,
+  and watch work, not just read about. Keep this name consistent across `lab/index.html`,
+  every tool's footer ("Part of The Concept Lab by Michael Krauklis."), and the homepage link —
+  don't let a new tool drift back to the old generic name.
 - **`/theme.css`** — the shared palette, base typography, and the component styles the tool
   pages share almost verbatim (`.panel`, `.dropzone`, buttons, `header.hero`, disclosure/
   advanced, etc.). A page opts into a specific accent color by overriding `--accent`/
