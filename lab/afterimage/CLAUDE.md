@@ -482,6 +482,30 @@ derive from automatically), `ADAPTER_OUT`/`ADAPTER_CLIP`, and `decodeFull()`'s
 `renderHeadFingerprint()`'s ring layout — they all assume the current
 454-number, 3-layer structure.
 
+## Page flow: explanation → tool → save & share → deep dive
+
+Reworked to match the flow Vectis landed on, after direct feedback that Vectis's structure
+(brief explanation, the tool, a distinct save/share step, then a deep dive last) was worth
+bringing to the other tools too. Two changes:
+
+- **The top-of-page intro was cut from ~6 paragraphs/panels (~450-500 words) down to one short
+  paragraph.** The trimmed material didn't disappear — the "tl;dr on the jargon" glossary panel
+  (CNN / autoencoder / latent space) moved into `#learnSection` ("how this actually works"),
+  as its own opening panel before the training-vs-rendering explanation; the three-icon
+  "portrait/pet/landscape → impression" illustrative SVG was cut outright rather than relocated,
+  since step "01 — upload" already covers the same "what works well" ground in prose, more
+  concisely, exactly where someone needs it (right before they pick a file) — keeping both was
+  pure redundancy. If you're tempted to re-add an illustrative example up top, check whether step
+  01's existing "works well / works less well" paragraph already covers it first.
+- **`#exploreSection` ("explore nearby," the latent-space slider tool) now comes *before*
+  `#shareSection` ("save & share," which holds the Zazzle link)**, not after. It used to be the
+  reverse — a second interactive tool sitting between the merch CTA and the deep-dive explainer,
+  which doesn't match "tool, then save & share, then done." Renumbered accordingly: upload (01) →
+  crop (02) → train (03) → explore nearby (04) → save & share (05). Both sections are revealed
+  independently by `getElementById` from the training-completion callback (not via DOM sibling
+  traversal), so reordering them was safe — confirmed by reading both reveal call sites
+  (`shareSection`'s and `setupExplore()`'s) before moving anything, not assumed.
+
 ## Testing changes
 
 No test suite for `index.html` (static page, same as Ridgeline). Golden path

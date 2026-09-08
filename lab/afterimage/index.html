@@ -67,127 +67,11 @@
 
 <div class="wrap" style="padding-top:40px;">
   <p>Upload a photo below and nothing gets stored, uploaded, or looked up anywhere — it never
-  leaves your browser. Instead, a decoder that has never seen your photo, and never will store
-  it, spends about a minute doing something closer to remembering than copying: searching for
-  the shortest description of your photo that its own memory of thirteen thousand other people's
-  photos can turn back into something recognizable. What comes out isn't your photo. It's an
-  impression of it, filtered entirely through what the network has learned a photo can look like.</p>
-  <p>That's also, a little uncannily, close to how your own memory works — you don't store
-  photographs in your head either, you store a compressed sketch and rebuild the rest on the fly
-  from a lifetime of "what things generally look like." This page just makes that process slow
-  enough to watch and small enough to hand someone else as a string of numbers or a QR code.</p>
-  <p style="font-size:0.85rem;">The mechanics, if you want them before you've even tried it: a
-  convolutional decoder is trained once, offline, then frozen forever. Uploading your photo
-  doesn't retrain that network — instead, a much smaller thing gets trained, live, in your
-  browser, on the spot, using your one photo as its only lesson: 256 numbers get pushed around by
-  gradient descent until the frozen decoder's output matches your photo as closely as it can. It's
-  the same trick behind DeepDream and style-transfer demos: freeze the big network, train the
-  input instead. There's more on this — architecture diagrams and all — in the "how this actually
-  works" section further down, once you've seen it do something.</p>
-
-  <div class="panel" style="margin-top:32px;">
-    <span class="step-tag" style="color:var(--accent);">tl;dr on the jargon</span>
-    <p style="margin:0;">A neural network is just a pile of adjustable numbers that gets tuned
-    until it's good at some task. A <b style="color:var(--ink);">CNN</b> — convolutional neural
-    network — is the flavor built for images: it slides small pattern-detectors across the
-    picture, finding edges first, then shapes, then whole recognizable chunks. An
-    <b style="color:var(--ink);">autoencoder</b> bolts two CNNs back to back — one that squeezes
-    an image down to a short list of numbers, one that expands that list back into an image — and
-    trains them together until the round trip barely loses anything. That short list is the
-    <b style="color:var(--ink);">latent space</b>: not pixels, but the network's own compressed
-    sense of what the image is. Afterimage freezes the expanding half and, per photo, searches for
-    the short list that makes it produce your picture.</p>
-  </div>
-
-  <div style="margin-top:32px;">
-    <p class="result-desc" style="margin-bottom:12px;">A few kinds of photos this works on —
-    illustrative sketches, not real output; upload your own below to see the genuine thing.</p>
-    <svg width="100%" viewBox="0 0 1020 150" role="img" style="display:block;">
-      <title>Three illustrative examples of subjects becoming impressions</title>
-      <desc>A portrait, a pet, and a landscape icon, each followed by an arrow to a small grid of
-      numbers, followed by an arrow to a softened, blurred version of the same icon.</desc>
-      <defs>
-        <filter id="softenEx" x="-50%" y="-50%" width="200%" height="200%">
-          <feGaussianBlur stdDeviation="2.2"/>
-        </filter>
-      </defs>
-      <!-- portrait -->
-      <g transform="translate(10,10)">
-        <rect width="90" height="90" rx="6" fill="none" stroke="var(--line)" stroke-width="1.5"/>
-        <circle cx="45" cy="36" r="16" fill="none" stroke="var(--ink-dim)" stroke-width="2"/>
-        <path d="M20,82 Q45,52 70,82 Z" fill="none" stroke="var(--ink-dim)" stroke-width="2"/>
-        <text x="45" y="112" text-anchor="middle" font-size="11" fill="var(--ink-dim)">portrait</text>
-      </g>
-      <text x="118" y="60" font-size="16" fill="var(--line)">&#8594;</text>
-      <g transform="translate(138,25)">
-        <rect width="60" height="60" rx="4" fill="none" stroke="var(--line)" stroke-width="1.5"/>
-        <g fill="var(--violet)" opacity="0.55">
-          <circle cx="12" cy="12" r="3"/><circle cx="30" cy="12" r="2"/><circle cx="48" cy="12" r="4"/>
-          <circle cx="12" cy="30" r="2"/><circle cx="30" cy="30" r="4"/><circle cx="48" cy="30" r="3"/>
-          <circle cx="12" cy="48" r="4"/><circle cx="30" cy="48" r="2"/><circle cx="48" cy="48" r="3"/>
-        </g>
-      </g>
-      <text x="206" y="60" font-size="16" fill="var(--line)">&#8594;</text>
-      <g transform="translate(226,10)" filter="url(#softenEx)" opacity="0.8">
-        <circle cx="45" cy="36" r="16" fill="none" stroke="var(--ink)" stroke-width="2"/>
-        <path d="M20,82 Q45,52 70,82 Z" fill="none" stroke="var(--ink)" stroke-width="2"/>
-      </g>
-      <text x="271" y="112" text-anchor="middle" font-size="11" fill="var(--ink-dim)">impression</text>
-
-      <!-- pet -->
-      <g transform="translate(340,10)">
-        <rect width="90" height="90" rx="6" fill="none" stroke="var(--line)" stroke-width="1.5"/>
-        <circle cx="45" cy="55" r="14" fill="none" stroke="var(--ink-dim)" stroke-width="2"/>
-        <circle cx="30" cy="34" r="6" fill="none" stroke="var(--ink-dim)" stroke-width="2"/>
-        <circle cx="45" cy="28" r="6" fill="none" stroke="var(--ink-dim)" stroke-width="2"/>
-        <circle cx="60" cy="34" r="6" fill="none" stroke="var(--ink-dim)" stroke-width="2"/>
-        <text x="45" y="112" text-anchor="middle" font-size="11" fill="var(--ink-dim)">pet</text>
-      </g>
-      <text x="448" y="60" font-size="16" fill="var(--line)">&#8594;</text>
-      <g transform="translate(468,25)">
-        <rect width="60" height="60" rx="4" fill="none" stroke="var(--line)" stroke-width="1.5"/>
-        <g fill="var(--violet)" opacity="0.55">
-          <circle cx="12" cy="12" r="4"/><circle cx="30" cy="12" r="3"/><circle cx="48" cy="12" r="2"/>
-          <circle cx="12" cy="30" r="3"/><circle cx="30" cy="30" r="2"/><circle cx="48" cy="30" r="4"/>
-          <circle cx="12" cy="48" r="2"/><circle cx="30" cy="48" r="4"/><circle cx="48" cy="48" r="3"/>
-        </g>
-      </g>
-      <text x="536" y="60" font-size="16" fill="var(--line)">&#8594;</text>
-      <g transform="translate(556,10)" filter="url(#softenEx)" opacity="0.8">
-        <circle cx="45" cy="55" r="14" fill="none" stroke="var(--ink)" stroke-width="2"/>
-        <circle cx="30" cy="34" r="6" fill="none" stroke="var(--ink)" stroke-width="2"/>
-        <circle cx="45" cy="28" r="6" fill="none" stroke="var(--ink)" stroke-width="2"/>
-        <circle cx="60" cy="34" r="6" fill="none" stroke="var(--ink)" stroke-width="2"/>
-      </g>
-      <text x="601" y="112" text-anchor="middle" font-size="11" fill="var(--ink-dim)">impression</text>
-
-      <!-- landscape -->
-      <g transform="translate(670,10)">
-        <rect width="90" height="90" rx="6" fill="none" stroke="var(--line)" stroke-width="1.5"/>
-        <circle cx="66" cy="28" r="8" fill="none" stroke="var(--ink-dim)" stroke-width="2"/>
-        <path d="M14,72 L38,40 L54,58 L68,36 L84,72 Z" fill="none" stroke="var(--ink-dim)" stroke-width="2" stroke-linejoin="round"/>
-        <text x="45" y="112" text-anchor="middle" font-size="11" fill="var(--ink-dim)">landscape</text>
-      </g>
-      <text x="778" y="60" font-size="16" fill="var(--line)">&#8594;</text>
-      <g transform="translate(798,25)">
-        <rect width="60" height="60" rx="4" fill="none" stroke="var(--line)" stroke-width="1.5"/>
-        <g fill="var(--violet)" opacity="0.55">
-          <circle cx="12" cy="12" r="2"/><circle cx="30" cy="12" r="4"/><circle cx="48" cy="12" r="3"/>
-          <circle cx="12" cy="30" r="4"/><circle cx="30" cy="30" r="3"/><circle cx="48" cy="30" r="2"/>
-          <circle cx="12" cy="48" r="3"/><circle cx="30" cy="48" r="2"/><circle cx="48" cy="48" r="4"/>
-        </g>
-      </g>
-      <text x="866" y="60" font-size="16" fill="var(--line)">&#8594;</text>
-      <g transform="translate(886,10)" filter="url(#softenEx)" opacity="0.8">
-        <circle cx="66" cy="28" r="8" fill="none" stroke="var(--ink)" stroke-width="2"/>
-        <path d="M14,72 L38,40 L54,58 L68,36 L84,72 Z" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linejoin="round"/>
-      </g>
-      <text x="931" y="112" text-anchor="middle" font-size="11" fill="var(--ink-dim)">impression</text>
-    </svg>
-    <p class="result-desc" style="margin-top:6px;">Faces, pets, and landscapes with a clear subject
-    all do well — busy group shots and tiny distant subjects hold up less well against a network
-    that only remembers 256 numbers' worth of any of them.</p>
-  </div>
+  leaves your browser. What comes back isn't a copy of your photo; it's a fresh reconstruction,
+  built in real time by a decoder that's never seen it before, using only 256 numbers as its
+  guide. The full mechanics — what a CNN and an autoencoder actually are, and why training and
+  rendering turn out to be two completely separate things — are in "how this actually works,"
+  further down, once you've seen it do something.</p>
 </div>
 
 <main class="wrap">
@@ -337,8 +221,67 @@
     </div>
   </section>
 
+  <section id="exploreSection" style="display:none;">
+    <span class="step-tag">04 — explore nearby</span>
+    <h2>Drive the latent vector yourself</h2>
+    <p>Before dragging anything: the <b style="color:var(--ink);">latent space</b> is the
+    256-dimensional room the decoder actually lives in. It isn't pixels and it isn't your photo —
+    it's the network's own compressed sense of what a photo can mean, shaped entirely by the
+    thirteen thousand photos it trained on. Your photo landed at one specific point in that room.
+    Every nearby point decodes to something too — a plausible image the network can imagine,
+    blending smoothly into whatever's next to it. This section lets you leave that point on
+    purpose and see what's nearby.</p>
+    <p>The grid below is the same 256 numbers as the live heatmap above, plotted on the exact same
+    black-to-white scale — black is this scale's minimum, white is its maximum, and that's the
+    entire axis every dimension lives on. Drag across the grid to select a region (a single click
+    selects one cell; shift-drag adds a second region without losing the first). Then drag the
+    slider — styled as that same black-to-white scale, on purpose — to set exactly where the
+    selected cells sit on it. Everything unselected stays exactly where the search left it.</p>
+    <div class="panel">
+      <div class="result-grid">
+        <div class="result-col" style="max-width:140px;">
+          <canvas id="exploreBaseCanvas" width="96" height="96"></canvas>
+          <div class="result-label">your trained photo</div>
+          <div class="result-desc">Fixed reference — nothing selected, nothing moved. Compare
+          everything else to this.</div>
+        </div>
+        <div class="result-col">
+          <canvas id="exploreCanvas" width="96" height="96"></canvas>
+          <div class="result-label" id="exploreLabel">live</div>
+          <div class="result-desc">The decoder's output at whatever point you've currently
+          selected.</div>
+        </div>
+        <div class="result-col">
+          <canvas id="exploreLatentCanvas" width="320" height="320" style="cursor:crosshair;"></canvas>
+          <div class="result-label" id="exploreSelLabel">drag to select a region</div>
+          <div class="result-desc">Same brightness = value coding as above — the outlined cells
+          are the ones the slider currently controls.</div>
+        </div>
+      </div>
+      <label class="field">Position of selected on the scale below — <span class="field-value" id="explorePositionVal">0.00</span></label>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <span class="result-desc" style="flex-shrink:0;">−4 black</span>
+        <input type="range" id="explorePositionSlider" min="-400" max="400" value="0" style="background: linear-gradient(to right, #000, #fff); border-radius:4px;">
+        <span class="result-desc" style="flex-shrink:0;">white +4</span>
+      </div>
+      <p class="result-desc">This is an absolute position, not a nudge: dragging sets every
+      selected cell to this exact point on the black-to-white scale, all at once. Selecting a new
+      region snaps the slider to show where that region already sits, so nothing jumps until you
+      actually drag it.</p>
+      <div style="margin-top:10px;">
+        <span class="result-desc" id="exploreDistanceLabel">distance from your trained photo: 0.00</span>
+        <div class="gauge-track"><div class="gauge-fill" id="exploreDistanceGauge"></div></div>
+      </div>
+      <div class="actions">
+        <button class="secondary" id="exploreClearBtn">Clear selection</button>
+        <button class="secondary" id="exploreResetBtn">Reset to your photo</button>
+        <button class="secondary" id="exploreRandomBtn">Select 8 at random</button>
+      </div>
+    </div>
+  </section>
+
   <section id="shareSection" style="display:none;">
-    <span class="step-tag">04 — save &amp; share</span>
+    <span class="step-tag">05 — save &amp; share</span>
     <h2>Take the impression with you</h2>
     <p>None of the three QR codes below contain your photo — only numbers, rebuilt through the
     same frozen decoder anyone else on this page has. The first two split into a matched pair on
@@ -468,69 +411,23 @@
     not be able to decode an old QR code. Keep the original photo too, if that would ever matter.</p>
   </section>
 
-  <section id="exploreSection" style="display:none;">
-    <span class="step-tag">05 — explore nearby</span>
-    <h2>Drive the latent vector yourself</h2>
-    <p>Before dragging anything: the <b style="color:var(--ink);">latent space</b> is the
-    256-dimensional room the decoder actually lives in. It isn't pixels and it isn't your photo —
-    it's the network's own compressed sense of what a photo can mean, shaped entirely by the
-    thirteen thousand photos it trained on. Your photo landed at one specific point in that room.
-    Every nearby point decodes to something too — a plausible image the network can imagine,
-    blending smoothly into whatever's next to it. This section lets you leave that point on
-    purpose and see what's nearby.</p>
-    <p>The grid below is the same 256 numbers as the live heatmap above, plotted on the exact same
-    black-to-white scale — black is this scale's minimum, white is its maximum, and that's the
-    entire axis every dimension lives on. Drag across the grid to select a region (a single click
-    selects one cell; shift-drag adds a second region without losing the first). Then drag the
-    slider — styled as that same black-to-white scale, on purpose — to set exactly where the
-    selected cells sit on it. Everything unselected stays exactly where the search left it.</p>
-    <div class="panel">
-      <div class="result-grid">
-        <div class="result-col" style="max-width:140px;">
-          <canvas id="exploreBaseCanvas" width="96" height="96"></canvas>
-          <div class="result-label">your trained photo</div>
-          <div class="result-desc">Fixed reference — nothing selected, nothing moved. Compare
-          everything else to this.</div>
-        </div>
-        <div class="result-col">
-          <canvas id="exploreCanvas" width="96" height="96"></canvas>
-          <div class="result-label" id="exploreLabel">live</div>
-          <div class="result-desc">The decoder's output at whatever point you've currently
-          selected.</div>
-        </div>
-        <div class="result-col">
-          <canvas id="exploreLatentCanvas" width="320" height="320" style="cursor:crosshair;"></canvas>
-          <div class="result-label" id="exploreSelLabel">drag to select a region</div>
-          <div class="result-desc">Same brightness = value coding as above — the outlined cells
-          are the ones the slider currently controls.</div>
-        </div>
-      </div>
-      <label class="field">Position of selected on the scale below — <span class="field-value" id="explorePositionVal">0.00</span></label>
-      <div style="display:flex; align-items:center; gap:10px;">
-        <span class="result-desc" style="flex-shrink:0;">−4 black</span>
-        <input type="range" id="explorePositionSlider" min="-400" max="400" value="0" style="background: linear-gradient(to right, #000, #fff); border-radius:4px;">
-        <span class="result-desc" style="flex-shrink:0;">white +4</span>
-      </div>
-      <p class="result-desc">This is an absolute position, not a nudge: dragging sets every
-      selected cell to this exact point on the black-to-white scale, all at once. Selecting a new
-      region snaps the slider to show where that region already sits, so nothing jumps until you
-      actually drag it.</p>
-      <div style="margin-top:10px;">
-        <span class="result-desc" id="exploreDistanceLabel">distance from your trained photo: 0.00</span>
-        <div class="gauge-track"><div class="gauge-fill" id="exploreDistanceGauge"></div></div>
-      </div>
-      <div class="actions">
-        <button class="secondary" id="exploreClearBtn">Clear selection</button>
-        <button class="secondary" id="exploreResetBtn">Reset to your photo</button>
-        <button class="secondary" id="exploreRandomBtn">Select 8 at random</button>
-      </div>
-    </div>
-  </section>
-
   <details id="learnSection" class="disclosure advanced" style="display:none;">
     <summary>How this actually works <span class="adv-sub">— training vs. rendering, explained</span></summary>
     <div class="disclosure-body">
       <div class="panel">
+        <span class="step-tag" style="color:var(--accent);">tl;dr on the jargon</span>
+        <p>A neural network is just a pile of adjustable numbers that gets tuned
+        until it's good at some task. A <b style="color:var(--ink);">CNN</b> — convolutional neural
+        network — is the flavor built for images: it slides small pattern-detectors across the
+        picture, finding edges first, then shapes, then whole recognizable chunks. An
+        <b style="color:var(--ink);">autoencoder</b> bolts two CNNs back to back — one that squeezes
+        an image down to a short list of numbers, one that expands that list back into an image — and
+        trains them together until the round trip barely loses anything. That short list is the
+        <b style="color:var(--ink);">latent space</b>: not pixels, but the network's own compressed
+        sense of what the image is. Afterimage freezes the expanding half and, per photo, searches for
+        the short list that makes it produce your picture.</p>
+      </div>
+      <div class="panel" style="margin-top:18px;">
         <p>There are two completely separate phases here, and only one of them ever touches your
         photo.</p>
         <p><b style="color:var(--ink)">Training</b> happened once, ahead of time, on a GPU, using

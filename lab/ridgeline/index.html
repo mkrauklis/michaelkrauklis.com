@@ -260,11 +260,17 @@
         <div class="actions" id="merchDownloadRow">
           <button class="primary" id="downloadMerchBtn">Download high-res PNG</button>
         </div>
-        <p style="margin-top:14px; font-size:0.82rem;">Want it on a mug? Download the PNG above, then
-        <a href="https://www.zazzle.com/design_your_own_logo_design_coffee_mug-256206116898885602?rf=238054754631086278" target="_blank" rel="noopener">open this Zazzle mug template</a>
-        and upload it there — click "Personalize this design" and use the file you just downloaded.</p>
       </div>
     </div>
+  </section>
+
+  <section id="shareSection" style="display:none;">
+    <span class="step-tag">04 — save &amp; share</span>
+    <h2>Take it with you</h2>
+    <p>Download the PNG above, then print it yourself or turn it into something physical.</p>
+    <p style="font-size:0.82rem;">Want it on a mug?
+    <a href="https://www.zazzle.com/design_your_own_logo_design_coffee_mug-256206116898885602?rf=238054754631086278" target="_blank" rel="noopener">Open this Zazzle mug template</a>
+    and upload the PNG there — click "Personalize this design" and use the file you just downloaded.</p>
   </section>
 
   <details id="composeSection" class="disclosure advanced" style="display:none;">
@@ -746,6 +752,7 @@
     document.getElementById('armsCountVal').textContent = armsCountSlider.value;
 
     document.getElementById('merchSection').style.display = 'block';
+    document.getElementById('shareSection').style.display = 'block';
     renderMerch();
   }
 

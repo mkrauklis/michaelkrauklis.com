@@ -126,6 +126,17 @@ script tag. That's the entire dependency surface.
   with `?rf=<ambassador_id>` cross-promotion param. User manually downloads the PNG and
   uploads it to Zazzle themselves — there's no server-side handoff of the design.
 
+## Page flow: explanation → tool → save & share → deep dive
+
+The Zazzle link used to sit inline at the bottom of the merch-picker step ("03 — your print"),
+mixed in with the style/color controls. Pulled out into its own `#shareSection` ("04 — save &
+share"), revealed at the same time as the merch section, right after it — a small change made
+specifically to match the flow Vectis landed on and that the other tools were asked to follow:
+a brief explanation, the interactive tool, a distinct save/share step with the merch link, then
+the "how it works" deep-dive last. Ridgeline's intro was already short (one hero paragraph) and
+the math deep-dive (`composeSection`) was already a collapsed `<details>` near the bottom, so
+this was the only piece out of place — don't fold the Zazzle link back into the merch step.
+
 ## Testing changes
 
 No test suite — this is a static page. Verify changes via a local static server (root-relative
