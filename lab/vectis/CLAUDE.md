@@ -122,7 +122,97 @@ That combination doesn't depend on a reader parsing a glyph at all. Don't reintr
 arrow character inside rotated/vertical text without checking Unicode's vertical orientation
 property for it first — this exact failure mode is easy to reintroduce by accident.
 
+## Text embedding centering — the actual fix for "everything's noise"
+
+Everything in the next section ("Choosing axis words") and several fixes before it (the
+corpus-only rescale, the `#axisSimNote`/`#spreadNote` diagnostics, the "topics beat traits"
+guidance) were built on top of one unexamined assumption: that CLIP's raw text-text cosine
+similarity clustering at 0.85-0.98 regardless of actual relatedness was just an inherent,
+unfixable property of the model, best documented and worked around rather than fixed. That
+assumption held for a long time and drove real, working fixes (the corpus normalization is still
+correct and still needed) — but it turned out to be wrong. There *is* a fix, and it changes the
+numbers throughout this file dramatically enough that older sections below describe the
+*pre-fix* behavior; they're kept as history (the reasoning and the process of finding this were
+real), but don't trust their specific numbers as current.
+
+**What's actually happening**: this is the well-documented "anisotropy" (or representation
+degeneration) problem in transformer sentence embeddings — most of a short text's embedding
+points along one shared, content-independent "generic text" direction, so any two embeddings
+look artificially similar to each other regardless of what they actually say. It's a different
+phenomenon from the "modality gap" (image vs. text) that was investigated and ultimately
+sidestepped earlier — this one only involves the text tower, and unlike the modality gap, it
+turned out to have a fix simple enough to actually ship.
+
+**The fix**: subtract a fixed reference mean from every text embedding, then renormalize to unit
+length, before computing any cosine similarity. This is the standard treatment for anisotropic
+sentence embeddings (mean-centering, sometimes paired with whitening in the literature) — not a
+bespoke rescaling invented for this tool. The reference mean was derived once, offline, from
+~225 words deliberately spanning many unrelated semantic categories (animals, nature, colors,
+emotions, materials, food, technology, tools, places, professions, abstract concepts, body parts,
+time, personality traits — plus specific words from this session's bad-result reports, like
+"leech," "hairy," "crowded"), embedded live through the real shipped model, averaged, and
+hardcoded as `TEXT_EMBED_MEAN` in `text-embed-mean.js`. `centerAndNormalize()` in `index.html`
+applies it, called from inside `embedTexts()`'s caching layer — so every consumer (axis words,
+item text, the quick-similarity-check widget) gets the corrected embedding transparently, and
+nothing needs to special-case it.
+
+**Verified directly, before shipping, not assumed**: this was the whole point — earlier sections
+in this file repeatedly say "verified directly" about things that later turned out to still be
+broken in a way the correction fixes. Before writing any of this:
+- `cosine(leech, hairy)`: 0.95 raw → **-0.001** centered. (A leech has no hair; the tool used to
+  rank it as the single hairiest thing on the map.)
+- `cosine(fish, hairy)`: 0.92 raw → **-0.040** centered. (Correctly negative now.)
+- `cosine(dog, cat)`: 0.94 raw → **0.364** centered, the *highest* of every pair tested — pets
+  correctly identified as the most related pair, instead of being indistinguishable from
+  `cosine(dog, computer)` (0.93 raw → -0.035 centered).
+- The shipped default example (ocean/mountain + the six-item set) went from every item sitting
+  near the diagonal to genuine anti-correlation: surfing (0.365 ocean, -1.000 mountain), summit
+  (-1.000 ocean, 0.282 mountain), hiking trail (-0.151 ocean, 1.000 mountain) — ocean items score
+  low on "mountain" and vice versa, which never reliably happened pre-correction.
+- The user's exact reported failure case (axes "fire"/"hairy"; items including monkey,
+  charizard, fish) went from collapsed-diagonal to: monkey (0.39 fire, **1.00 hairy** — correct,
+  monkeys have fur), charizard (**1.00 fire**, -0.35 hairy — correct, a fire-breathing reptile
+  isn't hairy), fish (0.02 fire, **-1.00 hairy** — correct, the exact complaint that triggered
+  this investigation).
+
+**A second, related finding from the same testing pass**: after centering, a word's *residual*
+magnitude before renormalization (`Math.sqrt(sum of (embedding - mean)^2)`) is itself
+informative. Broad, generic words sit close to the mean and have a small residual — "thing"
+(0.11), "something" (0.12), "stuff" (0.13), "person" (0.14) — versus concrete, specific words,
+which sit further away — "ocean" (0.33), "dog" (0.28), "charizard" (0.40), "coral reef" (0.51).
+A small residual means more of that word's final (renormalized) direction is determined by
+whatever's left after removing the generic direction — i.e. less signal, more noise, a shakier
+axis. This is the actual, measured mechanism behind "broad category words underperform," not the
+disproven claim that "topic nouns are just inherently better than trait words" (post-centering,
+"hot"/"furry" at 0.063 similarity to each other is *more* independent than "ocean"/"mountain" at
+0.202 — the opposite of what the tool claimed before this fix, when that specific comparison was
+never actually tested against corrected numbers). Don't reintroduce the old "concrete nouns beat
+adjectives" framing; the generic-vs-specific / residual-magnitude framing is the one with
+evidence behind it.
+
+**Everything downstream got recalibrated for the new scale, since post-centering similarity
+values live in a completely different range** (mostly -0.15 to 0.4, versus 0.85-0.98 raw):
+`#axisSimNote`'s thresholds moved from `>=0.95`/`>=0.90` to `>=0.35`/`>=0.15`; `#spreadNote`
+dropped its blanket "margins this thin are always normal for CLIP" claim (no longer true — a
+0.2-0.5 range is now typical, not thin) in favor of a conditional note that only flags a
+genuinely thin (`<0.1`) spread; the axis-word tips paragraph's "ocean/mountain beats hot/furry"
+claim was corrected per the residual-magnitude finding above. If you change `TEXT_EMBED_MEAN` or
+the underlying model, re-run the verification pairs above and re-check all of these thresholds —
+they're calibrated to this specific correction, not universal constants.
+
+**If the CLIP model ID in `worker.js` ever changes**, `TEXT_EMBED_MEAN` must be regenerated —
+it's specific to `Xenova/clip-vit-base-patch32`'s text tower, not a general-purpose constant.
+Procedure: temporarily expose `embedTexts` on `window` (as was done during this investigation,
+then removed before shipping), embed a similarly large and diverse word batch through the new
+model, average the results, and replace the array in `text-embed-mean.js`. Re-verify against the
+pairs above before trusting the new mean.
+
 ## Choosing axis words: topics beat traits, and it's measurable
+
+*(Historical record of the investigation that led to the fix above — the specific similarity
+numbers quoted below are all pre-centering/raw values and no longer reflect what the tool
+computes. The reasoning that led here was real and worth keeping; don't recalibrate anything
+against these numbers.)*
 
 Three separate rounds of live testing hit the same wall: "calm"/"chaotic" put a thunderstorm as
 *less* chaotic than a library; "legs" ranked a worm above a dog; "safe"/"hairy" put a zebra as the
@@ -178,12 +268,19 @@ item. The likely cause: words this generic (person, crowd, thing, crowded, empty
 such a huge fraction of caption-training data that they don't anchor a specific direction in the
 embedding space the way a vivid, concrete noun like "ocean" does — closer to the "hubness"
 problem documented in high-dimensional embedding spaces generally than to anything specific to
-CLIP. No code fix exists for this the way the corpus-normalization fix existed for the centering
-bug — it's a real limit of the underlying representation. Handled the only honest way available:
-extended the axis-word tips paragraph to call out broad category words by name as an additional,
-worse-than-average case, on top of "topics beat traits." Don't spend more effort chasing a
+CLIP. At the time, no code fix seemed to exist for this — handled by extending the axis-word tips
+paragraph to call out broad category words by name.
+
+**Update, once text embedding centering shipped (see that section above)**: this partially
+resolved after all, just not via a phrasing trick — centering gives a precise, measured
+explanation for *why* generic words underperform (their residual after mean-subtraction is
+small, so their post-renormalization direction carries more noise relative to signal — see the
+numbers in "Text embedding centering") and does measurably improve their behavior along with
+everything else's. It doesn't make them as reliable as concrete words — a small residual is still
+a small residual — so the tips paragraph still calls them out, now with the correct mechanism
+instead of the disproven "generic-across-everything" framing. Don't spend more effort chasing a
 phrasing or template trick for this specific complaint without new evidence — both obvious ones
-were tried and ruled out above.
+were tried and ruled out above, before centering existed.
 
 **The "topics beat traits" framing itself got corrected** after direct pushback: the on-page
 examples (good: ocean/mountain; bad: calm/chaotic, hairy/safe) read as "pick a topic, not a
@@ -225,19 +322,38 @@ symptom, since that's what someone will actually see and should be able to recog
 If another real example lands just under `0.93` and still shows this same collapse, lower the
 threshold again rather than assuming this one data point pinned the exact cutoff.
 
+**Update: this whole "dangerous"/"hairy" case is what directly motivated the text embedding
+centering fix** (see that section, well above this one). The `0.93`/`0.90` thresholds here
+describe the *raw*, pre-centering similarity scale and are no longer what the code uses — after
+centering, similarity values live in roughly a -0.15 to 0.4 range instead of 0.85-0.98, so the
+live thresholds moved to `0.35`/`0.15`. Kept this section as-is since it's the accurate account
+of how the problem was first caught and diagnosed; just don't use its numbers to sanity-check
+current behavior.
+
 ## Two real CLIP quirks this surfaces, on purpose
 
-- **Raw text-text cosine similarity runs hot and clusters tight** — see the rescaling section
-  above for the full account (the phantom-pole bug it caused, the corpus-only fix, and why
-  `#spreadNote` is permanent rather than conditional). This is expected model behavior, not a
-  bug — resist the urge to "fix" it by, say, subtracting a baseline; that would be exactly the
-  kind of hidden per-item correction the spec's §6 constraint rules out. The info panel used to
-  show each selected item's raw per-axis similarity numbers directly (`#infoRaw`) as the way to
-  check this — removed on direct feedback ("just make the title '{label} Similarity' and get rid
-  of the raw similarity stuff"), since the ranked list plus the always-visible `#axisSimNote` /
-  `#spreadNote` diagnostics already make the same point without a per-item number dump. If this
-  quirk ever needs to be checkable per-item again, that's what to extend — don't resurrect
-  `#infoRaw` itself, it was removed on purpose.
+- **Raw text-text cosine similarity used to run hot and cluster tight** — see the rescaling
+  section above for the corpus-only fix and why `#spreadNote` is permanent rather than
+  conditional, both still accurate. This bullet originally argued against "fixing" the clustering
+  itself by subtracting a baseline, on the theory that doing so would be the kind of hidden
+  per-item correction the spec's §6 constraint rules out. **That reasoning didn't hold up, and
+  text embedding centering (see that section, above) does exactly this — subtracts a baseline —
+  and is the actual fix.** The distinction that makes it spec-compliant rather than a violation:
+  §6 rules out a *second*, hidden similarity computation that could disagree with what's plotted
+  (e.g. comparing in the full embedding space while showing something else on screen). Centering
+  isn't a second computation running alongside the first — it's a preprocessing step applied
+  uniformly, upstream, to every text embedding before *the* similarity is computed once, the same
+  category of thing as the worker already unit-normalizing embeddings or the corpus rescale
+  transforming raw cosine into a plotted position. There's still exactly one number per item per
+  axis, and it's still what's shown and plotted everywhere, consistently — nothing to disagree
+  with. Don't re-litigate this as a §6 violation without re-reading this distinction.
+
+  The info panel used to show each selected item's raw per-axis similarity numbers directly
+  (`#infoRaw`) — removed on direct feedback ("just make the title '{label} Similarity' and get
+  rid of the raw similarity stuff"), since the ranked list plus the always-visible
+  `#axisSimNote` / `#spreadNote` diagnostics already make the same point without a per-item
+  number dump. If this needs to be checkable per-item again, that's what to extend — don't
+  resurrect `#infoRaw` itself, it was removed on purpose.
 - **Text-image cosine similarity lives in a completely different, much lower numeric range**
   than text-text (CLIP's well-documented "modality gap") — verified directly against a real
   photo during development: raw similarity to a word landed around 0.22-0.23, versus ~0.9 for

@@ -162,12 +162,11 @@
         <p class="status">Works best with two independent properties — things you might
         genuinely use to classify or describe something ("hot" / "furry", "kind" / "fast",
         "ocean" / "mountain") — rather than opposite ends of one spectrum ("hot" / "cold",
-        "calm" / "chaotic"). CLIP naturally reads two ends of the same idea as nearly the same
-        direction, which makes them redundant instead of independent axes. Specific, concrete
-        words also separate more reliably than broad, generic ones ("person," "crowd," "thing")
-        — those are too common across everything to anchor a specific direction, so even a
-        genuinely independent pair like "hot" / "furry" can come out noisier than "ocean" /
-        "mountain." More on why below the tool.</p>
+        "calm" / "chaotic"), since two ends of the same idea tend to share enough real context to
+        still read as related rather than independent. Specific, concrete words also give a
+        firmer signal than broad, generic ones ("person," "crowd," "thing," "stuff") — the more
+        generic a word is, the closer it sits to the "average" of all text, leaving less of its
+        own direction behind to measure against. More on why below the tool.</p>
         <p class="status" id="spreadNote" style="margin-top:10px; display:none;"></p>
       </div>
     </details>
@@ -330,6 +329,7 @@
 </footer>
 
 <script type="module">
+import { TEXT_EMBED_MEAN } from './text-embed-mean.js';
 const WORKER_URL = new URL('./worker.js', import.meta.url);
 let worker;
 let reqSeq = 1;
@@ -425,14 +425,29 @@ function setControlsEnabled(on){
 setControlsEnabled(false);
 
 // ---------- embedding cache ----------
-const textCache = new Map(); // normalized text -> embedding array
+const textCache = new Map(); // normalized text -> centered, unit-normalized embedding array
+
+// CLIP's text tower is anisotropic: almost any two short phrases sit at 0.85-0.98 raw cosine
+// similarity to each other regardless of actual relatedness, because most of each embedding
+// points along one shared "generic text" direction rather than encoding content. Subtracting
+// the mean of a large, diverse reference sample removes that shared direction; renormalizing
+// afterward keeps every embedding on the unit sphere so cosine() (a plain dot product) stays
+// valid. Verified directly before shipping -- see CLAUDE.md's "Text embedding centering"
+// section for the numbers (leech/hairy: 0.95 raw -> -0.001 centered; fish/hairy: 0.92 raw ->
+// -0.04 centered; dog/cat correctly becomes the single most-similar pair tested, at 0.36).
+function centerAndNormalize(embedding, mean){
+  const shifted = embedding.map((v, i) => v - mean[i]);
+  let normSq = 0; for(const v of shifted) normSq += v * v;
+  const norm = Math.sqrt(normSq) || 1;
+  return shifted.map(v => v / norm);
+}
 
 async function embedTexts(texts){
   const need = [];
   for(const t of texts){ const k = t.trim().toLowerCase(); if(!textCache.has(k)) need.push(k); }
   if(need.length){
     const msg = await callWorker('embedText', { texts: need });
-    need.forEach((k, i) => textCache.set(k, msg.embeddings[i]));
+    need.forEach((k, i) => textCache.set(k, centerAndNormalize(msg.embeddings[i], TEXT_EMBED_MEAN)));
   }
   return texts.map(t => textCache.get(t.trim().toLowerCase()));
 }
@@ -582,8 +597,8 @@ async function recomputeAxes(){
   const axisSim = cosine(xEmb, yEmb);
   const simNote = document.getElementById('axisSimNote');
   let simLabel;
-  if(axisSim >= 0.93) simLabel = `so similar to each other (${axisSim.toFixed(2)}) that they're barely two independent axes — expect almost everything to line up along one diagonal instead of spreading out, and individual rankings to look wrong`;
-  else if(axisSim >= 0.90) simLabel = `similar enough to each other (${axisSim.toFixed(2)}) that some noise is normal`;
+  if(axisSim >= 0.35) simLabel = `so similar to each other (${axisSim.toFixed(2)}) that they're barely two independent axes — expect almost everything to line up along one diagonal instead of spreading out, and individual rankings to look wrong`;
+  else if(axisSim >= 0.15) simLabel = `similar enough to each other (${axisSim.toFixed(2)}) that some noise is normal`;
   else simLabel = `relatively distinct from each other (${axisSim.toFixed(2)}), as these things go`;
   simNote.textContent = `"${xWord}" and "${yWord}" are ${simLabel}.`;
 
@@ -608,17 +623,16 @@ async function recomputeAxes(){
 
   const spreadNote = document.getElementById('spreadNote');
   if(combinedRange){
-    // Always shown, not just past some "uh oh" threshold: raw CLIP similarity margins between
-    // everyday words are *routinely* this thin, so flagging it only past a cutoff would
-    // misrepresent the normal case as a rare exception (see CLAUDE.md for the measured range
-    // across several examples). A thin raw margin means the resulting order can flip on
-    // essentially noise (confirmed: "worm" outscored "dog" on similarity to "legs"). Don't turn
-    // this into a threshold-gated warning; it needs to set expectations every time.
+    // Always shown, not gated behind a threshold: this is informational context, not a warning
+    // that only matters past some cutoff. A genuinely thin spread here (roughly under 0.1) is
+    // worth reading with extra caution -- it means the items in play don't actually differ much
+    // on this axis, so their relative order can hinge on very little -- but a wide spread doesn't
+    // need a caveat at all, and always-showing avoids implying "watch out" when nothing's wrong.
+    const thin = combinedRange.rangeX < 0.1 || combinedRange.rangeY < 0.1;
     spreadNote.textContent = `Raw similarity here spans ${combinedRange.rangeX.toFixed(3)} on ` +
-      `"${xWord}" and ${combinedRange.rangeY.toFixed(3)} on "${yWord}" — margins this thin are ` +
-      `normal for CLIP, not a sign anything's broken, but they mean small differences in position ` +
-      `can come from essentially noise. Click a point to see its exact raw numbers before reading ` +
-      `too much into it.`;
+      `"${xWord}" and ${combinedRange.rangeY.toFixed(3)} on "${yWord}".` +
+      (thin ? ` That's a thin margin — the items you've plotted don't differ much on this axis, ` +
+        `so their exact order can hinge on very little.` : ``);
     spreadNote.style.display = 'block';
   } else {
     spreadNote.style.display = 'none';
