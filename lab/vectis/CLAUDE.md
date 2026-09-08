@@ -148,10 +148,12 @@ Two things follow from this, both shipped:
   is uniquely "correct" — a fresh visitor typing their own trait-adjective pair will still hit the
   same wall, which is exactly why the second fix exists.
 - **`#axisSimNote` now shows `cosine(axisXEmbed, axisYEmbed)` for whatever pair someone actually
-  typed**, every time, with a plain-language bucket (`>=0.95` "expect a noisy, hard-to-trust
-  plot," `0.90-0.95` "some noise is normal," `<0.90` "relatively distinct, as these things go").
-  This is the durable fix — it makes the problem self-diagnosable for any axis pair, not just the
-  shipped one, and it's what actually explains a bad result on the spot instead of leaving someone
+  typed**, every time, with a plain-language bucket (originally `>=0.95` "expect a noisy,
+  hard-to-trust plot," `0.90-0.95` "some noise is normal," `<0.90` "relatively distinct, as these
+  things go" — see below for why the top threshold moved to `0.93` and the wording got more
+  specific). This is the durable fix — it makes the problem self-diagnosable for any axis pair,
+  not just the shipped one, and it's what actually explains a bad result on the spot instead of
+  leaving someone
   to independently rediscover this the way today's testing did. The static guidance paragraph
   right above it (topics beat traits, with worked examples) exists so people can avoid the trap
   before they hit it, not just after.
@@ -200,6 +202,28 @@ spectrum endpoints (the *correct mental model* for how this tool's axes work, re
 numbers), and prefer concrete/specific words over broad/generic ones (the stronger *empirical*
 lever, per the finding above) — don't collapse back to a single "topics vs. traits" axis of
 advice, the two corrections address different failure modes and both are worth keeping.
+
+**The `#axisSimNote` severity threshold was recalibrated after a real report made the old one
+look too lenient.** "dangerous"/"hairy" (0.94-0.95, landing just under the original `>=0.95`
+cutoff) put every one of eight test items — anaconda, alligator, frog, gorilla, leech, explosion,
+fire, nuclear warfare — almost exactly on the plot's diagonal, and "leech" came out as the single
+*most hairy* item on the map despite having no hair. Verified directly, per-item, via the
+quick-similarity-check machinery rather than assumed: raw similarity to "dangerous" and to
+"hairy" moved in near-lockstep for every single item (leech: 0.97 / 0.95; frog: 0.87 / 0.85;
+gorilla: 0.93 / 0.93; full numbers in the commit that made this change) — exactly what you'd
+expect when two axis words are themselves 0.94-0.95 similar: an item's similarity to one is
+almost fully determined by its similarity to the other, so independently min/max-normalizing
+each axis still produces two nearly-identical rescaled coordinates per item, hence the diagonal.
+"Leech reading as maximally hairy" isn't a separate bug on top of that — once the two axes
+collapse into one, whichever item scores highest on that one shared dimension (here, apparently
+something like "unpleasant/dangerous," which leech scores highest on) automatically reads as the
+extreme on *both* axes, hair having nothing to do with it. This is the exact failure mode
+`#axisSimNote` exists to warn about — it just had the wrong threshold and undersold the severity
+of what actually happens. Moved the top bucket from `>=0.95` to `>=0.93`, and reworded it from
+vague ("expect a noisy, hard-to-trust plot") to specifically describe the diagonal-collapse
+symptom, since that's what someone will actually see and should be able to recognize by name.
+If another real example lands just under `0.93` and still shows this same collapse, lower the
+threshold again rather than assuming this one data point pinned the exact cutoff.
 
 ## Two real CLIP quirks this surfaces, on purpose
 

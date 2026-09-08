@@ -582,8 +582,8 @@ async function recomputeAxes(){
   const axisSim = cosine(xEmb, yEmb);
   const simNote = document.getElementById('axisSimNote');
   let simLabel;
-  if(axisSim >= 0.95) simLabel = `very similar to each other (${axisSim.toFixed(2)}) — expect a noisy, hard-to-trust plot`;
-  else if(axisSim >= 0.90) simLabel = `somewhat similar to each other (${axisSim.toFixed(2)}) — some noise is normal`;
+  if(axisSim >= 0.93) simLabel = `so similar to each other (${axisSim.toFixed(2)}) that they're barely two independent axes — expect almost everything to line up along one diagonal instead of spreading out, and individual rankings to look wrong`;
+  else if(axisSim >= 0.90) simLabel = `similar enough to each other (${axisSim.toFixed(2)}) that some noise is normal`;
   else simLabel = `relatively distinct from each other (${axisSim.toFixed(2)}), as these things go`;
   simNote.textContent = `"${xWord}" and "${yWord}" are ${simLabel}.`;
 
