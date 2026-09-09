@@ -248,19 +248,39 @@ downloaded image carries this photo's actual numbers, not a placeholder.
 
 ## Page flow: purpose → the lab → save & share → deep dive
 
-Reworked once already, deliberately tighter than the first shipped version: direct feedback was
-"It's... way too complicated. We need it to be much simpler. Purpose. Lab. Call to action
-(zazzle). Then all the details in the learn more section." The first version had five separately
-step-tagged sections (upload, watch it flow, predictions, payoff, save & share) — now it's three:
-the hero + one short paragraph (purpose), a single `#labSection` holding upload, the diagram, the
-retention stat, predictions, and the stat table all as sub-panels of one continuous experience
-(not five numbered steps), `#shareSection` (the Zazzle CTA), and `#learnSection` (collapsed,
-everything else: the plain-vs-residual mechanics prose that used to sit inline above the diagram,
-the degradation-problem explanation, the historical He et al. result, why MobileNet instead of
-VGG/ResNet50, and further reading). If you're adding a new capability to the lab experience,
-default to a new sub-panel inside `#labSection` rather than a new top-level numbered section —
-that's the whole point of this rework, and drifting back to many small sections is the specific
-thing that got flagged as "too complicated."
+Reworked twice now, each time tighter. First pass: direct feedback was "It's... way too
+complicated. We need it to be much simpler. Purpose. Lab. Call to action (zazzle). Then all the
+details in the learn more section." That collapsed five separately step-tagged sections (upload,
+watch it flow, predictions, payoff, save & share) down to three: the hero + one short paragraph
+(purpose), a single `#labSection` holding upload, the diagram, the retention stat, and predictions
+as sub-panels of one continuous experience, `#shareSection` (the Zazzle CTA), and `#learnSection`
+(collapsed, everything else).
+
+Second pass, immediately after: "Better, but still very technical. Does a user care about
+mobilenetv1 vs v2? Shouldn't that be in the how it works section? Still not a quick enough path to
+the call to action." Two more changes:
+
+- **Every model name and technical label was pulled out of `#labSection` and `#shareSection`.**
+  "MobileNetV1 — plain" / "MobileNetV2 — residual" became "Plain network" / "Network with
+  shortcuts" everywhere in the lab flow, predictions, canvas-drawn labels, and the PNG export.
+  The real names, the citation years, and the "why MobileNet not VGG/ResNet50" reasoning moved
+  into `#learnSection`'s "the two networks, by name" panel, which explicitly bridges the two:
+  *"The 'plain network' above is MobileNetV1..."* A visitor never needs to know or care what the
+  networks are called to get the point; someone who wants the names can always find them one
+  click away.
+- **The static params/accuracy/shortcut-count table ("the payoff") was cut from `#labSection`
+  entirely** and moved into that same learn-more panel. It was pure trivia relative to the actual
+  point of the page — generic numbers that don't change no matter whose photo you upload, sitting
+  between the interactive result and the Zazzle CTA for no reason except that it existed. The live
+  "how much of the photo survives" stat (computed from *this* photo, right there in the lab) is
+  the actual payoff now; the published numbers are supporting detail for the curious, not a
+  required stop on the way to "save & share."
+
+If you're adding a new capability to the lab experience: does it need a *model name* or a
+*generic, unchanging number* to make sense? If yes, it belongs in `#learnSection`, not
+`#labSection` — that's the distinction both rounds of feedback were actually pointing at, more
+than "count the sections." A new sub-panel inside `#labSection` is fine; a new sub-panel that
+only makes sense to someone who already knows what MobileNet is, is not.
 
 ## Testing changes
 

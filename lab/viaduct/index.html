@@ -92,34 +92,27 @@
 
     <div id="results" style="display:none;">
       <div class="panel lab-panel">
-        <h3>How it flows through each one</h3>
-        <p class="caption">Top: MobileNetV1, plain. Bottom: MobileNetV2 — the bright arcs are real
-        identity shortcuts, each one carrying a block's input forward and adding it back into
-        that block's output. Every tile is the network's actual output at that point, on your
-        photo.</p>
+        <h3>Watch your photo move through both</h3>
+        <p class="caption">Top: a plain network — straight through, no exceptions. Bottom: a
+        network with shortcuts — the bright arcs skip over some steps and carry the photo's
+        signal forward untouched. Every tile is a real snapshot of your photo at that point.</p>
         <div class="arch-scroll">
           <canvas id="archCanvas" width="1400" height="360"></canvas>
         </div>
         <div class="arch-legend">
-          <span><span class="sw" style="background:var(--accent);"></span>block output (brighter = stronger activation)</span>
-          <span><span class="sw" style="background:#e9e7de;"></span>identity shortcut — input added back in here</span>
+          <span><span class="sw" style="background:var(--accent);"></span>brighter = responding more here</span>
+          <span><span class="sw" style="background:#e9e7de;"></span>a shortcut, carrying the signal forward</span>
         </div>
-      </div>
-
-      <div class="panel lab-panel">
-        <h3>How much of the input survives</h3>
-        <p class="caption">Computed live from your photo: how closely each block's output still
-        resembles what went into it (cosine similarity, averaged over every block where the
-        comparison is meaningful). A shortcut's whole job is preserving the input — this is that
-        job, measured.</p>
+        <p class="caption" style="margin-top:16px;">And here's what that buys: how much of your
+        photo's signal is still recognizable after passing through, on average.</p>
         <div class="retain-row">
           <div class="retain-col">
-            <div class="retain-label">MobileNetV1 — plain</div>
+            <div class="retain-label">Plain network</div>
             <div class="retain-bar-track"><div class="retain-bar-fill" id="retainBarV1" style="width:0%; background:var(--ink-dim);"></div></div>
             <div class="retain-pct" id="retainPctV1">—</div>
           </div>
           <div class="retain-col">
-            <div class="retain-label">MobileNetV2 — residual</div>
+            <div class="retain-label">Network with shortcuts</div>
             <div class="retain-bar-track"><div class="retain-bar-fill" id="retainBarV2" style="width:0%;"></div></div>
             <div class="retain-pct" id="retainPctV2">—</div>
           </div>
@@ -127,35 +120,18 @@
       </div>
 
       <div class="panel lab-panel">
-        <h3>What each one guesses</h3>
-        <p class="caption">Real top-5 output from each network's own final layer — nothing
-        scripted. They may agree or disagree; whatever comes back is genuinely what each network
-        thinks, not picked to make a point.</p>
+        <h3>What each one thinks it's looking at</h3>
+        <p class="caption">Real guesses, nothing scripted — they may agree or disagree.</p>
         <div class="pred-cols">
           <div class="pred-col">
-            <h4>MobileNetV1 — plain</h4>
-            <span class="sub">no skip connections</span>
+            <h4>Plain network</h4>
             <div id="predV1"></div>
           </div>
           <div class="pred-col">
-            <h4>MobileNetV2 — residual</h4>
-            <span class="sub">10 of 17 blocks have a skip connection</span>
+            <h4>Network with shortcuts</h4>
             <div id="predV2"></div>
           </div>
         </div>
-      </div>
-
-      <div class="panel lab-panel">
-        <h3>The payoff</h3>
-        <p class="caption">Real, published numbers for these two networks — smaller and more accurate, at once.</p>
-        <table class="stat-table">
-          <thead><tr><th></th><th>MobileNetV1</th><th>MobileNetV2</th></tr></thead>
-          <tbody>
-            <tr><td>Parameters</td><td>4.2 million</td><td class="hi">3.4 million</td></tr>
-            <tr><td>ImageNet top-1 accuracy</td><td>70.6%</td><td class="hi">72.0%</td></tr>
-            <tr><td>Blocks with a skip connection</td><td>0 of 13</td><td class="hi">10 of 17</td></tr>
-          </tbody>
-        </table>
       </div>
     </div>
   </section>
@@ -163,7 +139,7 @@
   <section id="shareSection" style="display:none;">
     <span class="step-tag">save &amp; share</span>
     <h2>Take it with you</h2>
-    <p>Downloads one image: both block-flow diagrams and the stat table, with your photo's
+    <p>Downloads one image: the block-flow diagram and the numbers above, with your photo's
     actual results baked in.</p>
     <div class="actions">
       <button class="primary" id="downloadBtn">Download PNG</button>
@@ -235,15 +211,28 @@
       </div>
 
       <div class="panel" style="margin-top:18px;">
-        <span class="step-tag">why MobileNet, not VGG/ResNet50</span>
-        <p style="font-size:0.85rem;">The classic version of this comparison (VGG vs. ResNet50) is
-        more dramatic — "twice as deep, a sixth of the parameters" — but those two networks are
-        together over 600MB to download, which didn't feel right to ship just for this page.
-        MobileNetV1 and V2 are real, published, widely-deployed networks from the same lineage,
-        small enough to load in seconds, and the one variable that actually changed between them
-        — the skip connection — is exactly the thing this page is about. The tradeoff: a subtler
-        payoff than the classic comparison, honestly reported in the stat table above rather than
-        oversold.</p>
+        <span class="step-tag">the two networks, by name</span>
+        <p style="font-size:0.85rem;">The "plain network" above is <b style="color:var(--ink);">MobileNetV1</b>
+        (Howard et al., 2017); the "network with shortcuts" is <b style="color:var(--ink);">MobileNetV2</b>
+        (Sandler et al., 2018) — real, published, and widely deployed on real phones, not built
+        for this page. Their own published numbers:</p>
+        <table class="stat-table">
+          <thead><tr><th></th><th>MobileNetV1 (plain)</th><th>MobileNetV2 (shortcuts)</th></tr></thead>
+          <tbody>
+            <tr><td>Parameters</td><td>4.2 million</td><td class="hi">3.4 million</td></tr>
+            <tr><td>ImageNet top-1 accuracy</td><td>70.6%</td><td class="hi">72.0%</td></tr>
+            <tr><td>Blocks with a skip connection</td><td>0 of 13</td><td class="hi">10 of 17</td></tr>
+          </tbody>
+        </table>
+        <p style="font-size:0.85rem; margin-top:14px; margin-bottom:0;">The classic version of
+        this comparison (VGG vs. ResNet50) is more dramatic — "twice as deep, a sixth of the
+        parameters" — but those two networks are together over 600MB to download, which didn't
+        feel right to ship just for this page. MobileNetV1 and V2 are small enough to load in
+        seconds, and the one variable that actually changed between them — the skip connection —
+        is exactly the thing this page is about. The tradeoff: a subtler published payoff than
+        the classic comparison, honestly reported above rather than oversold (the live "how much
+        survives" number you saw in the lab tells a more dramatic story than these published
+        figures do).</p>
       </div>
 
       <div class="panel" style="margin-top:18px;">
@@ -532,8 +521,8 @@
     if (!v1Maps || !v2Maps) return;
     const r1 = Math.floor(revealFrac * (v1Maps.length-1));
     const r2 = Math.floor(revealFrac * (v2Maps.length-1));
-    drawRow(ctx, v1Maps, V1_RESIDUAL, ROW1_Y, r1, 'MobileNetV1 — plain (14 stages, 0 shortcuts)');
-    drawRow(ctx, v2Maps, V2_RESIDUAL, ROW2_Y, r2, 'MobileNetV2 — residual (18 stages, 10 shortcuts)');
+    drawRow(ctx, v1Maps, V1_RESIDUAL, ROW1_Y, r1, 'Plain network');
+    drawRow(ctx, v2Maps, V2_RESIDUAL, ROW2_Y, r2, 'Network with shortcuts');
   }
 
   let animId = null;
@@ -664,25 +653,17 @@
     const arch = document.getElementById('archCanvas');
     const out = document.createElement('canvas');
     out.width = arch.width;
-    out.height = arch.height + 250;
+    out.height = arch.height + 130;
     const octx = out.getContext('2d');
     octx.fillStyle = '#0c0e13'; octx.fillRect(0,0,out.width,out.height);
     octx.drawImage(arch, 0, 0);
     octx.fillStyle = '#e9e7de'; octx.font = 'bold 22px Georgia, serif';
-    octx.fillText('Neural Viaduct — plain vs. residual', 24, arch.height+34);
+    octx.fillText('Neural Viaduct', 24, arch.height+34);
     octx.font = '14px Arial, sans-serif'; octx.fillStyle = '#9aa0ae';
-    const retainRow = (retainV1!=null && retainV2!=null)
-      ? [`Input retained per block (this photo)`, `${(retainV1*100).toFixed(0)}% (V1)`, `${(retainV2*100).toFixed(0)}% (V2)`]
-      : null;
-    const rows = [
-      retainRow,
-      ['Parameters', '4.2M (V1)', '3.4M (V2)'],
-      ['ImageNet top-1', '70.6% (V1)', '72.0% (V2)'],
-      ['Shortcuts', '0 of 13 (V1)', '10 of 17 (V2)'],
-    ].filter(Boolean);
-    rows.forEach((r,i) => {
-      octx.fillText(`${r[0]}:  ${r[1]}   vs   ${r[2]}`, 24, arch.height+70+i*30);
-    });
+    if (retainV1!=null && retainV2!=null){
+      octx.fillText(`How much of the photo survived, on average:`, 24, arch.height+66);
+      octx.fillText(`Plain network: ${(retainV1*100).toFixed(0)}%   —   Network with shortcuts: ${(retainV2*100).toFixed(0)}%`, 24, arch.height+94);
+    }
     const a = document.createElement('a');
     a.download = 'neural-viaduct.png';
     a.href = out.toDataURL('image/png');
