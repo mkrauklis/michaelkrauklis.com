@@ -19,24 +19,35 @@
   .arch-legend{ display:flex; gap:22px; flex-wrap:wrap; margin-top:10px; font-size:0.8rem; color:var(--ink-dim); }
   .arch-legend span.sw{ display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:-1px; }
 
-  .pred-cols{ display:flex; gap:24px; flex-wrap:wrap; margin-top:18px; }
+  .pred-cols{ display:flex; gap:24px; flex-wrap:wrap; margin-top:14px; }
   .pred-col{ flex:1; min-width:280px; }
-  .pred-col h3{ font-size:1rem; margin-bottom:4px; }
-  .pred-col .sub{ font-size:0.8rem; color:var(--ink-dim); margin-bottom:12px; display:block; }
+  .pred-col h4{ font-size:0.95rem; margin-bottom:2px; color:var(--ink); }
+  .pred-col .sub{ font-size:0.78rem; color:var(--ink-dim); margin-bottom:10px; display:block; }
   .pred-row{ display:flex; align-items:center; gap:10px; margin-bottom:8px; font-size:0.85rem; }
   .pred-row .name{ flex:0 0 46%; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .pred-row .bar-track{ flex:1; height:8px; background:var(--bg-panel-2); border-radius:4px; overflow:hidden; }
   .pred-row .bar-fill{ height:100%; background:var(--accent); width:0%; }
   .pred-row .pct{ flex:0 0 42px; text-align:right; color:var(--ink-dim); font-size:0.78rem; }
 
-  .stat-table{ width:100%; border-collapse:collapse; margin-top:14px; font-size:0.9rem; }
-  .stat-table th, .stat-table td{ text-align:left; padding:10px 14px; border-bottom:1px solid var(--line); }
+  .stat-table{ width:100%; border-collapse:collapse; margin-top:12px; font-size:0.9rem; }
+  .stat-table th, .stat-table td{ text-align:left; padding:9px 14px; border-bottom:1px solid var(--line); }
   .stat-table th{ color:var(--ink-dim); font-weight:600; font-size:0.8rem; text-transform:uppercase; letter-spacing:0.03em; }
   .stat-table td.hi{ color:var(--accent); font-weight:600; }
   .stat-table tr:last-child td{ border-bottom:none; }
 
   #previewRow{ display:flex; gap:20px; align-items:center; margin-top:14px; flex-wrap:wrap; }
   #previewCanvas{ width:120px; height:120px; border-radius:6px; border:1px solid var(--line); background:#0c0e13; }
+
+  .lab-panel{ margin-top:20px; }
+  .lab-panel h3{ font-size:1rem; margin-bottom:4px; }
+  .lab-panel .caption{ font-size:0.82rem; color:var(--ink-dim); margin:0 0 4px; }
+
+  .retain-row{ display:flex; gap:32px; flex-wrap:wrap; margin-top:16px; }
+  .retain-col{ flex:1; min-width:220px; }
+  .retain-label{ font-size:0.85rem; color:var(--ink); margin-bottom:8px; }
+  .retain-bar-track{ width:100%; height:28px; background:var(--bg-panel-2); border-radius:6px; overflow:hidden; }
+  .retain-bar-fill{ height:100%; background:var(--accent); width:0%; transition:width .6s ease; }
+  .retain-pct{ margin-top:6px; font-family:'Fraunces',serif; font-size:1.5rem; color:var(--ink); }
 </style>
 <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5936916546458743"
      crossorigin="anonymous"></script>
@@ -47,38 +58,24 @@
 <header class="hero">
   <div class="wrap hero-grid">
     <div>
-      <span class="hero-line">why the deep one wins: two real networks, one photo, watch what a shortcut buys</span>
+      <span class="hero-line">why the deep one wins — watch a shortcut do its job, on your own photo</span>
       <h1>Neural Viaduct</h1>
-      <p>Two real, off-the-shelf networks run on your own photo, side by side. One is a plain
-      stack of layers, straight through, no exceptions. The other has the same kind of layers,
-      but every so often, a shortcut arcs over one and hands its input forward unchanged.
-      That one small difference is most of the reason modern vision networks can be dozens of
-      layers deep without falling apart. This page shows you the shortcuts actually happening,
-      not just tells you about them.</p>
+      <p>Two real networks run on your photo, side by side. One is a plain stack of layers. The
+      other has the same layers, plus shortcuts that skip over some of them. That shortcut is
+      most of why modern vision networks can go deep without falling apart — this page shows it
+      happening, not just tells you about it.</p>
     </div>
     <canvas id="heroCanvas"></canvas>
   </div>
 </header>
 
-<div class="wrap" style="padding-top:40px;">
-  <p>Upload a photo below and it never leaves your browser — both networks, and every
-  computation on this page, run entirely client-side. What you get back is real: the actual
-  intermediate output of each block in each network, from a genuine forward pass on your
-  actual photo, plus each network's real top-5 guess at what it's looking at. The full story —
-  what a "skip connection" is, why deep plain networks get harder to train the deeper they go,
-  and the historical result that motivated all of this — is in "how this actually works,"
-  further down.</p>
-</div>
-
 <main class="wrap">
 
-  <section>
-    <span class="step-tag">01 — upload</span>
+  <section id="labSection">
+    <span class="step-tag">the lab</span>
     <h2>Give it a photo</h2>
-    <p>Any photo works. A single clear subject fills the frame better than a busy scene — both
-    networks were trained on ImageNet's thousand object/animal/vehicle categories, so a coffee
-    mug, a dog, or a bicycle will get a more confident (and more interesting) guess than an
-    abstract scene or a group of people.</p>
+    <p>Nothing leaves your browser — upload a photo and both networks run on it right here, live.
+    A single clear subject (a mug, a dog, a bike) gets a more confident guess than a busy scene.</p>
     <div class="dropzone" id="dropzone">
       <input type="file" id="fileInput" accept="image/*">
       <div><span class="cta">Choose a photo</span> or drag one here</div>
@@ -92,94 +89,89 @@
         </div>
       </div>
     </div>
-  </section>
 
-  <section id="archSection" style="display:none;">
-    <span class="step-tag">02 — watch it flow</span>
-    <h2>The same photo, through two different paths</h2>
-    <p><b style="color:var(--ink);">MobileNetV1</b> (top) is a <b style="color:var(--ink);">plain</b>
-    network — every block feeds straight into the next, no exceptions. <b
-    style="color:var(--ink);">MobileNetV2</b> (bottom) is a <b style="color:var(--ink);">residual</b>
-    network built from the same lineage — most of its blocks also have an identity shortcut (the
-    arcs) carrying the block's input forward unchanged, in parallel with the transformed version,
-    so the block only has to learn the <i>difference</i> a real one would need to add. Each
-    thumbnail is that block's actual output on your photo, reduced to a single brightness map —
-    darker means the block responded weakly there, brighter means strongly. Some of MobileNetV2's
-    blocks don't have a shortcut either — that's real too, not an oversight; a block that changes
-    the number of channels or the spatial size can't just add its input back unchanged, so the
-    shortcut only appears exactly where the shapes actually line up.</p>
-    <div class="panel">
-      <div class="arch-scroll">
-        <canvas id="archCanvas" width="1400" height="360"></canvas>
-      </div>
-      <div class="arch-legend">
-        <span><span class="sw" style="background:var(--accent);"></span>block output (brighter = stronger activation)</span>
-        <span><span class="sw" style="background:var(--ink-dim);"></span>identity shortcut — this block's input, carried over unchanged</span>
-      </div>
-    </div>
-  </section>
-
-  <section id="predSection" style="display:none;">
-    <span class="step-tag">03 — what each one guesses</span>
-    <h2>Real predictions, from real forward passes</h2>
-    <p>Both bar charts come straight from each network's own final layer — nothing scripted,
-    nothing picked to make a point. Whatever your photo actually is, this is genuinely what each
-    network thinks it's looking at, and how confident it is.</p>
-    <div class="panel">
-      <div class="pred-cols">
-        <div class="pred-col">
-          <h3>MobileNetV1 — plain</h3>
-          <span class="sub">no skip connections</span>
-          <div id="predV1"></div>
+    <div id="results" style="display:none;">
+      <div class="panel lab-panel">
+        <h3>How it flows through each one</h3>
+        <p class="caption">Top: MobileNetV1, plain. Bottom: MobileNetV2 — the bright arcs are real
+        identity shortcuts, each one carrying a block's input forward and adding it back into
+        that block's output. Every tile is the network's actual output at that point, on your
+        photo.</p>
+        <div class="arch-scroll">
+          <canvas id="archCanvas" width="1400" height="360"></canvas>
         </div>
-        <div class="pred-col">
-          <h3>MobileNetV2 — residual</h3>
-          <span class="sub">10 of 17 blocks have a skip connection</span>
-          <div id="predV2"></div>
+        <div class="arch-legend">
+          <span><span class="sw" style="background:var(--accent);"></span>block output (brighter = stronger activation)</span>
+          <span><span class="sw" style="background:#e9e7de;"></span>identity shortcut — input added back in here</span>
         </div>
       </div>
-    </div>
-  </section>
 
-  <section id="statSection" style="display:none;">
-    <span class="step-tag">04 — the payoff</span>
-    <h2>Smaller, and more accurate, at the same time</h2>
-    <p>This is the real, published, sourced comparison these two specific networks make possible
-    — not a hypothetical. Adding skip connections didn't just make training deeper networks
-    possible; on this pair, it also came with fewer parameters and higher accuracy, at once.</p>
-    <div class="panel">
-      <table class="stat-table">
-        <thead><tr><th></th><th>MobileNetV1 (plain)</th><th>MobileNetV2 (residual)</th></tr></thead>
-        <tbody>
-          <tr><td>Parameters</td><td>4.2 million</td><td class="hi">3.4 million</td></tr>
-          <tr><td>ImageNet top-1 accuracy</td><td>70.6%</td><td class="hi">72.0%</td></tr>
-          <tr><td>Blocks with a skip connection</td><td>0 of 13</td><td class="hi">10 of 17</td></tr>
-          <tr><td>Published</td><td>Howard et al., 2017</td><td>Sandler et al., 2018</td></tr>
-        </tbody>
-      </table>
-      <p style="font-size:0.8rem; margin-top:14px;">One honest note: this is a subtler story than
-      the classic "twice as deep, a sixth of the parameters" comparisons you'll see elsewhere
-      (usually VGG vs. ResNet50) — those two networks are together over 600MB to download, which
-      didn't feel right to ship just for this page. MobileNetV1 and V2 are real, published,
-      widely-deployed networks from the same lineage, small enough to load in seconds, and the
-      one variable that actually changed between them — the skip connection — is exactly the
-      thing this page is about.</p>
+      <div class="panel lab-panel">
+        <h3>How much of the input survives</h3>
+        <p class="caption">Computed live from your photo: how closely each block's output still
+        resembles what went into it (cosine similarity, averaged over every block where the
+        comparison is meaningful). A shortcut's whole job is preserving the input — this is that
+        job, measured.</p>
+        <div class="retain-row">
+          <div class="retain-col">
+            <div class="retain-label">MobileNetV1 — plain</div>
+            <div class="retain-bar-track"><div class="retain-bar-fill" id="retainBarV1" style="width:0%; background:var(--ink-dim);"></div></div>
+            <div class="retain-pct" id="retainPctV1">—</div>
+          </div>
+          <div class="retain-col">
+            <div class="retain-label">MobileNetV2 — residual</div>
+            <div class="retain-bar-track"><div class="retain-bar-fill" id="retainBarV2" style="width:0%;"></div></div>
+            <div class="retain-pct" id="retainPctV2">—</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel lab-panel">
+        <h3>What each one guesses</h3>
+        <p class="caption">Real top-5 output from each network's own final layer — nothing
+        scripted. They may agree or disagree; whatever comes back is genuinely what each network
+        thinks, not picked to make a point.</p>
+        <div class="pred-cols">
+          <div class="pred-col">
+            <h4>MobileNetV1 — plain</h4>
+            <span class="sub">no skip connections</span>
+            <div id="predV1"></div>
+          </div>
+          <div class="pred-col">
+            <h4>MobileNetV2 — residual</h4>
+            <span class="sub">10 of 17 blocks have a skip connection</span>
+            <div id="predV2"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel lab-panel">
+        <h3>The payoff</h3>
+        <p class="caption">Real, published numbers for these two networks — smaller and more accurate, at once.</p>
+        <table class="stat-table">
+          <thead><tr><th></th><th>MobileNetV1</th><th>MobileNetV2</th></tr></thead>
+          <tbody>
+            <tr><td>Parameters</td><td>4.2 million</td><td class="hi">3.4 million</td></tr>
+            <tr><td>ImageNet top-1 accuracy</td><td>70.6%</td><td class="hi">72.0%</td></tr>
+            <tr><td>Blocks with a skip connection</td><td>0 of 13</td><td class="hi">10 of 17</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </section>
 
   <section id="shareSection" style="display:none;">
-    <span class="step-tag">05 — save &amp; share</span>
-    <h2>Take the comparison with you</h2>
-    <p>Downloads a single image: both block-flow diagrams and the stat table, exactly as they
-    look above, with your photo's actual results baked in.</p>
+    <span class="step-tag">save &amp; share</span>
+    <h2>Take it with you</h2>
+    <p>Downloads one image: both block-flow diagrams and the stat table, with your photo's
+    actual results baked in.</p>
     <div class="actions">
       <button class="primary" id="downloadBtn">Download PNG</button>
-      <span class="status">architecture diagram + stat card</span>
     </div>
     <div class="panel" style="margin-top:24px;">
       <span class="step-tag">make it a gift</span>
-      <p style="font-size:0.9rem;">Since every image here is built from your own uploaded photo,
-      this one's best kept personal rather than worn — a magnet, not a t-shirt.</p>
+      <p style="font-size:0.9rem;">Since every image here is built from your own photo, this
+      one's best kept personal rather than worn — a magnet, not a t-shirt.</p>
       <ol style="color:var(--ink-dim); font-size:0.9rem; padding-left:1.2em; margin:0 0 4px;">
         <li>Download the PNG above.</li>
         <li>Open a Zazzle "upload your own image" template and personalize it with that file.</li>
@@ -195,6 +187,17 @@
     <summary>How this actually works <span class="adv-sub">— skip connections, and why depth used to break</span></summary>
     <div class="disclosure-body">
       <div class="panel">
+        <p><b style="color:var(--ink);">MobileNetV1</b> is a <b style="color:var(--ink);">plain</b>
+        network — every block feeds straight into the next, no exceptions.
+        <b style="color:var(--ink);">MobileNetV2</b> is a <b style="color:var(--ink);">residual</b>
+        network from the same lineage — most of its blocks also carry an identity shortcut: the
+        block's own input, added back in unchanged, in parallel with the transformed version, so
+        the block only has to learn the <i>difference</i> a real one would need to add. Some of
+        V2's blocks don't have a shortcut — that's real too, not an oversight; a block that
+        changes the number of channels or the spatial size can't just add its input back
+        unchanged, so the shortcut only appears exactly where the shapes line up.</p>
+      </div>
+      <div class="panel" style="margin-top:18px;">
         <p>Stack enough layers on a plain network and, past a certain depth, accuracy gets
         <i>worse</i>, not better — and not from overfitting (training error rises too, not just
         validation error). This is the <b style="color:var(--ink);">degradation problem</b>: past
@@ -206,17 +209,16 @@
         gradient descent don't reliably find that solution once they get deep enough. Learning to
         pass a signal through completely unchanged turns out to be a surprisingly awkward thing
         to ask an ordinary stack of layers to do.</p>
-        <p>A <b style="color:var(--ink);">residual</b> or <b style="color:var(--ink);">skip
-        connection</b> sidesteps the problem by making "pass it through unchanged" the network's
-        default, free of charge: instead of asking a block to learn some function <code>F(x)</code>
-        outright, it computes <code>F(x) + x</code> — the block's own transformation, plus an
-        identity copy of its input, added back in via the shortcut arcs you saw above. If the
-        best thing a block can do is nothing, it just has to learn to output zero, which turns
-        out to be a far easier thing for gradient descent to settle into than learning an exact
-        identity mapping through an ordinary stack of weights. That's the entire mechanism — one
-        addition, in parallel with the block's normal path — and it's what let networks
-        confidently go from a few dozen layers to over a hundred without the accuracy collapse
-        plain networks were already starting to show well before that.</p>
+        <p>A residual or skip connection sidesteps the problem by making "pass it through
+        unchanged" the network's default, free of charge: instead of asking a block to learn some
+        function <code>F(x)</code> outright, it computes <code>F(x) + x</code> — the block's own
+        transformation, plus an identity copy of its input, added back in via the shortcut arcs
+        you saw above. If the best thing a block can do is nothing, it just has to learn to output
+        zero, which turns out to be a far easier thing for gradient descent to settle into than
+        learning an exact identity mapping through an ordinary stack of weights. That's the entire
+        mechanism — one addition, in parallel with the block's normal path — and it's what let
+        networks confidently go from a few dozen layers to over a hundred without the accuracy
+        collapse plain networks were already starting to show well before that.</p>
         <div class="panel" style="margin-top:4px; background:var(--bg-panel-2);">
           <span class="step-tag" style="color:var(--accent);">the historical result this is built around</span>
           <p style="margin-bottom:0;">This page can't reproduce the classic degradation result
@@ -230,6 +232,18 @@
           25.03%, beating both plain networks outright. Depth alone made things worse; depth plus
           shortcuts made things much better.</p>
         </div>
+      </div>
+
+      <div class="panel" style="margin-top:18px;">
+        <span class="step-tag">why MobileNet, not VGG/ResNet50</span>
+        <p style="font-size:0.85rem;">The classic version of this comparison (VGG vs. ResNet50) is
+        more dramatic — "twice as deep, a sixth of the parameters" — but those two networks are
+        together over 600MB to download, which didn't feel right to ship just for this page.
+        MobileNetV1 and V2 are real, published, widely-deployed networks from the same lineage,
+        small enough to load in seconds, and the one variable that actually changed between them
+        — the skip connection — is exactly the thing this page is about. The tradeoff: a subtler
+        payoff than the classic comparison, honestly reported in the stat table above rather than
+        oversold.</p>
       </div>
 
       <div class="panel" style="margin-top:18px;">
@@ -285,10 +299,15 @@
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.1/dist/mobilenet.min.js"></script>
 <script>
 (async function(){
+  // WASM only, deliberately -- not a fallback. Reading back a MobileNetV2 residual block's
+  // real "add" node (the post-shortcut output, not the pre-add F(x)) hangs indefinitely under
+  // WebGL, every time, confirmed directly: execute() itself returns instantly and reports a
+  // correct shape, but the resulting tensor's .data() promise never resolves. Almost certainly
+  // WebGL's operation-fusion optimizer never materializing a real texture for an internal node
+  // that isn't a declared model output. WASM reads the exact same node back correctly in well
+  // under a second. See CLAUDE.md before ever trying WebGL here again.
   tf.wasm.setWasmPaths('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@4.22.0/dist/');
   async function chooseBackend(){
-    try { await tf.setBackend('webgl'); await tf.ready(); return 'webgl'; }
-    catch(e){ console.warn('webgl unavailable', e); }
     try { await tf.setBackend('wasm'); await tf.ready(); return 'wasm'; }
     catch(e){ console.warn('wasm unavailable', e); await tf.setBackend('cpu'); await tf.ready(); return 'cpu'; }
   }
@@ -342,14 +361,44 @@
   const V1_NODES = ['module_apply_default/MobilenetV1/MobilenetV1/Conv2d_0/Relu6'];
   for (let i=1;i<=13;i++) V1_NODES.push(`module_apply_default/MobilenetV1/MobilenetV1/Conv2d_${i}_pointwise/Relu6`);
   const V1_RESIDUAL = V1_NODES.map(()=>false);
+  // Shape-matching consecutive V1 blocks (verified against the real loaded model) -- the only
+  // pairs where an input-vs-output comparison is even dimensionally meaningful, since V1 has no
+  // shortcuts of its own to define "matching" for. Used as V1's baseline for the retention stat.
+  const V1_MATCHING_PAIRS = [3,5,7,8,9,10,11,13];
 
   const V2_RESIDUAL_BLOCKS = new Set([2,4,5,7,8,9,11,12,14,15]);
-  const V2_NODES = ['module_apply_default/MobilenetV2/Conv/Relu6'];
+  const V2_PROJECT_NODES = ['module_apply_default/MobilenetV2/Conv/Relu6'];
   const V2_RESIDUAL = [false];
   for (let b=0;b<=16;b++){
     const suffix = b===0 ? '' : `_${b}`;
-    V2_NODES.push(`module_apply_default/MobilenetV2/expanded_conv${suffix}/project/BatchNorm/FusedBatchNorm`);
+    V2_PROJECT_NODES.push(`module_apply_default/MobilenetV2/expanded_conv${suffix}/project/BatchNorm/FusedBatchNorm`);
     V2_RESIDUAL.push(V2_RESIDUAL_BLOCKS.has(b));
+  }
+  // `project/BatchNorm` is a block's own computed transform, F(x) -- BEFORE the shortcut adds
+  // the input back in. It is NOT the block's real output whenever a shortcut exists; that's the
+  // `add` node instead. Using project alone for every block (an earlier version of this page did
+  // exactly that) silently never showed the shortcut's effect at all -- confirmed directly: for
+  // one real block, |add - project| averaged *larger* than project's own magnitude, meaning the
+  // identity path can contribute more signal than the block's learned transform does. Fetched
+  // together with the project nodes in one pass; `buildTrueOutputs()` below picks the right one
+  // per stage.
+  const V2_ADD_BLOCKS = Array.from(V2_RESIDUAL_BLOCKS).sort((a,b)=>a-b);
+  const V2_ADD_NODES = V2_ADD_BLOCKS.map(b => `module_apply_default/MobilenetV2/expanded_conv_${b}/add`);
+  const V2_ALL_NODES = [...V2_PROJECT_NODES, ...V2_ADD_NODES];
+
+  // Stage index k (0..17) holds block (k-1)'s real output: the add node if block (k-1) has a
+  // shortcut, otherwise the project node (there's nothing else -- no shortcut, no add).
+  function buildTrueOutputs(raws2){
+    const trueOutputs = [raws2[0]]; // stem, index 0, never residual
+    for (let k=1; k<=17; k++){
+      const block = k-1;
+      if (V2_RESIDUAL_BLOCKS.has(block)){
+        trueOutputs.push(raws2[V2_PROJECT_NODES.length + V2_ADD_BLOCKS.indexOf(block)]);
+      } else {
+        trueOutputs.push(raws2[k]);
+      }
+    }
+    return trueOutputs;
   }
 
   // ---------- Forward pass: one execute() call per network returns every block's real
@@ -363,27 +412,46 @@
     });
   }
 
-  async function getBlockMaps(net, nodeNames, input){
+  // Returns raw per-stage tensors ({h,w,c,data}, full per-channel Float32Array) in the same
+  // order as nodeNames -- kept raw, not pre-averaged, so both the thumbnail maps and the
+  // similarity math below read from one real forward pass, not two different reductions of it.
+  async function forwardRaw(net, nodeNames, input){
     const outs = net.model.execute({images: input}, nodeNames);
-    const maps = [];
+    const raws = [];
     for (const t of outs){
       const [,h,w,c] = t.shape;
-      const data = await t.data();
-      const mean = new Float32Array(h*w);
-      for (let p=0; p<h*w; p++){
-        let s = 0; const base = p*c;
-        for (let ch=0; ch<c; ch++) s += data[base+ch];
-        mean[p] = s/c;
-      }
-      maps.push({h, w, data: mean});
+      raws.push({h, w, c, data: await t.data()});
       t.dispose();
     }
-    return maps;
+    return raws;
+  }
+  function meanMap({h, w, c, data}){
+    const mean = new Float32Array(h*w);
+    for (let p=0; p<h*w; p++){
+      let s = 0; const base = p*c;
+      for (let ch=0; ch<c; ch++) s += data[base+ch];
+      mean[p] = s/c;
+    }
+    return {h, w, data: mean};
+  }
+  // Cosine similarity between two equal-length flattened activations -- only ever called on a
+  // pair that's actually the same shape (a residual block's input/output, or a V1 pair from
+  // V1_MATCHING_PAIRS), so no dimension handling needed. Computed in plain JS on already-read-
+  // back arrays, not via tf.dot on the tensors themselves -- a large 1D tf.dot's .data() read
+  // hit the exact same WebGL hang described above; plain JS has no such issue and this is a
+  // one-time, small (tens of thousands of floats) computation either way.
+  function cosineSim(a, b){
+    let dot = 0, na = 0, nb = 0;
+    for (let i = 0; i < a.length; i++){ dot += a[i]*b[i]; na += a[i]*a[i]; nb += b[i]*b[i]; }
+    return dot / (Math.sqrt(na)*Math.sqrt(nb));
   }
 
   // ---------- Diagram rendering ----------
-  const THUMB = 40, GAP = 14, ROW1_Y = 70, ROW2_Y = 230, LABEL_OFFSET = -26;
-  const START_X = 60;
+  // Fixed offsets *from the tile row's own top edge* (y), not from each other, so the label,
+  // arc peak, and tile never have to be re-balanced by hand when one of them changes: label
+  // sits clear above the peak, the peak sits clear above the tile.
+  const THUMB = 40, GAP = 14, ROW1_Y = 90, ROW2_Y = 230, START_X = 60;
+  const ARC_TOP_GAP = 6, ARC_PEAK_HEIGHT = 40, LABEL_GAP_ABOVE_PEAK = 12;
   const ACCENT_RGB = [201, 85, 61];
 
   function blockX(i){ return START_X + i*(THUMB+GAP); }
@@ -408,8 +476,9 @@
   }
 
   function drawRow(ctx, maps, residualFlags, y, revealCount, label){
+    const peakY = y - ARC_PEAK_HEIGHT;
     ctx.fillStyle = '#9aa0ae'; ctx.font = '12px Inter, sans-serif';
-    ctx.fillText(label, START_X, y+LABEL_OFFSET-6);
+    ctx.fillText(label, START_X, peakY - LABEL_GAP_ABOVE_PEAK);
 
     // baseline
     ctx.strokeStyle = 'rgba(233,231,222,0.15)'; ctx.lineWidth = 1;
@@ -418,19 +487,11 @@
     ctx.lineTo(blockX(maps.length-1)+THUMB/2, y+THUMB/2);
     ctx.stroke();
 
-    // residual arcs (drawn first, under the thumbnails)
-    for (let i=0;i<residualFlags.length;i++){
-      if (!residualFlags[i]) continue;
-      if (i > revealCount) continue;
-      const x1 = blockX(i-1)+THUMB/2, x2 = blockX(i)+THUMB/2;
-      const midY = y+THUMB/2 - 30;
-      ctx.strokeStyle = 'rgba(154,160,174,0.55)'; ctx.lineWidth = 1.6;
-      ctx.beginPath();
-      ctx.moveTo(x1, y+THUMB/2);
-      ctx.quadraticCurveTo((x1+x2)/2, midY, x2, y+THUMB/2);
-      ctx.stroke();
-    }
-
+    // Thumbnails first, arcs drawn ON TOP -- a shortcut arc is the entire point of this diagram,
+    // so it has to win visually over the tiles it passes above, not hide underneath them. Bright,
+    // thick, and clearly separated from the row (a tall peak, not a low hump) on purpose -- an
+    // earlier, subtler version (thin, grayish, drawn under the tiles, low peak) was nearly
+    // invisible in practice.
     for (let i=0;i<maps.length;i++){
       const x = blockX(i);
       if (i > revealCount){
@@ -440,10 +501,26 @@
       }
       const thumb = renderThumbToCanvas(maps[i]);
       ctx.drawImage(thumb, x, y, THUMB, THUMB);
-      if (residualFlags[i]){
-        ctx.strokeStyle = '#e9e7de'; ctx.lineWidth = 1.5;
-        ctx.strokeRect(x-1.5, y-1.5, THUMB+3, THUMB+3);
-      }
+    }
+
+    for (let i=0;i<residualFlags.length;i++){
+      if (!residualFlags[i]) continue;
+      if (i > revealCount) continue;
+      const x = blockX(i);
+      const x1 = blockX(i-1)+THUMB/2, x2 = blockX(i)+THUMB/2;
+      const topY = y - ARC_TOP_GAP;
+      ctx.strokeStyle = '#e9e7de'; ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(x1, topY);
+      ctx.quadraticCurveTo((x1+x2)/2, peakY, x2, topY);
+      ctx.stroke();
+      // landing marker: a small filled dot where the shortcut's input is added back into this
+      // block's output -- the literal x + F(x) the deep-dive section explains.
+      ctx.fillStyle = '#e9e7de';
+      ctx.beginPath(); ctx.arc(x2, topY, 3, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle = '#c9553d';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x-1.5, y-1.5, THUMB+3, THUMB+3);
     }
   }
 
@@ -492,25 +569,45 @@
     }
   }
 
+  // ---------- Retention stat: how much of a block's input survives into its output ----------
+  let retainV1 = null, retainV2 = null; // fractions, e.g. 0.56 -- set by runViaduct, read by the PNG export
+  function computeRetention(v1Raws, v2TrueOutputs){
+    const v1Sims = V1_MATCHING_PAIRS.map(i => cosineSim(v1Raws[i-1].data, v1Raws[i].data));
+    const v2Sims = Array.from(V2_RESIDUAL_BLOCKS).map(b => cosineSim(v2TrueOutputs[b].data, v2TrueOutputs[b+1].data));
+    const avg = arr => arr.reduce((a,v)=>a+v,0)/arr.length;
+    return { v1: avg(v1Sims), v2: avg(v2Sims) };
+  }
+  function renderRetention(v1Frac, v2Frac){
+    document.getElementById('retainBarV1').style.width = (v1Frac*100).toFixed(0)+'%';
+    document.getElementById('retainBarV2').style.width = (v2Frac*100).toFixed(0)+'%';
+    document.getElementById('retainPctV1').textContent = (v1Frac*100).toFixed(0)+'%';
+    document.getElementById('retainPctV2').textContent = (v2Frac*100).toFixed(0)+'%';
+  }
+
   // ---------- Main pipeline ----------
   let lastImg = null;
   async function runViaduct(imgEl){
     document.getElementById('runBtn').disabled = true;
     document.getElementById('loadStatus').textContent = 'running both networks…';
 
-    const input = preprocess(imgEl);
-    const [maps1, maps2, preds1, preds2] = await Promise.all([
-      getBlockMaps(net1, V1_NODES, input),
-      getBlockMaps(net2, V2_NODES, input),
+    const input1 = preprocess(imgEl), input2 = preprocess(imgEl);
+    const [v1Raws, v2Raws, preds1, preds2] = await Promise.all([
+      forwardRaw(net1, V1_NODES, input1),
+      forwardRaw(net2, V2_ALL_NODES, input2),
       net1.classify(imgEl, 5),
       net2.classify(imgEl, 5),
     ]);
-    input.dispose();
-    v1Maps = maps1; v2Maps = maps2;
+    input1.dispose(); input2.dispose();
 
-    document.getElementById('archSection').style.display = 'block';
-    document.getElementById('predSection').style.display = 'block';
-    document.getElementById('statSection').style.display = 'block';
+    const v2TrueOutputs = buildTrueOutputs(v2Raws);
+    v1Maps = v1Raws.map(meanMap);
+    v2Maps = v2TrueOutputs.map(meanMap);
+
+    const retention = computeRetention(v1Raws, v2TrueOutputs);
+    retainV1 = retention.v1; retainV2 = retention.v2;
+    renderRetention(retainV1, retainV2);
+
+    document.getElementById('results').style.display = 'block';
     document.getElementById('shareSection').style.display = 'block';
     document.getElementById('learnSection').style.display = 'block';
 
@@ -567,18 +664,22 @@
     const arch = document.getElementById('archCanvas');
     const out = document.createElement('canvas');
     out.width = arch.width;
-    out.height = arch.height + 220;
+    out.height = arch.height + 250;
     const octx = out.getContext('2d');
     octx.fillStyle = '#0c0e13'; octx.fillRect(0,0,out.width,out.height);
     octx.drawImage(arch, 0, 0);
     octx.fillStyle = '#e9e7de'; octx.font = 'bold 22px Georgia, serif';
     octx.fillText('Neural Viaduct — plain vs. residual', 24, arch.height+34);
     octx.font = '14px Arial, sans-serif'; octx.fillStyle = '#9aa0ae';
+    const retainRow = (retainV1!=null && retainV2!=null)
+      ? [`Input retained per block (this photo)`, `${(retainV1*100).toFixed(0)}% (V1)`, `${(retainV2*100).toFixed(0)}% (V2)`]
+      : null;
     const rows = [
+      retainRow,
       ['Parameters', '4.2M (V1)', '3.4M (V2)'],
       ['ImageNet top-1', '70.6% (V1)', '72.0% (V2)'],
       ['Shortcuts', '0 of 13 (V1)', '10 of 17 (V2)'],
-    ];
+    ].filter(Boolean);
     rows.forEach((r,i) => {
       octx.fillText(`${r[0]}:  ${r[1]}   vs   ${r[2]}`, 24, arch.height+70+i*30);
     });
