@@ -36,3 +36,25 @@ the palette and the paragraph-width bug drifted out of sync across pages in the 
 
 `lab/index.html`'s tool list is ordered newest-first, top to bottom (currently Neural Viaduct,
 Vectis, Afterimage, Ridgeline) — add a new tool's card at the *top* of `.tool-list`, not the bottom.
+
+# SEO
+
+The live site is served from **`michaelkrauklis.me`**, not `.com` — the git remote's name is
+`.com` but the actual canonical domain is set by the root `CNAME` file. Always use `.me` in
+canonical URLs, `og:url`, and the sitemap; don't assume the domain from the repo name.
+
+Every page (root `index.html`, `lab/index.html`, every tool) carries the same block of tags right
+after `<title>`, before the `theme.css` link: `<meta name="description">`, `<link
+rel="canonical">`, `og:type`/`og:site_name`/`og:title`/`og:description`/`og:url`, and
+`twitter:card` (`summary`, not `summary_large_image` — there's no `og:image` anywhere on the site
+yet, no logo or screenshot asset exists to use for one; add real `og:image` tags site-wide
+together, in one pass, if that ever gets made, rather than letting pages drift inconsistent one at
+a time). `og:title`/`og:description` duplicate the meta description and `<title>` rather than
+being written separately — there's no reason for them to diverge on a site this size.
+
+`sitemap.xml` and `robots.txt` live at the repo root (served at `/sitemap.xml` and `/robots.txt`
+automatically, no config needed). **A new lab tool needs a `<url>` entry added to `sitemap.xml`**
+(with today's date as `<lastmod>`) in the same commit that adds its page — easy to forget since
+nothing breaks visibly if you skip it, search engines just never find out the page exists.
+`lab/index.html`'s own newest-first list is the reminder to cross-check against when adding a
+tool anyway.
