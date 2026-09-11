@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="google-adsense-account" content="ca-pub-5936916546458743">
+<title>Echo State — a recurrent network's memory, traced</title>
+<meta name="description" content="Type anything and watch a tiny untrained recurrent network's memory trace a unique path through space, one character at a time — export it as a print, or a QR code that replays the exact model live. Entirely in your browser.">
+<link rel="canonical" href="https://michaelkrauklis.me/lab/echostate/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Michael Krauklis">
+<meta property="og:title" content="Echo State — a recurrent network's memory, traced">
+<meta property="og:description" content="Type anything and watch a tiny untrained recurrent network's memory trace a unique path through space, one character at a time — export it as a print, or a QR code that replays the exact model live. Entirely in your browser.">
+<meta property="og:url" content="https://michaelkrauklis.me/lab/echostate/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Echo State — a recurrent network's memory, traced">
+<meta name="twitter:description" content="Type anything and watch a tiny untrained recurrent network's memory trace a unique path through space, one character at a time — export it as a print, or a QR code that replays the exact model live. Entirely in your browser.">
+<link rel="stylesheet" href="/theme.css">
+<style>
+  :root{ --accent: var(--teal); --accent-dim: #355952; }
+
+  .wrap{ max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+  .toggle-group{ display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; }
+  .toggle-group button{
+    background: var(--bg-panel-2); border: 1px solid var(--line); color: var(--ink-dim);
+    padding: 9px 16px; border-radius: 6px; cursor: pointer; font-family: 'Inter', sans-serif;
+    font-size: 0.88rem; transition: all .12s ease;
+  }
+  .toggle-group button.active{ border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+
+  .swatch-row{ display:flex; gap:10px; flex-wrap:wrap; margin-top:6px; align-items:center; }
+  .swatch{ width:34px; height:34px; border-radius:50%; border:2px solid var(--line); cursor:pointer; padding:0; }
+  .swatch.active{ border-color: var(--ink); box-shadow: 0 0 0 2px var(--bg-panel), 0 0 0 4px var(--accent); }
+
+  .trace-frame, .print-frame, .diagram-frame{
+    border: 1px solid var(--line); border-radius: 6px; background:#0c0e13; overflow:hidden;
+    background-image: radial-gradient(rgba(233,231,222,0.05) 1px, transparent 1px);
+    background-size: 16px 16px;
+  }
+  svg#trace-svg{ width:100%; height:auto; aspect-ratio: 600/380; display:block; }
+  svg#diagram-svg, svg#activation-svg{ width:100%; height:auto; aspect-ratio: 640/440; display:block; }
+  #printCanvas{ width:100%; height:auto; aspect-ratio:1/1; display:block; background:#0c0e13; }
+
+  .playback{ display:flex; align-items:center; gap:12px; margin-top:14px; }
+  #play-btn{ min-width:76px; }
+  #scrub{ flex:1; }
+  .readhead{ font-family:'Inter', sans-serif; font-size:0.85rem; color: var(--ink-dim); margin-top:10px; word-break:break-all; }
+  .readhead mark{ background: color-mix(in srgb, var(--amber) 25%, transparent); color: var(--amber); border-radius:3px; padding:0 2px; font-weight:600; }
+
+  table.ledger{ width:100%; border-collapse:collapse; font-family:'Inter', sans-serif; font-size:0.86rem; }
+  table.ledger td{ padding:9px 4px; border-bottom:1px solid var(--line); font-variant-numeric: tabular-nums; }
+  table.ledger td:first-child{ color: var(--ink-dim); padding-right:12px; }
+  table.ledger td:last-child{ text-align:right; color: var(--ink); font-weight:500; }
+  table.ledger tr:last-child td{ border-bottom:none; font-weight:600; color: var(--accent); }
+  .ledger-wrap{ overflow-x:auto; }
+
+  .qr-box{ display:flex; flex-direction:column; align-items:center; gap:10px; text-align:center; }
+  #qrcode{ background:#fff; padding:8px; border-radius:6px; line-height:0; }
+  #qrcode img, #qrcode canvas{ display:block; image-rendering:pixelated; width:150px; height:150px; }
+  .result-label{ font-size:0.78rem; color: var(--ink); font-weight:600; margin-top:8px; }
+  .result-desc{ font-size:0.78rem; color: var(--ink-dim); }
+
+  .formula{ font-size:1rem; color: var(--ink); margin: 14px 0; padding: 14px 16px; background: var(--bg-panel-2); border-radius:6px; border:1px solid var(--line); }
+  .formula .op{ font-family:'Fraunces', Georgia, serif; color: var(--ink-dim); padding: 0 4px; }
+</style>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5936916546458743"
+     crossorigin="anonymous"></script>
+</head>
+<body>
+<script src="/nav.js"></script>
+
+<header class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <span class="hero-line">a sequence, remembered one character at a time</span>
+      <h1>Echo State</h1>
+      <p>Type a name, a date, a line you'd actually say. A tiny recurrent network — eight
+      numbers with a memory, by default — reads it one character at a time, and the path its
+      memory takes becomes a line no other input traces quite the same way. Small enough that
+      the whole model, weights included, fits inside a QR code you can scan to watch it happen
+      again.</p>
+    </div>
+    <svg id="heroCanvas" viewBox="0 0 400 220" preserveAspectRatio="xMidYMid meet"></svg>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section>
+    <span class="step-tag">01 — personalize</span>
+    <h2>Give it something to remember</h2>
+    <p>Two names, an inside joke, the date that mattered. Whatever you type becomes the only
+    input this exact reservoir has ever seen.</p>
+
+    <div class="panel">
+      <p class="status" id="replayNote" style="display:none; margin:0 0 16px;">Replaying the exact
+      weights carried in this page's link — type something new to see how the same network
+      responds, or touch any control below to break away and generate your own.</p>
+      <div class="row">
+        <div class="col">
+          <label class="field" for="text-input">Text</label>
+          <input type="text" id="text-input" value="ADA &amp; CHARLES" maxlength="60" autocomplete="off" spellcheck="false">
+          <p class="status" style="margin-top:8px;">Example shown — try your own. Lowercase a–z, digits, space, and
+          <code>. , ! ? &amp; ' -</code> are understood; anything else reads as a space.</p>
+        </div>
+        <div class="col">
+          <label class="field">Reservoir size (H)</label>
+          <div class="toggle-group" id="h-select" role="group">
+            <button type="button" data-h="2">2</button>
+            <button type="button" data-h="4">4</button>
+            <button type="button" data-h="8" class="active">8</button>
+            <button type="button" data-h="16">16</button>
+          </div>
+
+          <label class="field">Spectral radius — <span class="field-value" id="radius-val">0.90</span>
+            <span class="status" id="regime-label" style="margin-left:6px;"></span></label>
+          <input type="range" id="radius-range" min="0.3" max="1.4" step="0.05" value="0.9">
+
+          <div class="actions">
+            <button type="button" class="secondary" id="reroll-btn">↻ Reroll reservoir</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <span class="step-tag">02 — trace</span>
+    <h2>Here's the shape it left</h2>
+    <p>Every character nudges the network's hidden state a little further from where it started.
+    The line on the left traces that path through space; the network on the right lights up the
+    same way it actually did — teal for positive activation, rust for negative. Play it back to
+    watch the memory form both ways at once.</p>
+
+    <div class="panel">
+      <div class="row">
+        <div class="col">
+          <div class="trace-frame">
+            <svg id="trace-svg" viewBox="0 0 600 380" preserveAspectRatio="xMidYMid meet"></svg>
+          </div>
+          <p class="status" id="proj-note" style="margin-top:8px;"></p>
+        </div>
+        <div class="col">
+          <div class="diagram-frame">
+            <svg id="activation-svg" viewBox="0 0 640 440" preserveAspectRatio="xMidYMid meet"></svg>
+          </div>
+          <p class="status" id="activation-caption" style="margin-top:8px;"></p>
+        </div>
+      </div>
+      <div class="playback">
+        <button type="button" class="secondary" id="play-btn">▶ Play</button>
+        <input type="range" id="scrub" min="0" max="1" step="1" value="1">
+      </div>
+      <p class="readhead" id="readhead"></p>
+    </div>
+  </section>
+
+  <section>
+    <span class="step-tag">03 — your print</span>
+    <h2>Pick a look</h2>
+    <p>This is what gets downloaded — either the fingerprint trace, or the network itself lit up
+    by its final activation. Pick a style, a color, and a background, and you're done.</p>
+
+    <div class="panel row">
+      <div class="col">
+        <div class="print-frame">
+          <canvas id="printCanvas" width="2400" height="2400"></canvas>
+        </div>
+      </div>
+      <div class="col">
+        <label class="field">Style</label>
+        <div class="toggle-group" id="printStyleToggle">
+          <button type="button" data-style="trace" class="active">Trace</button>
+          <button type="button" data-style="network">Network — final frame</button>
+        </div>
+
+        <label class="field">Color</label>
+        <div class="swatch-row" id="printSwatches">
+          <button type="button" class="swatch active" data-color="#5eb0a4" style="background:#5eb0a4;" title="Teal"></button>
+          <button type="button" class="swatch" data-color="#e0a54c" style="background:#e0a54c;" title="Amber"></button>
+          <button type="button" class="swatch" data-color="#9b8cd9" style="background:#9b8cd9;" title="Violet"></button>
+          <button type="button" class="swatch" data-color="#d97a6c" style="background:#d97a6c;" title="Danger"></button>
+          <input type="color" id="printCustomColor" value="#5eb0a4" style="width:34px;height:34px;border:1px solid var(--line);border-radius:50%;background:none;cursor:pointer;padding:0;">
+        </div>
+
+        <label class="field">Background</label>
+        <div class="toggle-group" id="printBgToggle">
+          <button type="button" data-bg="dark" class="active">Dark</button>
+          <button type="button" data-bg="light">Light</button>
+        </div>
+
+        <label class="field" style="display:flex; align-items:center; gap:6px;">
+          <input type="checkbox" id="printCaptionCheck" checked style="accent-color: var(--accent); margin:0;">
+          Print the text underneath
+        </label>
+
+        <div class="actions">
+          <button type="button" class="primary" id="downloadPrintBtn">Download high-res PNG</button>
+          <span class="status">2400×2400px</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="shareSection">
+    <span class="step-tag">04 — save &amp; share</span>
+    <h2>Take it with you</h2>
+    <p>Download the PNG above, then print it yourself or turn it into something physical — this
+    one's especially suited to a mug. <a href="https://www.zazzle.com/design_your_own_logo_design_coffee_mug-256206116898885602?rf=238054754631086278" target="_blank" rel="noopener">Open this Zazzle mug template</a>
+    and upload the PNG there — click "Personalize this design" and use the file you just
+    downloaded.</p>
+
+    <div class="panel row" style="align-items:center; margin-top:16px;">
+      <div class="col ledger-wrap">
+        <p class="status" style="margin:0 0 12px;">Or skip printing entirely — this QR code carries
+        the whole reservoir, quantized weights and all, right inside the link. Scan it and this
+        exact page reruns the exact network you built above, live. Nothing about it lives on a
+        server.</p>
+        <table class="ledger" id="ledger-table"></table>
+      </div>
+      <div class="col qr-box" style="flex:0 0 200px;">
+        <div id="qrcode"></div>
+        <div class="result-label">scan to relive it</div>
+        <div class="result-desc" id="qr-caption">Opens this exact page with the model embedded in
+        the link — no text or weights are ever sent anywhere to make that work.</div>
+      </div>
+    </div>
+  </section>
+
+  <details class="disclosure advanced">
+    <summary>How this actually works <span class="adv-sub">— reservoirs, spectral radius, and the node-link diagram underneath</span></summary>
+    <div class="disclosure-body">
+
+      <p>The weights aren't trained — they're a seeded random reservoir (an <i>echo state network</i>,
+      which is what this tool is named for), rescaled so the recurrent matrix hits the spectral
+      radius you chose above. At every character, the hidden state updates by:</p>
+
+      <div class="formula">h<sub>t</sub> <span class="op">=</span> tanh( W<sub>in</sub>·x<sub>t</sub> <span class="op">+</span> W<sub>rec</sub>·h<sub>t−1</sub> <span class="op">+</span> b )</div>
+
+      <p>x<sub>t</sub> is the current character as a 6-bit code (44 symbols — a–z, 0–9, space, and
+      basic punctuation — rather than one-hot, which is most of why this stays small). Because
+      there's no "correct" version being approximated, quantizing the weights to int8 for the QR
+      code loses nothing that matters: the quantized weights <i>are</i> the model. Parameter count
+      is fixed by H alone — <span class="field-value">H×(H+7)</span> — and never grows with the
+      length of what you type.</p>
+
+      <p>That also means the whole network is small enough to draw honestly, node by node,
+      connection by connection — not a stylized stand-in, the literal live weights of the
+      reservoir above:</p>
+
+      <div class="diagram-frame">
+        <svg id="diagram-svg" viewBox="0 0 640 440" preserveAspectRatio="xMidYMid meet"></svg>
+      </div>
+      <p class="status" id="diagram-caption" style="margin-top:8px;"></p>
+
+      <p style="margin-top:16px;">Input units sit on the left, feeding the six lines on the right
+      through <span style="color:var(--teal);">teal</span> (positive) and
+      <span style="color:var(--danger);">rust</span> (negative) connections — line opacity is
+      weight magnitude. The hidden units sit in a ring, fully recurrent: every unit feeds every
+      other unit, including itself, which is what makes it a loop instead of a straight pipeline.
+      Node fill here follows the same convention, keyed to that unit's <i>bias</i> — this is the
+      network's fixed wiring, unaffected by what you type. For how those same weights light up
+      while actually reading your text, see the live diagram in step 02 above, or export it as
+      its own print in step 03.</p>
+
+      <p style="margin-top:16px;">The spectral radius slider controls how the recurrent matrix is
+      rescaled before any of this runs — it's the single biggest lever on how the network behaves.
+      Below about 0.55 the state settles fast and forgets almost everything except the last couple
+      of characters ("fixed point"). Above about 1.05 small differences compound instead of fading,
+      so the trace can swing wildly and two similar inputs can end up looking unrelated
+      ("saturating / chaotic"). The range in between is where a reservoir is actually useful — it
+      remembers enough of what came before to make the trace mean something, without either
+      collapsing to a point or blowing up.</p>
+
+    </div>
+  </details>
+
+  <hr class="divider">
+</main>
+
+<footer>
+  <div class="wrap">
+    Echo State runs entirely in your browser — nothing about your text is uploaded anywhere.
+    Part of <a href="/lab/">The Concept Lab</a> by <a href="/">Michael Krauklis</a>.
+  </div>
+</footer>
+
+<script src="qrcode.min.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  var ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789 .,!?&'-";
+  var COLOR_START = '#5eb0a4', COLOR_END = '#e0a54c';
+
+  function mulberry32(a){
+    return function(){
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      var t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  function matVec(mat, vec, H){ var out = new Array(H); for (var i=0;i<H;i++){ var s=0; for (var j=0;j<H;j++) s += mat[i][j]*vec[j]; out[i]=s; } return out; }
+  function dot(a,b){ var s=0; for (var i=0;i<a.length;i++) s += a[i]*b[i]; return s; }
+
+  function specRadius(mat, H){
+    var v = new Array(H).fill(0).map(function(_,i){ return Math.sin(i*1.3+1)+2; });
+    var n0 = Math.sqrt(v.reduce(function(s,x){ return s+x*x; },0)); v = v.map(function(x){ return x/n0; });
+    var lambda = 1;
+    for (var k=0;k<80;k++){
+      var v2 = matVec(mat,v,H);
+      var n2 = Math.sqrt(v2.reduce(function(s,x){ return s+x*x; },0)) || 1e-9;
+      v = v2.map(function(x){ return x/n2; });
+      lambda = n2;
+    }
+    return lambda;
+  }
+
+  function buildReservoir(seed, H, targetRadius){
+    var rnd = mulberry32(seed >>> 0);
+    var Win = Array.from({length:H}, function(){ return Array.from({length:6}, function(){ return rnd()*2-1; }); });
+    var Wrec = Array.from({length:H}, function(){ return Array.from({length:H}, function(){ return rnd()*2-1; }); });
+    var bias = Array.from({length:H}, function(){ return (rnd()*2-1)*0.15; });
+    var sr = specRadius(Wrec, H);
+    var scale = sr > 1e-6 ? targetRadius/sr : 1;
+    Wrec = Wrec.map(function(row){ return row.map(function(v){ return v*scale; }); });
+    return {Win:Win, Wrec:Wrec, bias:bias, H:H};
+  }
+
+  function charIndex(ch){ var c = ch.toLowerCase(); var idx = ALPHABET.indexOf(c); return idx>=0 ? idx : ALPHABET.indexOf(' '); }
+  function code6(idx){ var bits = new Array(6); for (var b=0;b<6;b++) bits[5-b] = (idx>>b)&1; return bits; }
+
+  function runForward(text, model, H){
+    var h = new Array(H).fill(0);
+    var states = [h.slice()];
+    for (var k=0;k<text.length;k++){
+      var bits = code6(charIndex(text[k]));
+      var newH = new Array(H);
+      for (var i=0;i<H;i++){
+        var s = model.bias[i];
+        for (var j=0;j<6;j++) s += model.Win[i][j]*bits[j];
+        for (var j2=0;j2<H;j2++) s += model.Wrec[i][j2]*h[j2];
+        newH[i] = Math.tanh(s);
+      }
+      h = newH;
+      states.push(h.slice());
+    }
+    return states;
+  }
+
+  function pca2(states, H){
+    var n = states.length;
+    var mean = new Array(H).fill(0);
+    states.forEach(function(v){ v.forEach(function(x,i){ mean[i]+=x; }); });
+    for (var i=0;i<H;i++) mean[i] /= n;
+    var centered = states.map(function(v){ return v.map(function(x,i){ return x-mean[i]; }); });
+    var cov = Array.from({length:H}, function(){ return new Array(H).fill(0); });
+    centered.forEach(function(v){ for (var a=0;a<H;a++) for (var b=0;b<H;b++) cov[a][b] += v[a]*v[b]; });
+    for (var a2=0;a2<H;a2++) for (var b2=0;b2<H;b2++) cov[a2][b2] /= Math.max(1, n-1);
+
+    function powerIterVec(mat, deflateVec){
+      var v = new Array(H).fill(0).map(function(_,i){ return Math.sin(i*0.7+1)+2; });
+      for (var iter=0; iter<120; iter++){
+        var v2 = matVec(mat, v, H);
+        if (deflateVec){ var d = dot(v2, deflateVec); v2 = v2.map(function(x,i){ return x-d*deflateVec[i]; }); }
+        var norm = Math.sqrt(v2.reduce(function(s,x){ return s+x*x; },0)) || 1e-9;
+        v = v2.map(function(x){ return x/norm; });
+      }
+      return v;
+    }
+    var pc1 = powerIterVec(cov, null);
+    var cv1 = matVec(cov, pc1, H);
+    var lambda1 = dot(cv1, pc1);
+    var cov2 = cov.map(function(row,i){ return row.map(function(val,j){ return val - lambda1*pc1[i]*pc1[j]; }); });
+    var pc2 = powerIterVec(cov2, null);
+    return centered.map(function(v){ return [dot(v,pc1), dot(v,pc2)]; });
+  }
+
+  function project(states, H){
+    if (H <= 2) return states.map(function(v){ return [v[0]||0, v[1]||0]; });
+    return pca2(states, H);
+  }
+
+  // ---- quantized weight payload: encode() builds what the QR carries, decode() rebuilds an
+  // exact model from it. There's no "correct" trained version being approximated here, so int8
+  // quantization loses nothing that matters -- the quantized weights ARE the model, both ways.
+  function buildPayload(model, H, text){
+    var flat = [];
+    model.Win.forEach(function(r){ r.forEach(function(v){ flat.push(v); }); });
+    model.Wrec.forEach(function(r){ r.forEach(function(v){ flat.push(v); }); });
+    model.bias.forEach(function(v){ flat.push(v); });
+    var maxAbs = Math.max.apply(null, [1e-6].concat(flat.map(function(v){ return Math.abs(v); })));
+    var scaleByte = Math.max(0, Math.min(255, Math.round(maxAbs*40)));
+    var decodedMax = scaleByte/40;
+    var qScale = 127/Math.max(1e-6, decodedMax);
+    var textBytes = new TextEncoder().encode(text);
+    var bytes = new Uint8Array(2 + flat.length + textBytes.length);
+    bytes[0] = H; bytes[1] = scaleByte;
+    flat.forEach(function(v,i){
+      var q = Math.round(v*qScale);
+      q = Math.max(-127, Math.min(127, q));
+      bytes[2+i] = q+128;
+    });
+    bytes.set(textBytes, 2+flat.length);
+    return {bytes:bytes, weightBytes:2+flat.length, textBytes:textBytes.length, params:flat.length};
+  }
+
+  function decodePayload(bytes){
+    if (bytes.length < 2) return null;
+    var H = bytes[0], scaleByte = bytes[1];
+    if (H < 1 || H > 64) return null;
+    var decodedMax = scaleByte/40;
+    var qScale = 127/Math.max(1e-6, decodedMax);
+    var nWeights = H*6 + H*H + H;
+    if (bytes.length < 2+nWeights) return null;
+    var flat = [];
+    for (var i=0;i<nWeights;i++) flat.push((bytes[2+i]-128)/qScale);
+    var idx = 0, Win = [], Wrec = [], bias = [];
+    for (var r=0;r<H;r++){ var row=[]; for (var c=0;c<6;c++) row.push(flat[idx++]); Win.push(row); }
+    for (var r2=0;r2<H;r2++){ var row2=[]; for (var c2=0;c2<H;c2++) row2.push(flat[idx++]); Wrec.push(row2); }
+    for (var b=0;b<H;b++) bias.push(flat[idx++]);
+    var text = '';
+    try { text = new TextDecoder().decode(bytes.slice(2+nWeights)); } catch(e){}
+    return {H:H, model:{Win:Win, Wrec:Wrec, bias:bias, H:H}, text:text};
+  }
+
+  function toBase64Url(bytes){
+    var bin = '';
+    bytes.forEach(function(b){ bin += String.fromCharCode(b); });
+    return btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  }
+  function fromBase64Url(str){
+    str = str.replace(/-/g,'+').replace(/_/g,'/');
+    while (str.length % 4) str += '=';
+    var bin = atob(str);
+    var bytes = new Uint8Array(bin.length);
+    for (var i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  }
+
+  var QR_CAP_M = [[1,14],[5,84],[10,213],[15,412],[20,666],[25,997],[30,1370],[40,2331]];
+  function estimateVersion(byteLen){
+    for (var i=0;i<QR_CAP_M.length;i++){ if (byteLen <= QR_CAP_M[i][1]) return String(QR_CAP_M[i][0]); }
+    return '40+';
+  }
+
+  function hexToRgb(hex){ return [parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)]; }
+  function lerpColor(hexA, hexB, t){
+    var a = hexToRgb(hexA), b = hexToRgb(hexB);
+    var r = a.map(function(v,i){ return Math.round(v + (b[i]-v)*t); });
+    return 'rgb(' + r.join(',') + ')';
+  }
+  function rgba(hex, alpha){ var c = hexToRgb(hex); return 'rgba(' + c.join(',') + ',' + alpha + ')'; }
+
+  // ---- state ----
+  var state = { H: 8, seed: 42, radius: 0.9, text: 'ADA & CHARLES', t: 0, playing: false, playTimer: null,
+                printColor: '#5eb0a4', printBg: 'dark', printCaption: true, printStyle: 'trace',
+                replayModel: null };
+
+  var textInput = document.getElementById('text-input');
+  var hSelect = document.getElementById('h-select');
+  var radiusRange = document.getElementById('radius-range');
+  var radiusVal = document.getElementById('radius-val');
+  var regimeLabel = document.getElementById('regime-label');
+  var rerollBtn = document.getElementById('reroll-btn');
+  var replayNote = document.getElementById('replayNote');
+  var svg = document.getElementById('trace-svg');
+  var playBtn = document.getElementById('play-btn');
+  var scrub = document.getElementById('scrub');
+  var readhead = document.getElementById('readhead');
+  var ledgerTable = document.getElementById('ledger-table');
+  var qrDiv = document.getElementById('qrcode');
+  var qrCaption = document.getElementById('qr-caption');
+  var projNote = document.getElementById('proj-note');
+  var printCanvas = document.getElementById('printCanvas');
+  var printSwatches = document.getElementById('printSwatches');
+  var printCustomColor = document.getElementById('printCustomColor');
+  var printBgToggle = document.getElementById('printBgToggle');
+  var printCaptionCheck = document.getElementById('printCaptionCheck');
+  var downloadPrintBtn = document.getElementById('downloadPrintBtn');
+  var diagramSvg = document.getElementById('diagram-svg');
+  var diagramCaption = document.getElementById('diagram-caption');
+  var activationSvg = document.getElementById('activation-svg');
+  var activationCaption = document.getElementById('activation-caption');
+  var printStyleToggle = document.getElementById('printStyleToggle');
+  var heroCanvas = document.getElementById('heroCanvas');
+
+  var cached = null;
+
+  function regimeFor(sr){
+    if (sr < 0.55) return 'fixed point — short memory';
+    if (sr <= 1.05) return 'rich dynamics';
+    return 'saturating / chaotic';
+  }
+
+  function exitReplay(){
+    if (!state.replayModel) return;
+    state.replayModel = null;
+    replayNote.style.display = 'none';
+  }
+
+  function recompute(){
+    var model = state.replayModel || buildReservoir(state.seed, state.H, state.radius);
+    var states = runForward(state.text, model, state.H);
+    var points = project(states, state.H);
+    var payload = buildPayload(model, state.H, state.text);
+    cached = {model:model, states:states, points:points, payload:payload};
+
+    projNote.textContent = state.H <= 2
+      ? 'H=2 — plotted directly, no projection needed.'
+      : 'Top 2 principal components of the ' + state.H + '-dimensional state.';
+
+    regimeLabel.textContent = state.replayModel ? '' : '— ' + regimeFor(state.radius);
+
+    scrub.max = String(state.text.length);
+    if (state.t > state.text.length) state.t = state.text.length;
+    scrub.value = String(state.t);
+
+    renderTrace();
+    renderReadhead();
+    renderActivationDiagram();
+    renderLedger();
+    renderQR();
+    renderPrint();
+    renderDiagram();
+  }
+
+  function computeLayout(points, W, H, pad){
+    var xs = points.map(function(p){ return p[0]; }), ys = points.map(function(p){ return p[1]; });
+    var minX = Math.min.apply(null, xs), maxX = Math.max.apply(null, xs);
+    var minY = Math.min.apply(null, ys), maxY = Math.max.apply(null, ys);
+    var spanX = Math.max(maxX-minX, 1e-6), spanY = Math.max(maxY-minY, 1e-6);
+    var scale = Math.min((W-2*pad)/spanX, (H-2*pad)/spanY);
+    var cx = (minX+maxX)/2, cy = (minY+maxY)/2;
+    return function(p){ return [ W/2 + (p[0]-cx)*scale, H/2 - (p[1]-cy)*scale ]; };
+  }
+
+  function escapeXml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  // Catmull-Rom control points for a smooth curve through pts[i] -> pts[i+1] (clamped at ends).
+  function catmullRomPoint(pts, i){
+    var p0 = pts[Math.max(0,i-1)];
+    var p1 = pts[i];
+    var p2 = pts[i+1];
+    var p3 = pts[Math.min(pts.length-1, i+2)];
+    return {
+      c1: [ p1[0] + (p2[0]-p0[0])/6, p1[1] + (p2[1]-p0[1])/6 ],
+      c2: [ p2[0] - (p3[0]-p1[0])/6, p2[1] - (p3[1]-p1[1])/6 ]
+    };
+  }
+
+  // Shared node placement for both the structure diagram and the live activation diagram --
+  // same layout so the two read as views of the same network, not two different drawings.
+  function computeNodeLayout(H){
+    var cx = 430, cy = 220, radius = 150;
+    var hiddenPos = []; for (var i=0;i<H;i++){ var ang = (i/H)*2*Math.PI - Math.PI/2; hiddenPos.push([cx+radius*Math.cos(ang), cy+radius*Math.sin(ang)]); }
+    var inputPos = []; var top = 60, bottom = 380; for (var k=0;k<6;k++){ var y = top + (bottom-top)*(k/5); inputPos.push([70, y]); }
+    return {cx:cx, cy:cy, radius:radius, hiddenPos:hiddenPos, inputPos:inputPos};
+  }
+
+  function renderTrace(){
+    var points = cached.points;
+    var upto = Math.min(state.t, points.length-1);
+    var toSvg = computeLayout(points, 600, 380, 34);
+    var svgPoints = points.map(toSvg);
+    var n = points.length;
+
+    var parts = [];
+    for (var i=0;i<Math.min(upto, n-1);i++){
+      var t1 = n>1 ? (i+1)/(n-1) : 0;
+      var strokeCol = lerpColor(COLOR_START, COLOR_END, t1);
+      var cp = catmullRomPoint(svgPoints, i);
+      var p0 = svgPoints[i], p1 = svgPoints[i+1];
+      parts.push('<path d="M '+p0[0].toFixed(2)+' '+p0[1].toFixed(2)+' C '+cp.c1[0].toFixed(2)+' '+cp.c1[1].toFixed(2)+', '+cp.c2[0].toFixed(2)+' '+cp.c2[1].toFixed(2)+', '+p1[0].toFixed(2)+' '+p1[1].toFixed(2)+'" stroke="'+strokeCol+'" stroke-width="2.6" fill="none" stroke-linecap="round"/>');
+    }
+    for (var j=0;j<=upto;j++){
+      var tj = n>1 ? j/(n-1) : 0;
+      var cj = lerpColor(COLOR_START, COLOR_END, tj);
+      var pj = svgPoints[j];
+      var r = (j===upto) ? 6 : 2.6;
+      var extra = (j===upto) ? ' stroke="#0c0e13" stroke-width="2"' : '';
+      parts.push('<circle cx="'+pj[0].toFixed(2)+'" cy="'+pj[1].toFixed(2)+'" r="'+r+'" fill="'+cj+'"'+extra+'><title>'+(j===0? '(start)': escapeXml(state.text[j-1]))+'</title></circle>');
+    }
+    svg.innerHTML = parts.join('');
+  }
+
+  function renderReadhead(){
+    var text = state.text, upto = state.t;
+    if (!text.length){ readhead.textContent = '(empty)'; return; }
+    var shown = text.length > 60 ? text.slice(0,60)+'…' : text;
+    var html = '';
+    for (var i=0;i<shown.length;i++){
+      var ch = escapeXml(shown[i]);
+      html += (i === upto-1) ? '<mark>'+ch+'</mark>' : ch;
+    }
+    readhead.innerHTML = html;
+  }
+
+  function fmtBytes(n){ return n.toLocaleString() + ' B'; }
+
+  function renderLedger(){
+    var H = state.H, p = cached.payload;
+    var url = location.origin + location.pathname + '?d=' + toBase64Url(p.bytes);
+    var rows = [
+      ['Hidden units (H)', String(H)],
+      ['Parameters — H×(H+7)', String(H*(H+7))],
+      ['Header bytes', '2'],
+      ['Weight bytes (int8, quantized)', fmtBytes(p.weightBytes)],
+      ['Message bytes (UTF-8)', fmtBytes(p.textBytes)],
+      ['Total raw payload', fmtBytes(p.bytes.length)],
+      ['Base64url encoded', (p.bytes.length ? toBase64Url(p.bytes).length : 0) + ' chars'],
+      ['Full URL length', url.length + ' chars'],
+      ['Estimated QR version (M)', '≈ v' + estimateVersion(url.length)],
+    ];
+    ledgerTable.innerHTML = rows.map(function(r){ return '<tr><td>'+r[0]+'</td><td>'+r[1]+'</td></tr>'; }).join('');
+    cached.url = url;
+  }
+
+  function renderQR(){
+    qrDiv.innerHTML = '';
+    if (window.QRCode){ new QRCode(qrDiv, { text: cached.url, width:150, height:150, correctLevel: QRCode.CorrectLevel.M }); }
+  }
+
+  function renderPrint(){
+    var ctx = printCanvas.getContext('2d');
+    var W = printCanvas.width, H = printCanvas.height;
+    var bg = state.printBg === 'dark' ? '#0c0e13' : '#f4f2ea';
+    ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+    var captionSpace = state.printCaption ? 280 : 0;
+
+    if (state.printStyle === 'network'){
+      drawNetworkPrint(ctx, W, H, captionSpace);
+    } else {
+      var toSvg = computeLayout(cached.points, W, H-captionSpace-160, 240);
+      var pts = cached.points.map(toSvg).map(function(p){ return [p[0], p[1]+80]; });
+      var n = pts.length;
+
+      for (var i=0;i<n-1;i++){
+        var t1 = n>1 ? (i+1)/(n-1) : 0;
+        var cp = catmullRomPoint(pts, i);
+        ctx.strokeStyle = rgba(state.printColor, 0.35 + 0.65*t1);
+        ctx.lineWidth = 14;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(pts[i][0], pts[i][1]);
+        ctx.bezierCurveTo(cp.c1[0], cp.c1[1], cp.c2[0], cp.c2[1], pts[i+1][0], pts[i+1][1]);
+        ctx.stroke();
+      }
+    }
+
+    if (state.printCaption && state.text.trim()){
+      ctx.fillStyle = state.printBg === 'dark' ? '#e9e7de' : '#20242c';
+      ctx.font = '600 92px Fraunces, Georgia, serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(state.text.toUpperCase(), W/2, H-140);
+    }
+  }
+
+  // Network print style: the same node-link diagram as the live view, frozen at the final
+  // frame (after the whole text has been read), monochrome in the chosen accent -- a clean
+  // one-hue "lit circuit" rendering meant for merch rather than for reading exact values.
+  function drawNetworkPrint(ctx, W, H, captionSpace){
+    var Hn = state.H, model = cached.model;
+    var layout = computeNodeLayout(Hn);
+    var final = cached.states[cached.states.length-1];
+    var lastCharIdx = state.text.length > 0 ? charIndex(state.text[state.text.length-1]) : -1;
+    var bits = lastCharIdx >= 0 ? code6(lastCharIdx) : [0,0,0,0,0,0];
+
+    var pad = 200;
+    var destH = H - captionSpace - 160;
+    var scale = Math.min((W-2*pad)/640, (destH-2*pad)/440);
+    var destCx = W/2, destCy = 80 + destH/2;
+    function mapPt(p){ return [ destCx + (p[0]-layout.cx)*scale, destCy + (p[1]-layout.cy)*scale ]; }
+
+    var flatAbs = [];
+    model.Win.forEach(function(r){ r.forEach(function(v){ flatAbs.push(Math.abs(v)); }); });
+    model.Wrec.forEach(function(r){ r.forEach(function(v){ flatAbs.push(Math.abs(v)); }); });
+    var maxAbsW = Math.max.apply(null, [1e-6].concat(flatAbs));
+
+    var hiddenPos = layout.hiddenPos.map(mapPt), inputPos = layout.inputPos.map(mapPt);
+
+    ctx.lineCap = 'round';
+    for (var hI=0; hI<Hn; hI++){
+      for (var inI=0; inI<6; inI++){
+        var w = model.Win[hI][inI];
+        var op = Math.min(0.16, 0.02 + 0.16*(Math.abs(w)/maxAbsW));
+        ctx.strokeStyle = rgba(state.printColor, op);
+        ctx.lineWidth = Math.max(1, 2*scale);
+        ctx.beginPath(); ctx.moveTo(inputPos[inI][0], inputPos[inI][1]); ctx.lineTo(hiddenPos[hI][0], hiddenPos[hI][1]); ctx.stroke();
+      }
+    }
+    for (var a=0; a<Hn; a++){
+      for (var b=0; b<Hn; b++){
+        if (a === b) continue;
+        var wr = model.Wrec[a][b];
+        var opr = Math.min(0.18, 0.02 + 0.18*(Math.abs(wr)/maxAbsW));
+        ctx.strokeStyle = rgba(state.printColor, opr);
+        ctx.lineWidth = Math.max(1, 1.6*scale);
+        ctx.beginPath(); ctx.moveTo(hiddenPos[a][0], hiddenPos[a][1]); ctx.lineTo(hiddenPos[b][0], hiddenPos[b][1]); ctx.stroke();
+      }
+    }
+    for (var iN=0; iN<6; iN++){
+      var active = bits[iN] === 1;
+      ctx.fillStyle = rgba(state.printColor, active ? 0.9 : 0.18);
+      ctx.beginPath(); ctx.arc(inputPos[iN][0], inputPos[iN][1], (active?9:5)*scale, 0, 2*Math.PI); ctx.fill();
+    }
+    for (var hN=0; hN<Hn; hN++){
+      var mag = Math.min(1, Math.abs(final[hN]));
+      ctx.fillStyle = rgba(state.printColor, 0.18 + 0.75*mag);
+      ctx.beginPath(); ctx.arc(hiddenPos[hN][0], hiddenPos[hN][1], (9+11*mag)*scale, 0, 2*Math.PI); ctx.fill();
+    }
+  }
+
+  function renderDiagram(){
+    var H = state.H, model = cached.model;
+    var layout = computeNodeLayout(H);
+    var hiddenPos = layout.hiddenPos, inputPos = layout.inputPos, cx = layout.cx, cy = layout.cy;
+
+    var flatAbs = [];
+    model.Win.forEach(function(r){ r.forEach(function(v){ flatAbs.push(Math.abs(v)); }); });
+    model.Wrec.forEach(function(r){ r.forEach(function(v){ flatAbs.push(Math.abs(v)); }); });
+    var maxAbs = Math.max.apply(null, [1e-6].concat(flatAbs));
+
+    var parts = [];
+    // input -> hidden edges
+    for (var hI=0; hI<H; hI++){
+      for (var inI=0; inI<6; inI++){
+        var w = model.Win[hI][inI];
+        var op = Math.min(0.55, 0.06 + 0.55*(Math.abs(w)/maxAbs));
+        var col = w >= 0 ? '#5eb0a4' : '#d97a6c';
+        parts.push('<line x1="'+inputPos[inI][0]+'" y1="'+inputPos[inI][1]+'" x2="'+hiddenPos[hI][0].toFixed(1)+'" y2="'+hiddenPos[hI][1].toFixed(1)+'" stroke="'+col+'" stroke-opacity="'+op.toFixed(2)+'" stroke-width="1"/>');
+      }
+    }
+    // recurrent hidden -> hidden edges (chords), self-loops separate
+    for (var a=0; a<H; a++){
+      for (var b=0; b<H; b++){
+        var wr = model.Wrec[a][b];
+        var opr = Math.min(0.6, 0.06 + 0.6*(Math.abs(wr)/maxAbs));
+        var colr = wr >= 0 ? '#5eb0a4' : '#d97a6c';
+        if (a === b){
+          var p0 = hiddenPos[a];
+          var lx = cx + (p0[0]-cx)*1.28, ly = cy + (p0[1]-cy)*1.28;
+          parts.push('<circle cx="'+lx.toFixed(1)+'" cy="'+ly.toFixed(1)+'" r="7" fill="none" stroke="'+colr+'" stroke-opacity="'+opr.toFixed(2)+'" stroke-width="1.2"/>');
+        } else {
+          parts.push('<line x1="'+hiddenPos[a][0].toFixed(1)+'" y1="'+hiddenPos[a][1].toFixed(1)+'" x2="'+hiddenPos[b][0].toFixed(1)+'" y2="'+hiddenPos[b][1].toFixed(1)+'" stroke="'+colr+'" stroke-opacity="'+opr.toFixed(2)+'" stroke-width="0.8"/>');
+        }
+      }
+    }
+    // input nodes
+    for (var iN=0; iN<6; iN++){
+      parts.push('<circle cx="'+inputPos[iN][0]+'" cy="'+inputPos[iN][1]+'" r="5" fill="#9aa0ae"/>');
+    }
+    // hidden nodes, filled by bias
+    var maxBias = Math.max.apply(null, [1e-6].concat(model.bias.map(Math.abs)));
+    for (var hN=0; hN<H; hN++){
+      var bv = model.bias[hN];
+      var bt = Math.min(1, Math.abs(bv)/maxBias);
+      var nodeColor = bv >= 0 ? lerpColor('#2a3040', '#5eb0a4', bt) : lerpColor('#2a3040', '#d97a6c', bt);
+      parts.push('<circle cx="'+hiddenPos[hN][0].toFixed(1)+'" cy="'+hiddenPos[hN][1].toFixed(1)+'" r="7" fill="'+nodeColor+'" stroke="#e9e7de" stroke-width="0.6"/>');
+    }
+    parts.push('<text x="70" y="42" fill="#9aa0ae" font-family="Inter, sans-serif" font-size="12">input (6)</text>');
+    parts.push('<text x="'+(cx-40)+'" y="42" fill="#9aa0ae" font-family="Inter, sans-serif" font-size="12">hidden (H='+H+'), fully recurrent</text>');
+
+    diagramSvg.innerHTML = parts.join('');
+    var edgeCount = 6*H + H*H;
+    diagramCaption.textContent = (6+H) + ' nodes, ' + edgeCount + ' connections — small enough to draw every one.';
+  }
+
+  // Live view: same network, but node fill is the CURRENT activation (states[state.t]) rather
+  // than the fixed bias, and input nodes light up for the character just read.
+  function renderActivationDiagram(){
+    var H = state.H, model = cached.model;
+    var layout = computeNodeLayout(H);
+    var hiddenPos = layout.hiddenPos, inputPos = layout.inputPos, cx = layout.cx, cy = layout.cy;
+    var hidden = cached.states[state.t];
+    var curCharIdx = state.t > 0 ? charIndex(state.text[state.t-1]) : -1;
+    var bits = curCharIdx >= 0 ? code6(curCharIdx) : [0,0,0,0,0,0];
+
+    var flatAbs = [];
+    model.Win.forEach(function(r){ r.forEach(function(v){ flatAbs.push(Math.abs(v)); }); });
+    model.Wrec.forEach(function(r){ r.forEach(function(v){ flatAbs.push(Math.abs(v)); }); });
+    var maxAbsW = Math.max.apply(null, [1e-6].concat(flatAbs));
+
+    var parts = [];
+    for (var hI=0; hI<H; hI++){
+      for (var inI=0; inI<6; inI++){
+        var w = model.Win[hI][inI];
+        var op = Math.min(0.32, 0.03 + 0.32*(Math.abs(w)/maxAbsW));
+        var col = w >= 0 ? '#5eb0a4' : '#d97a6c';
+        parts.push('<line x1="'+inputPos[inI][0]+'" y1="'+inputPos[inI][1]+'" x2="'+hiddenPos[hI][0].toFixed(1)+'" y2="'+hiddenPos[hI][1].toFixed(1)+'" stroke="'+col+'" stroke-opacity="'+op.toFixed(2)+'" stroke-width="1"/>');
+      }
+    }
+    for (var a=0; a<H; a++){
+      for (var b=0; b<H; b++){
+        var wr = model.Wrec[a][b];
+        var opr = Math.min(0.36, 0.03 + 0.36*(Math.abs(wr)/maxAbsW));
+        var colr = wr >= 0 ? '#5eb0a4' : '#d97a6c';
+        if (a === b){
+          var p0 = hiddenPos[a];
+          var lx = cx + (p0[0]-cx)*1.28, ly = cy + (p0[1]-cy)*1.28;
+          parts.push('<circle cx="'+lx.toFixed(1)+'" cy="'+ly.toFixed(1)+'" r="7" fill="none" stroke="'+colr+'" stroke-opacity="'+opr.toFixed(2)+'" stroke-width="1.2"/>');
+        } else {
+          parts.push('<line x1="'+hiddenPos[a][0].toFixed(1)+'" y1="'+hiddenPos[a][1].toFixed(1)+'" x2="'+hiddenPos[b][0].toFixed(1)+'" y2="'+hiddenPos[b][1].toFixed(1)+'" stroke="'+colr+'" stroke-opacity="'+opr.toFixed(2)+'" stroke-width="0.8"/>');
+        }
+      }
+    }
+    for (var iN=0; iN<6; iN++){
+      var active = bits[iN] === 1;
+      var rIn = active ? 7 : 4;
+      var fillIn = active ? '#e9e7de' : '#454c5e';
+      parts.push('<circle cx="'+inputPos[iN][0]+'" cy="'+inputPos[iN][1]+'" r="'+rIn+'" fill="'+fillIn+'"/>');
+    }
+    for (var hN=0; hN<H; hN++){
+      var v = hidden[hN];
+      var mag = Math.min(1, Math.abs(v));
+      var col2 = v >= 0 ? lerpColor('#20262f', '#5eb0a4', mag) : lerpColor('#20262f', '#d97a6c', mag);
+      var rad = 6 + 8*mag;
+      parts.push('<circle cx="'+hiddenPos[hN][0].toFixed(1)+'" cy="'+hiddenPos[hN][1].toFixed(1)+'" r="'+rad.toFixed(1)+'" fill="'+col2+'" stroke="#e9e7de" stroke-width="0.6"/>');
+    }
+    parts.push('<text x="70" y="42" fill="#9aa0ae" font-family="Inter, sans-serif" font-size="12">input — current character</text>');
+    parts.push('<text x="'+(cx-56)+'" y="42" fill="#9aa0ae" font-family="Inter, sans-serif" font-size="12">hidden — live activation</text>');
+    activationSvg.innerHTML = parts.join('');
+
+    if (state.t === 0){
+      activationCaption.textContent = 'Before the first character — everything at rest.';
+    } else if (state.t >= state.text.length){
+      activationCaption.textContent = 'Final frame — after reading all ' + state.text.length + ' characters.';
+    } else {
+      activationCaption.textContent = 'Reading "' + state.text[state.t-1] + '" — character ' + state.t + ' of ' + state.text.length + '.';
+    }
+  }
+
+  function drawHero(){
+    var m = buildReservoir(7, 8, 0.92);
+    var st = runForward('CONCEPT LAB', m, 8);
+    var pts = project(st, 8);
+    var toSvg = computeLayout(pts, 400, 220, 28);
+    var svgPts = pts.map(toSvg);
+    var n = svgPts.length;
+    var parts = [];
+    for (var i=0;i<n-1;i++){
+      var t1 = n>1 ? (i+1)/(n-1) : 0;
+      var cp = catmullRomPoint(svgPts, i);
+      var p0 = svgPts[i], p1 = svgPts[i+1];
+      parts.push('<path d="M '+p0[0].toFixed(1)+' '+p0[1].toFixed(1)+' C '+cp.c1[0].toFixed(1)+' '+cp.c1[1].toFixed(1)+', '+cp.c2[0].toFixed(1)+' '+cp.c2[1].toFixed(1)+', '+p1[0].toFixed(1)+' '+p1[1].toFixed(1)+'" stroke="'+lerpColor(COLOR_START,COLOR_END,t1)+'" stroke-width="3" fill="none" stroke-linecap="round"/>');
+    }
+    heroCanvas.innerHTML = parts.join('');
+  }
+
+  // ---- events ----
+  textInput.addEventListener('input', function(){
+    state.text = textInput.value;
+    state.t = state.text.length;
+    stopPlay();
+    recompute();
+  });
+
+  hSelect.addEventListener('click', function(e){
+    var btn = e.target.closest('button[data-h]');
+    if (!btn) return;
+    exitReplay();
+    Array.from(hSelect.children).forEach(function(b){ b.classList.toggle('active', b===btn); });
+    state.H = parseInt(btn.getAttribute('data-h'), 10);
+    stopPlay();
+    state.t = state.text.length;
+    recompute();
+  });
+
+  radiusRange.addEventListener('input', function(){
+    exitReplay();
+    state.radius = parseFloat(radiusRange.value);
+    radiusVal.textContent = state.radius.toFixed(2);
+    recompute();
+  });
+
+  rerollBtn.addEventListener('click', function(){
+    exitReplay();
+    state.seed = Math.floor(Math.random()*4294967296);
+    recompute();
+  });
+
+  scrub.addEventListener('input', function(){
+    stopPlay();
+    state.t = parseInt(scrub.value, 10);
+    renderTrace();
+    renderReadhead();
+    renderActivationDiagram();
+  });
+
+  function stopPlay(){
+    state.playing = false;
+    playBtn.textContent = '▶ Play';
+    if (state.playTimer){ clearInterval(state.playTimer); state.playTimer = null; }
+  }
+  playBtn.addEventListener('click', function(){
+    if (state.playing){ stopPlay(); return; }
+    if (state.t >= state.text.length) state.t = 0;
+    state.playing = true;
+    playBtn.textContent = '❙❙ Pause';
+    state.playTimer = setInterval(function(){
+      state.t++;
+      if (state.t > state.text.length){ stopPlay(); return; }
+      scrub.value = String(state.t);
+      renderTrace();
+      renderReadhead();
+      renderActivationDiagram();
+    }, 220);
+  });
+
+  printStyleToggle.addEventListener('click', function(e){
+    var btn = e.target.closest('button[data-style]');
+    if (!btn) return;
+    Array.from(printStyleToggle.children).forEach(function(b){ b.classList.toggle('active', b===btn); });
+    state.printStyle = btn.getAttribute('data-style');
+    renderPrint();
+  });
+
+  printSwatches.addEventListener('click', function(e){
+    var btn = e.target.closest('button.swatch');
+    if (!btn) return;
+    Array.from(printSwatches.querySelectorAll('.swatch')).forEach(function(b){ b.classList.toggle('active', b===btn); });
+    state.printColor = btn.getAttribute('data-color');
+    printCustomColor.value = state.printColor;
+    renderPrint();
+  });
+  printCustomColor.addEventListener('input', function(){
+    Array.from(printSwatches.querySelectorAll('.swatch')).forEach(function(b){ b.classList.remove('active'); });
+    state.printColor = printCustomColor.value;
+    renderPrint();
+  });
+  printBgToggle.addEventListener('click', function(e){
+    var btn = e.target.closest('button[data-bg]');
+    if (!btn) return;
+    Array.from(printBgToggle.children).forEach(function(b){ b.classList.toggle('active', b===btn); });
+    state.printBg = btn.getAttribute('data-bg');
+    renderPrint();
+  });
+  printCaptionCheck.addEventListener('change', function(){
+    state.printCaption = printCaptionCheck.checked;
+    renderPrint();
+  });
+
+  downloadPrintBtn.addEventListener('click', function(){
+    var link = document.createElement('a');
+    link.download = 'echo-state-' + (state.printStyle === 'network' ? 'network' : 'fingerprint') + '.png';
+    link.href = printCanvas.toDataURL('image/png');
+    link.click();
+  });
+
+  if (document.fonts && document.fonts.ready){ document.fonts.ready.then(function(){ if (cached) renderPrint(); }); }
+
+  drawHero();
+
+  // A link carrying a `?d=` payload (from this page's own QR export) replays that exact
+  // reservoir instead of generating a fresh one -- see decodePayload()/buildPayload() above.
+  (function initFromUrl(){
+    try {
+      var params = new URLSearchParams(location.search);
+      if (!params.has('d')) return;
+      var decoded = decodePayload(fromBase64Url(params.get('d')));
+      if (!decoded) return;
+      state.replayModel = decoded.model;
+      state.H = decoded.H;
+      state.text = decoded.text;
+      textInput.value = decoded.text;
+      Array.from(hSelect.children).forEach(function(b){ b.classList.toggle('active', parseInt(b.getAttribute('data-h'),10) === decoded.H); });
+      replayNote.style.display = 'block';
+    } catch(e){ /* malformed link -- fall back to the default reservoir below */ }
+  })();
+
+  state.t = state.text.length;
+  recompute();
+})();
+</script>
+</body>
+</html>
