@@ -44,21 +44,33 @@ item. `index.html` talks to the worker with a small request/response wrapper
 particular request, since progress belongs to "the model is loading" rather than to whichever
 call happened to trigger that load.
 
-## The model
+## The models — two of them, not one
 
-`Xenova/clip-vit-base-patch32`, loaded as two independent towers so a text-only user never pays
-for the (larger) vision tower:
-- **Text tower** (`AutoTokenizer` + `CLIPTextModelWithProjection`) loads immediately on page
-  load (`warmText()`), since axis words always need it — there's no useful state before it's
-  ready, so `setControlsEnabled(false)` disables axis/add-text inputs until it resolves.
-- **Vision tower** (`AutoProcessor` + `CLIPVisionModelWithProjection`) loads lazily, on the
-  first image drop (`warmVisionIfNeeded()`), so someone who only ever plots words never
-  downloads it.
+This used to be one model (CLIP) doing everything. It's now **two**, chosen per `state.mode`, not
+by user choice — see "Two embedding models, one per mode" below for why and how this was decided.
+`env.allowLocalModels = false` keeps transformers.js from trying anything except the public hub,
+for both.
 
-Both emit `text_embeds`/`image_embeds` from the same joint space; the worker L2-normalizes every
-row before sending it back (`normalizeRows()`), so `cosine()` on the main thread is just a dot
-product. `env.allowLocalModels = false` keeps transformers.js from trying anything except the
-public hub.
+- **General text model** (`Xenova/all-MiniLM-L6-v2`, loaded via `pipeline('feature-extraction',
+  ...)`) — used for every word-to-word comparison in Words mode: axis words, typed items, and the
+  quick-similarity-check widget. Loads immediately on page load (`warmGeneralText()`), since
+  Words mode is the default and always needs it.
+- **CLIP** (`Xenova/clip-vit-base-patch32`), loaded as two independent towers, used **only** in
+  Photos mode:
+  - **Text tower** (`AutoTokenizer` + `CLIPTextModelWithProjection`) embeds the axis words —
+    the only way they end up in the same space as an uploaded photo at all.
+  - **Vision tower** (`AutoProcessor` + `CLIPVisionModelWithProjection`) embeds the photos.
+  - Both load together, lazily, the first time Photos mode is actually selected
+    (`warmVisionIfNeeded()`, which now also calls `warmClipTextIfNeeded()` in parallel) — someone
+    who only ever plots words never downloads either CLIP tower.
+
+CLIP's two towers emit `text_embeds`/`image_embeds` from the same joint space; the worker
+L2-normalizes every row before sending it back (`normalizeRows()` for CLIP, `pipeline`'s own
+`normalize: true` for the general model), so `cosine()` on the main thread is just a dot product
+either way. The general model's embeddings and CLIP's embeddings are **not comparable to each
+other** — different space, different dimensionality (384 vs. 512) — which is exactly why they're
+kept in separate caches (`generalTextCache`/`clipTextCache`) and never mixed; see "Two embedding
+models" below.
 
 ## The rescaling formula, and why it's corpus-only, not pole-anchored
 
@@ -329,6 +341,163 @@ centering, similarity values live in roughly a -0.15 to 0.4 range instead of 0.8
 live thresholds moved to `0.35`/`0.15`. Kept this section as-is since it's the accurate account
 of how the problem was first caught and diagnosed; just don't use its numbers to sanity-check
 current behavior.
+
+## A deeper limitation: properties that aren't visible in a photo (or a sentence)
+
+Reported directly, with a concrete example: on a "speed" axis, **worm ranked higher than
+cheetah**. Investigated properly rather than patched on the spot — tested directly against the
+real shipped pipeline (centering included) before theorizing anything:
+
+- Axis "speed": greyhound (0.10, reasonable) then **snail** (0.07), then snake, then **worm**
+  (0.05) — with **cheetah near the very bottom** (-0.01), behind sloth's only slightly lower
+  -0.05.
+- Axis "fast": **sloth outranks cheetah** (0.03 vs. 0.01).
+- Axis "quickness": **sloth ranks #1 of 11 animals** (0.14), ahead of cheetah (0.09).
+
+Not an isolated fluke of the word "speed": the identical shape of failure showed up on
+**"loud"** — goldfish (a mute animal) ranked loudest; lion ranked *last*, behind mouse. Meanwhile,
+properties that are directly, statically visible in a photo worked cleanly on the same items:
+"spotted" correctly ranked cheetah/dalmatian/leopard above golden retriever/black bear; "colorful"
+correctly ranked parrot above a cardboard box.
+
+**The pattern**: CLIP's text tower (and, it turns out, general text embeddings too — see below)
+reliably separates properties that are *directly, statically visible in a photograph* — spotted,
+colorful, hairy, dangerous-looking all work, because the axis word and the item co-occur in the
+same photos often enough to teach the model a real direction for it. Properties that are
+*behavioral, temporal, auditory, or otherwise not depicted in a typical static photo* — speed,
+loudness, and almost certainly others like intelligence or lifespan — have no such shared visual
+grounding to learn from, and the resulting "similarity" is close to noise, sometimes inverted
+from reality. This is not the anisotropy problem centering already fixes, and centering does not
+touch it — it's a ceiling on what a fixed word/sentence embedding can represent *at all*, not a
+computational error to correct with more/different vector math.
+
+**Tested and ruled out: switching to a different, non-CLIP model doesn't fix it either.** Before
+concluding this was fundamental rather than CLIP-specific, `Xenova/all-MiniLM-L6-v2` — a general
+sentence-embedding model, trained on regular web sentences and paraphrase pairs, not photo
+captions — was tested against the same animals, both as bare words and as full comparative
+sentences ("This animal is very fast." vs. "This animal is a sloth."). Sentence-framing is the
+input shape this model actually trained on, so it was the most favorable test that could
+reasonably be tried. Result: **sloth still ranked #1 fastest** (0.586), ahead of cheetah (0.531)
+— worse in relative terms than the bare-word version. Two architecturally unrelated models, four
+phrasing variants, the same failure. The likely reason: a comparative fact like "cheetahs are
+faster than sloths" is *relational* — true of a pair, not a property either animal "has" the way
+"spotted" is directly true of a cheetah on its own — and no model trained this way (predicting
+what co-occurs with what) has a mechanism to retrieve a relational fact from a single word's fixed
+embedding, regardless of what text it was trained on. ("Loud" moved somewhat in the right
+direction with sentence-framing under the general model — elephant/lion/owl all correctly beat
+goldfish — so sentence-framing isn't *worthless*, just nowhere near reliable enough to trust as a
+fix; this is why the general model is used for its own real benefits, below, not as a claimed
+solution to this specific problem.)
+
+**What actually addresses this**: not a smarter embedding computation (tested, doesn't exist for
+this at the word/sentence level), but giving the visitor direct control — see "Manual override"
+below. An LLM asked to reason explicitly ("cheetahs are faster than sloths") could likely get this
+right, since that's genuine comparative reasoning rather than a fixed-vector lookup — but that
+would mean either a server call (breaking this site's "nothing leaves your browser" guarantee,
+upheld by every tool here) or an impractically large in-browser model, and was explicitly not
+pursued for that reason. If this ever gets revisited, that trade-off needs to be made
+consciously and by name, not slipped in as an implementation detail.
+
+## Two embedding models, one per mode
+
+Direct follow-up once the above was diagnosed: *"are there actually solutions? A different
+embedding model? A manual mode..."* — both were pursued, not just the manual one, since testing
+showed they solve genuinely different problems and stack rather than compete.
+
+**Why a general text model helps anyway, despite not fixing "speed"**: CLIP's text tower is
+fundamentally a *caption* embedder — trained to match photos, not to compare sentences to each
+other — which is a real mismatch for Words mode, where nothing being compared is ever a photo.
+`Xenova/all-MiniLM-L6-v2` (a proper sentence-transformers model, contrastively fine-tuned
+specifically so cosine similarity between two sentences means something) gives a measurably wider,
+more usable raw similarity range without CLIP's severe anisotropy to begin with, and correctly
+handles the exact cases CLIP needed centering to fix (dog/cat vs. dog/computer; leech/hairy
+correctly negative) at least as well. It was made the **default and only** text-mode model, not an
+opt-in toggle, on direct instruction — a toggle was scoped first, but "don't even make it an
+option, just use that for text and CLIP for images" is simpler for a visitor and was already the
+right call anyway: Photos mode *cannot* use the general model even as an option, since axis words
+compared against photos must stay in CLIP's joint space, so the two modes were always going to
+need different models regardless of whether Words mode's choice was configurable.
+
+**Centering is still needed, but with its own separately-derived mean.** `GENERAL_TEXT_EMBED_MEAN`
+(`text-embed-mean-general.js`) is a 384-dimension mean over ~180 diverse words, computed and
+verified the same way `TEXT_EMBED_MEAN` was (see "Text embedding centering," above) — **not**
+interchangeable with CLIP's mean; different model, different dimensionality, would silently
+produce garbage (or a dimension-mismatch crash) if swapped. Verified before shipping: dog/cat 0.42
+vs. dog/computer 0.03 (clean separation), leech/hairy -0.01 and fish/hairy -0.06 (correctly
+negative) — centering helps this model too, for the same reason it helped CLIP.
+
+**Diagnostic thresholds are calibrated per model, not shared**, because the two models' raw
+similarity distributions aren't identical even after centering: antonym pairs (warm/cold,
+loud/quiet) landed around 0.60 on the general model — higher than the equivalent CLIP-era
+antonym clustering — while topic-noun and independent-trait pairs (ocean/mountain 0.19,
+hot/furry 0.12) stayed low, same shape as CLIP's own calibration just shifted. `#axisSimNote`'s
+top threshold (`collapseThreshold` in `recomputeAxes()`) is `0.4` in Words mode, `0.35` in Photos
+mode (CLIP, unchanged from before); the middle "some noise is normal" cutoff (`0.15`) is shared,
+since both models' "clearly distinct" pairs land in a similar low range. If either model or its
+mean ever changes, re-run the calibration pairs in this section (and the ones under "Text
+embedding centering") before trusting these numbers again.
+
+**Implementation**: `embedTexts()` routes by `state.mode` — `'image'` uses CLIP (`model: 'clip'`
+in the worker message, `clipTextCache`, `TEXT_EMBED_MEAN`), anything else uses the general model
+(`model: 'general'` or omitted, `generalTextCache`, `GENERAL_TEXT_EMBED_MEAN`). Every caller
+(axis words in `recomputeAxes()`, typed items in `addTextItem()`, the quick-similarity-check
+widget) goes through this one function and gets the mode-appropriate model automatically — nothing
+downstream needs to know or care which model actually ran. `worker.js`'s `ensureGeneralText()`
+loads `Xenova/all-MiniLM-L6-v2` via `pipeline('feature-extraction', ..., { pooling: 'mean',
+normalize: true })` rather than hand-rolled mean-pooling over raw token outputs — `pipeline`'s
+built-in pooling is attention-mask-aware (correctly ignores padding tokens), which hand-rolling
+would need to replicate exactly to avoid silently corrupting every embedding with padding noise.
+
+## Manual override: dragging a point directly
+
+The actual, reliable fix for the "speed"/"loud" class of failure above — not a smarter
+computation (there isn't one), but letting the visitor's own judgment override the model's when
+it's wrong. Direct instruction, considered alongside a proposed alternative (a 7-point Likert
+selector per item) and resolved in favor of continuous free-drag: strictly more expressive (any
+position in `[-1, 1]`, not one of 7 discrete rungs) while still trivially capable of landing on
+any of the 7 gradients someone might have wanted, and it reuses the compass view's existing
+click-to-select interaction rather than adding new per-item UI chrome.
+
+**Mechanism**: `item.manualPos` (`{x, y}` or `null`). `normalizeGroup()` always prefers it over
+the computed `nx`/`ny` for that item's final `pos` — but still computes that item's real
+`rawX`/`rawY` and includes it in the min/max range used to place *everything else*, so a pinned
+item keeps contributing honestly to the corpus range rather than distorting it or opting out
+silently. Dragging is implemented as mousedown-hit-test / window-level mousemove / window-level
+mouseup on `#plotCanvas` (window-level, not canvas-level, so a drag that leaves the canvas
+mid-gesture still completes — same pattern as Afterimage's crop-box dragger and Ridgeline's
+manual skyline override). A plain click with no movement (`dragMoved` stays `false`) still just
+selects, exactly as before it existed — the existing click-to-select behavior is a special case
+of a zero-distance drag, not a separate code path competing with this one.
+
+**Compass view only**, gated by `if(state.view !== 'compass') return;` in the mousedown handler —
+Network view's node positions are the same underlying `item.pos` (so a compass-view pin is
+still visible there), but dragging a node in a distance-based graph layout doesn't have the same
+obvious "this is where I think it belongs" semantics free-positioning has on the compass's
+labeled axes, and wasn't asked for.
+
+**Visual indicator**: a dashed amber ring around any pinned point (`drawCompass()`) — amber
+specifically because it's the one color Vectis's cyan-dominated palette never otherwise uses, so
+"this one's different" reads without a legend. Verified pixel-by-pixel after building it (same
+discipline as the arc-position fixes elsewhere in this file), not just assumed correct from the
+code — sampling the canvas at the ring's expected radius around a freshly-dragged point finds the
+amber stroke; the same check with no drag finds nothing there.
+
+**Clearing pins**: `clearManualPins()` resets every item's `manualPos` to `null`, called whenever
+either axis word changes (`axisXInput`/`axisYInput`'s `change` handlers) — a hand-placed position
+only means something relative to the axis it was placed on; silently carrying it over to a
+newly-labeled axis would display a stale, no-longer-meaningful position as if it were still
+current. Per-item, `resetItemPosition(id)` (wired to a "Reset to computed position" button in the
+info panel, shown only when the selected item has a `manualPos`) clears just that one item and
+re-runs the full `recomputeAxes()` — deliberately not a lighter-weight "just recompute this one
+item's position," so there's exactly one code path that ever assigns a position, with no second,
+slightly-different path for the unpinned case to drift out of sync with.
+
+**Testing note**: verifying the amber ring actually renders hit the same `requestAnimationFrame`-
+pauses-when-hidden issue documented elsewhere in this file (`document.visibilityState ===
+'hidden'` even when a browser-automation tool reports the tab as active) — confirmed directly,
+worked around with a temporary `window.__forceRender = () => render(performance.now())`, removed
+before shipping. If you're testing this again, don't trust a "the ring isn't there" result without
+checking `document.visibilityState` first.
 
 ## Two real CLIP quirks this surfaces, on purpose
 
@@ -621,11 +790,21 @@ longer whenever its similarity is more negative than the green one's is positive
 the "Tips for picking axis words" accordion and confirm `#spreadNote` has live numbers in it,
 toggle to Network and confirm edges vary visibly in weight and some cross the plot's center
 (not just within one visual cluster), and download both PNGs. Separately, click the Photos mode
-button, confirm the word items disappear and the vision-tower progress bar starts immediately
-(before dropping anything), drop in two different real photos and confirm they land at distinct
-positions rather than both collapsing to the same point, then switch back to Words mode and
-confirm the map is empty again (not a leftover mix of both kinds) and "Reset to example" still
-repopulates the six word items.
+button, confirm the word items disappear, **both** progress rows start (vision *and* language —
+Photos mode now warms CLIP's text tower alongside the vision tower, not just vision) before
+dropping anything, and both rows actually reach "ready" (the language-model row previously got
+stuck on "Loading…" forever after switching modes — a real bug, fixed by making
+`warmClipTextIfNeeded()` update that row's state instead of only `warmGeneralText()` doing so;
+re-check this specifically if you touch either warm function again), drop in two different real
+photos and confirm they land at distinct positions rather than both collapsing to the same point,
+then switch back to Words mode and confirm the map is empty again (not a leftover mix of both
+kinds) and "Reset to example" still repopulates the six word items.
+
+Also: drag a plotted point somewhere else entirely and confirm it snaps to the cursor live, gets a
+dashed amber ring, and the info panel shows a "Reset to computed position" button; click that
+button and confirm the point returns to its original computed position exactly; change either
+axis word afterward (with a fresh drag in place) and confirm the pin is gone and the point is back
+to auto-placement under the new axis, not still sitting at the old manual position.
 
 One easy-to-miss testing trap: this page's whole render loop runs on `requestAnimationFrame`,
 which browsers fully pause whenever `document.visibilityState !== 'visible'` — every visual check

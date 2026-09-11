@@ -5,16 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="google-adsense-account" content="ca-pub-5936916546458743">
 <title>Vectis — Build Your Own Embedding Space</title>
-<meta name="description" content="Pick two words as axes and plot text or your own photos by similarity, using a real CLIP embedding model running entirely in your browser — no server, nothing uploaded.">
+<meta name="description" content="Pick two words as axes and plot text or your own photos by similarity, using real embedding models (and CLIP for photos) running entirely in your browser — no server, nothing uploaded.">
 <link rel="canonical" href="https://michaelkrauklis.me/lab/vectis/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Michael Krauklis">
 <meta property="og:title" content="Vectis — Build Your Own Embedding Space">
-<meta property="og:description" content="Pick two words as axes and plot text or your own photos by similarity, using a real CLIP embedding model running entirely in your browser — no server, nothing uploaded.">
+<meta property="og:description" content="Pick two words as axes and plot text or your own photos by similarity, using real embedding models (and CLIP for photos) running entirely in your browser — no server, nothing uploaded.">
 <meta property="og:url" content="https://michaelkrauklis.me/lab/vectis/">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="Vectis — Build Your Own Embedding Space">
-<meta name="twitter:description" content="Pick two words as axes and plot text or your own photos by similarity, using a real CLIP embedding model running entirely in your browser — no server, nothing uploaded.">
+<meta name="twitter:description" content="Pick two words as axes and plot text or your own photos by similarity, using real embedding models (and CLIP for photos) running entirely in your browser — no server, nothing uploaded.">
 <link rel="stylesheet" href="/theme.css">
 <style>
   :root{ --accent: #57c2e0; --accent-dim: #2c5866; }
@@ -217,9 +217,11 @@
       <span class="axis-label right pos" id="labelRight"></span>
       <span class="axis-label left" id="labelLeft"></span>
     </div>
-    <p class="select-hint">Click any point to see the labels it's most and least like.</p>
+    <p class="select-hint">Click any point to see the labels it's most and least like. Don't
+    agree with where something landed? Drag it anywhere you think it actually belongs.</p>
     <div class="info-panel" id="infoPanel">
       <h3 id="infoTitle"></h3>
+      <button class="secondary" id="resetPositionBtn" style="display:none; padding:6px 14px; font-size:0.8rem; margin-bottom:10px;">Reset to computed position</button>
       <div id="infoRanks"></div>
     </div>
   </div>
@@ -244,21 +246,26 @@
   <details id="explainerSection" class="disclosure advanced" style="margin-top:40px;">
     <summary>How this actually works <span class="adv-sub">— the geometry, and two things to try by hand</span></summary>
     <div class="disclosure-body">
-      <p>Everything on this page runs a small vision-and-language model called CLIP entirely in
-      your browser tab. The very first time you use this page, your browser downloads the
-      model's weights (a few tens of megabytes) from a public model host, the same way it would
-      download a font or a script. CLIP was taught (trained) from millions of captioned photos
-      before it ever reached your machine. After that first download your browser caches it, and
-      every photo or phrase you plot from then on never leaves this tab. CLIP maps images and
-      text into the <i>same</i> space of numbers, trained so that a photo of a dog and the word
-      "dog" land near each other in that space.</p>
-      <p>A word doesn't mean anything to a computer by itself — but CLIP has seen enough
-      captioned photos that it's learned to place any word, phrase, or image as a point in a
-      space with a few hundred dimensions, positioned so that things which mean similar things
-      end up near each other. "Dog" and a photo of a golden retriever land close together; "dog"
-      and "spreadsheet" land far apart. The tool can use the numbers of the labels compared to
-      the numbers of the axis to generate a similarity score. This is what allows us to generate
-      "on-the-fly" embeddings for any set of labels against any set of axis-pairs.</p>
+      <p>This page actually runs <b style="color:var(--ink);">two</b> small models entirely in
+      your browser tab, not one, and switches between them depending on what you're comparing.
+      Word-to-word comparisons (Words mode) use a general text-embedding model — the kind built
+      for comparing sentences to each other, not for describing photos. Anything involving a
+      photo (Photos mode) uses <b style="color:var(--ink);">CLIP</b>, a vision-and-language model,
+      instead — CLIP is the only one of the two that maps images and text into the <i>same</i>
+      space of numbers, trained so that a photo of a dog and the word "dog" land near each other,
+      which is the only way an axis word can ever be compared against an uploaded photo at all.
+      The very first time you use each mode, your browser downloads that mode's model weights (a
+      few tens of megabytes) from a public model host, the same way it would download a font or a
+      script — cached afterward, so every photo or phrase you plot from then on never leaves this
+      tab.</p>
+      <p>A word doesn't mean anything to a computer by itself — but both models have seen enough
+      text (or, for CLIP, captioned photos) that they've learned to place any word, phrase, or
+      image as a point in a space with a few hundred dimensions, positioned so that things which
+      mean similar things end up near each other. "Dog" and a photo of a golden retriever land
+      close together; "dog" and "spreadsheet" land far apart. The tool compares the numbers for
+      whatever you typed (or uploaded) against the numbers for your two axis words to generate a
+      similarity score — "on-the-fly" embeddings for any set of labels against any set of
+      axis-pairs.</p>
       <p><b style="color:var(--ink);">Cosine similarity</b> is the specific way "how close" gets
       measured. Instead of straight-line distance, it looks at the <i>angle</i> between two
       vectors — two things pointing the same direction score 1, perpendicular scores 0, opposite
@@ -275,16 +282,16 @@
               <div>angle: <span id="angleDeg">0°</span></div>
               <div>cosine similarity: <span class="big" id="angleCos">1.00</span></div>
               <p class="status" style="margin-top:8px;max-width:180px;">Drag either arrow tip
-              around the center. This is the whole formula CLIP uses underneath — just in two
-              dimensions you can see, instead of a few hundred you can't.</p>
+              around the center. This is the whole formula behind every similarity score on this
+              page — just in two dimensions you can see, instead of a few hundred you can't.</p>
             </div>
           </div>
         </div>
         <div class="col">
           <span class="step-tag">try it — quick similarity check</span>
-          <p style="margin:0 0 6px;">Type two words and see their raw similarity, straight from
-          CLIP's text side — no plotting, no rescaling, just the one number the whole tool is
-          built from.</p>
+          <p style="margin:0 0 6px;">Type two words and see their raw similarity — no plotting, no
+          rescaling, just the one number the whole tool is built from. Uses whichever model
+          Words/Photos mode currently has active, same as everywhere else on the page.</p>
           <div class="quick-check">
             <input type="text" id="quickA" placeholder="word one" value="ocean">
             <input type="text" id="quickB" placeholder="word two" value="calm">
@@ -325,11 +332,13 @@
     <summary>Privacy &amp; technical notes</summary>
     <div class="disclosure-body">
       <p>All embedding happens in a background thread in your browser using
-      <a href="https://github.com/xenova/transformers.js" target="_blank" rel="noopener">transformers.js</a>
-      running <a href="https://github.com/openai/CLIP" target="_blank" rel="noopener">OpenAI's CLIP</a>
-      (a public, quantized ONNX build). Your words, phrases, and photos are never uploaded — the
-      only network activity is the one-time model download, cached by your browser afterward.
-      Refreshing the page clears everything you've plotted; nothing is saved anywhere.</p>
+      <a href="https://github.com/xenova/transformers.js" target="_blank" rel="noopener">transformers.js</a>,
+      running two public, quantized ONNX builds: <a href="https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2" target="_blank" rel="noopener">all-MiniLM-L6-v2</a>
+      for word-to-word comparisons (Words mode) and <a href="https://github.com/openai/CLIP" target="_blank" rel="noopener">OpenAI's CLIP</a>
+      for anything involving a photo (Photos mode). Your words, phrases, and photos are never
+      uploaded — the only network activity is each mode's one-time model download, cached by your
+      browser afterward. Refreshing the page clears everything you've plotted; nothing is saved
+      anywhere.</p>
     </div>
   </details>
 </div>
@@ -343,6 +352,7 @@
 
 <script type="module">
 import { TEXT_EMBED_MEAN } from './text-embed-mean.js';
+import { GENERAL_TEXT_EMBED_MEAN } from './text-embed-mean-general.js';
 const WORKER_URL = new URL('./worker.js', import.meta.url);
 let worker;
 let reqSeq = 1;
@@ -383,7 +393,13 @@ const visionModelRow = document.getElementById('visionModelRow');
 const visionModelLabel = document.getElementById('visionModelLabel');
 const visionModelBar = document.getElementById('visionModelBar');
 
-let textReady = false, visionReady = false;
+// Two independent text encoders, not one -- see CLAUDE.md's "Two embedding models, one per
+// mode" section. Words mode (the default) uses a general text-embedding model exclusively;
+// Photos mode uses CLIP's text tower for axis words specifically, since that's the only way an
+// axis word ends up in the same space as an uploaded photo at all. `generalTextReady` warms
+// immediately on page load (Words mode is the default); `clipTextReady` and `visionReady` both
+// warm lazily together, the first time Photos mode is actually selected.
+let generalTextReady = false, clipTextReady = false, visionReady = false;
 
 function setTextModelState(status, text, pct){
   if(status === 'error'){ textModelRow.className = 'model-row error'; textModelLabel.textContent = text; return; }
@@ -404,11 +420,11 @@ function onModelProgress(msg){
   }
 }
 
-async function warmText(){
+async function warmGeneralText(){
   setTextModelState('loading', 'Loading language model…', 0);
   try{
-    await callWorker('warmText', {});
-    textReady = true;
+    await callWorker('warmGeneralText', {});
+    generalTextReady = true;
     setTextModelState('ready');
     setControlsEnabled(true);
     recomputeAxes();
@@ -416,13 +432,26 @@ async function warmText(){
     setTextModelState('error', 'Language model failed to load: ' + err.message);
   }
 }
+async function warmClipTextIfNeeded(){
+  if(clipTextReady) return;
+  setTextModelState('loading', 'Loading language model…', 0);
+  try{
+    await callWorker('warmText', {});
+    clipTextReady = true;
+    setTextModelState('ready');
+  }catch(err){
+    setTextModelState('error', 'Language model failed to load: ' + err.message);
+    throw err;
+  }
+}
 async function warmVisionIfNeeded(){
   if(visionReady) return;
   setVisionModelState('loading', 'Loading vision model…', 0);
   try{
-    await callWorker('warmVision', {});
+    await Promise.all([callWorker('warmVision', {}), warmClipTextIfNeeded()]);
     visionReady = true;
     setVisionModelState('ready');
+    recomputeAxes();
   }catch(err){
     setVisionModelState('error', 'Vision model failed to load: ' + err.message);
     throw err;
@@ -438,16 +467,21 @@ function setControlsEnabled(on){
 setControlsEnabled(false);
 
 // ---------- embedding cache ----------
-const textCache = new Map(); // normalized text -> centered, unit-normalized embedding array
+// Two separate caches, one per model -- embeddings from one are meaningless dimensionality-
+// and-space-wise in the other, so the same word cached under CLIP must never leak into a lookup
+// meant for the general model, or vice versa.
+const generalTextCache = new Map(); // normalized text -> centered, unit-normalized embedding (general model)
+const clipTextCache = new Map();    // normalized text -> centered, unit-normalized embedding (CLIP text tower)
 
-// CLIP's text tower is anisotropic: almost any two short phrases sit at 0.85-0.98 raw cosine
-// similarity to each other regardless of actual relatedness, because most of each embedding
-// points along one shared "generic text" direction rather than encoding content. Subtracting
-// the mean of a large, diverse reference sample removes that shared direction; renormalizing
-// afterward keeps every embedding on the unit sphere so cosine() (a plain dot product) stays
-// valid. Verified directly before shipping -- see CLAUDE.md's "Text embedding centering"
-// section for the numbers (leech/hairy: 0.95 raw -> -0.001 centered; fish/hairy: 0.92 raw ->
-// -0.04 centered; dog/cat correctly becomes the single most-similar pair tested, at 0.36).
+// Both text encoders turn out to need the same correction: almost any two short phrases sit
+// unhelpfully close together in raw cosine similarity, because most of each embedding points
+// along one shared "generic text" direction rather than encoding content. Subtracting the mean
+// of a large, diverse reference sample removes that shared direction; renormalizing afterward
+// keeps every embedding on the unit sphere so cosine() (a plain dot product) stays valid. This
+// was discovered for CLIP first (see CLAUDE.md's "Text embedding centering" section for the
+// numbers) and confirmed to help the general model too during its own calibration (same section,
+// "Two embedding models") -- but the two models need their own separately-derived mean; one is
+// not a substitute for the other, and the arrays are different lengths besides.
 function centerAndNormalize(embedding, mean){
   const shifted = embedding.map((v, i) => v - mean[i]);
   let normSq = 0; for(const v of shifted) normSq += v * v;
@@ -455,14 +489,23 @@ function centerAndNormalize(embedding, mean){
   return shifted.map(v => v / norm);
 }
 
+// Routes by `state.mode`, not by an explicit parameter -- Words mode always means "compare text
+// to text using the general model," Photos mode always means "embed axis words with CLIP's text
+// tower, to land in the same space as the photos," and every caller (axis words, typed items,
+// the quick-similarity-check widget) wants exactly that mode-appropriate behavior automatically,
+// with nothing to remember to pass in.
 async function embedTexts(texts){
+  const useClip = state.mode === 'image';
+  const cache = useClip ? clipTextCache : generalTextCache;
   const need = [];
-  for(const t of texts){ const k = t.trim().toLowerCase(); if(!textCache.has(k)) need.push(k); }
+  for(const t of texts){ const k = t.trim().toLowerCase(); if(!cache.has(k)) need.push(k); }
   if(need.length){
-    const msg = await callWorker('embedText', { texts: need });
-    need.forEach((k, i) => textCache.set(k, centerAndNormalize(msg.embeddings[i], TEXT_EMBED_MEAN)));
+    if(useClip) await warmClipTextIfNeeded();
+    const msg = await callWorker('embedText', { texts: need, model: useClip ? 'clip' : 'general' });
+    const mean = useClip ? TEXT_EMBED_MEAN : GENERAL_TEXT_EMBED_MEAN;
+    need.forEach((k, i) => cache.set(k, centerAndNormalize(msg.embeddings[i], mean)));
   }
-  return texts.map(t => textCache.get(t.trim().toLowerCase()));
+  return texts.map(t => cache.get(t.trim().toLowerCase()));
 }
 
 function cosine(a, b){
@@ -493,7 +536,7 @@ function addTextItem(text){
   if(!text) return;
   const item = {
     id: state.nextId++, kind: 'text', text,
-    embedding: null, rawX: 0, rawY: 0,
+    embedding: null, rawX: 0, rawY: 0, manualPos: null,
     pos: { x: 0, y: 0 }, animFrom: { x: 0, y: 0 }, animTo: { x: 0, y: 0 }, animStart: 0,
     pending: true,
   };
@@ -519,7 +562,7 @@ async function addImageItem(file){
   const bitmap = await createImageBitmap(file);
   const item = {
     id: state.nextId++, kind: 'image', text: label,
-    embedding: null, rawX: 0, rawY: 0,
+    embedding: null, rawX: 0, rawY: 0, manualPos: null,
     pos: { x: 0, y: 0 }, animFrom: { x: 0, y: 0 }, animTo: { x: 0, y: 0 }, animStart: 0,
     pending: true, thumb: null, thumbImg: null,
   };
@@ -557,13 +600,18 @@ function loadExample(){
 // Min/max-normalizes one kind-group's raw scores to fill [-1, 1] on both axes, in place.
 // Returns the raw ranges achieved (for the spread note) or null when there's nothing to
 // normalize against (0 or 1 items in the group).
+// `item.manualPos`, when set, always wins over the computed position -- see "Manual override"
+// in CLAUDE.md. The raw min/max range is still computed from *every* item's real rawX/rawY
+// regardless of pinning, so a pinned item still contributes honestly to where the corpus range
+// sits for everyone else; only its own final displayed position is overridden.
 function normalizeGroup(items, now){
   if(items.length === 1){
     const only = items[0];
+    const target = only.manualPos || { x: 0, y: 0 };
     only.animFrom = { x: only.pos.x, y: only.pos.y };
-    only.animTo = { x: 0, y: 0 };
+    only.animTo = target;
     only.animStart = now;
-    only.pos = { x: 0, y: 0 };
+    only.pos = target;
     return null;
   }
   if(items.length === 0) return null;
@@ -572,8 +620,10 @@ function normalizeGroup(items, now){
   const minY = Math.min(...ys), maxY = Math.max(...ys);
   const rangeX = maxX - minX, rangeY = maxY - minY;
   for(const item of items){
-    const nx = rangeX > 1e-9 ? clamp(((item.rawX - minX) / rangeX) * 2 - 1, -1, 1) : 0;
-    const ny = rangeY > 1e-9 ? clamp(((item.rawY - minY) / rangeY) * 2 - 1, -1, 1) : 0;
+    const autoX = rangeX > 1e-9 ? clamp(((item.rawX - minX) / rangeX) * 2 - 1, -1, 1) : 0;
+    const autoY = rangeY > 1e-9 ? clamp(((item.rawY - minY) / rangeY) * 2 - 1, -1, 1) : 0;
+    const nx = item.manualPos ? item.manualPos.x : autoX;
+    const ny = item.manualPos ? item.manualPos.y : autoY;
     item.animFrom = { x: item.pos.x, y: item.pos.y };
     item.animTo = { x: nx, y: ny };
     item.animStart = now;
@@ -585,7 +635,7 @@ function normalizeGroup(items, now){
 
 let axisSeq = 0;
 async function recomputeAxes(){
-  if(!textReady) return;
+  if(!generalTextReady) return;
   const mySeq = ++axisSeq;
   const xWord = state.axisXWord.trim(), yWord = state.axisYWord.trim();
   if(!xWord || !yWord) return;
@@ -600,17 +650,21 @@ async function recomputeAxes(){
   if(mySeq !== axisSeq) return; // superseded by a newer axis change
   state.axisXEmbed = xEmb; state.axisYEmbed = yEmb;
 
-  // How different are the two axis words themselves, to the model? Any two short texts in
-  // CLIP's space already sit at 0.85-0.98 raw cosine similarity as a baseline (see CLAUDE.md),
-  // so this number is never going to look "low" the way it would for, say, word2vec -- but
-  // relative to that baseline, >=0.95 reliably means "these two barely separate," while
-  // anything under ~0.90 is comparatively distinct. Surfaced directly rather than only baked
-  // into the shipped example, since the same problem can happen with any two words someone
-  // picks -- this makes it self-diagnosable instead of just mysterious.
+  // How different are the two axis words themselves, to the model? Both text encoders show the
+  // same shape of problem after centering -- antonym-style pairs (warm/cold, loud/quiet) stay
+  // stubbornly similar while topic-noun and independent-trait pairs separate much better -- but
+  // the two models' post-centering scales aren't identical, so the cutoffs are calibrated
+  // per-model rather than shared (see CLAUDE.md's "Two embedding models" section for the actual
+  // pairs tested: warm/cold and loud/quiet both landed ~0.60 on the general model, versus
+  // ocean/mountain at 0.19 and hot/furry at 0.12 -- the >=0.4 cutoff sits between those two
+  // clusters). Surfaced directly rather than only baked into the shipped example, since the same
+  // problem can happen with any two words someone picks -- this makes it self-diagnosable
+  // instead of just mysterious.
   const axisSim = cosine(xEmb, yEmb);
   const simNote = document.getElementById('axisSimNote');
+  const collapseThreshold = state.mode === 'image' ? 0.35 : 0.4;
   let simLabel;
-  if(axisSim >= 0.35) simLabel = `so similar to each other (${axisSim.toFixed(2)}) that they're barely two independent axes — expect almost everything to line up along one diagonal instead of spreading out, and individual rankings to look wrong`;
+  if(axisSim >= collapseThreshold) simLabel = `so similar to each other (${axisSim.toFixed(2)}) that they're barely two independent axes — expect almost everything to line up along one diagonal instead of spreading out, and individual rankings to look wrong`;
   else if(axisSim >= 0.15) simLabel = `similar enough to each other (${axisSim.toFixed(2)}) that some noise is normal`;
   else simLabel = `relatively distinct from each other (${axisSim.toFixed(2)}), as these things go`;
   simNote.textContent = `"${xWord}" and "${yWord}" are ${simLabel}.`;
@@ -659,8 +713,12 @@ async function recomputeAxes(){
   updateEmbeddingTable();
 }
 
-document.getElementById('axisXInput').addEventListener('change', e => { state.axisXWord = e.target.value || 'calm'; recomputeAxes(); });
-document.getElementById('axisYInput').addEventListener('change', e => { state.axisYWord = e.target.value || 'chaotic'; recomputeAxes(); });
+// Changing either axis word clears every manual pin -- a hand-placed position only means
+// something relative to the axis it was placed on, and silently carrying it over to a
+// newly-labeled axis would show a stale, no-longer-meaningful position as if it were current.
+function clearManualPins(){ for(const item of state.items) item.manualPos = null; }
+document.getElementById('axisXInput').addEventListener('change', e => { state.axisXWord = e.target.value || 'ocean'; clearManualPins(); recomputeAxes(); });
+document.getElementById('axisYInput').addEventListener('change', e => { state.axisYWord = e.target.value || 'mountain'; clearManualPins(); recomputeAxes(); });
 
 // ---------- item controls wiring ----------
 document.getElementById('addTextBtn').addEventListener('click', () => {
@@ -793,6 +851,17 @@ function drawCompass(ctx, now){
       ctx.textBaseline = 'middle';
       ctx.fillText(item.text, sx + 12, sy);
     }
+
+    // A dashed amber ring marks a manually-placed point -- amber because it's the one color
+    // Vectis's own cyan-dominated palette never otherwise uses, so "this one's different" reads
+    // at a glance without needing a legend.
+    if(item.manualPos){
+      const ringRad = (item.kind === 'image' ? (selected ? 24 : 18) : (selected ? 8 : 6)) + 5;
+      ctx.save();
+      ctx.strokeStyle = '#e0a54c'; ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.arc(sx, sy, ringRad, 0, Math.PI*2); ctx.stroke();
+      ctx.restore();
+    }
   }
 
   // When something's selected, sweep an arc -- centered on the origin, not point-to-point -- to
@@ -909,11 +978,18 @@ function render(now){
 }
 function loop(now){ render(now); requestAnimationFrame(loop); }
 
-// ---------- selection + hit testing ----------
-canvas.addEventListener('click', e => {
-  const rect = canvas.getBoundingClientRect();
-  const px = (e.clientX - rect.left) / rect.width * LOGICAL;
-  const py = (e.clientY - rect.top) / rect.height * LOGICAL;
+// ---------- selection + manual override: drag any point directly to where you think it belongs ----------
+// Automatic placement can be wrong in ways no amount of rescaling fixes (see CLAUDE.md's
+// "Manual override" section -- a whole class of axis words, like "speed" or "loud", don't have
+// a reliable signal in either text encoder at all). Dragging a point sets `item.manualPos`,
+// which `normalizeGroup()` then always prefers over the computed position, for that item, until
+// either it's reset or the axis words change (`clearManualPins()`, above). A plain click (no
+// movement) still just selects, exactly as before -- distinguished the same way Afterimage's
+// box-select does: any drag starts as a click, so a real click is just a zero-movement drag.
+function screenToPlot(px, py){
+  return { x: clamp((px - LOGICAL/2) / R, -1, 1), y: clamp((LOGICAL/2 - py) / R, -1, 1) };
+}
+function hitTestItem(px, py){
   let bestId = null, bestDist = 28;
   const now = performance.now();
   for(const item of state.items){
@@ -923,13 +999,57 @@ canvas.addEventListener('click', e => {
     const d = Math.hypot(sx - px, sy - py);
     if(d < bestDist){ bestDist = d; bestId = item.id; }
   }
-  selectItem(bestId);
+  return bestId;
+}
+function canvasPoint(e){
+  const rect = canvas.getBoundingClientRect();
+  return { px: (e.clientX - rect.left) / rect.width * LOGICAL, py: (e.clientY - rect.top) / rect.height * LOGICAL };
+}
+
+let dragId = null, dragMoved = false;
+canvas.addEventListener('mousedown', e => {
+  if(state.view !== 'compass') return;
+  const { px, py } = canvasPoint(e);
+  const id = hitTestItem(px, py);
+  if(id == null) return;
+  dragId = id; dragMoved = false;
+});
+window.addEventListener('mousemove', e => {
+  if(dragId == null) return;
+  const item = state.items.find(i => i.id === dragId);
+  if(!item){ dragId = null; return; }
+  dragMoved = true;
+  const { px, py } = canvasPoint(e);
+  const p = screenToPlot(px, py);
+  item.manualPos = p;
+  item.pos = p; item.animFrom = p; item.animTo = p; item.animStart = performance.now();
+  if(state.selectedId !== item.id) selectItem(item.id);
+  else updateInfoPanel();
+});
+window.addEventListener('mouseup', () => {
+  if(dragId == null) return;
+  const item = state.items.find(i => i.id === dragId);
+  dragId = null;
+  if(!dragMoved && item) selectItem(item.id); // plain click, no drag: just select
+  else updateEmbeddingTable();
 });
 
 function selectItem(id){
   state.selectedId = id;
   renderChips();
   updateInfoPanel();
+}
+
+// Discards a manual pin and lets this one item fall back to wherever automatic placement puts
+// it -- the counterpart to dragging a point, for undoing it. Re-running the full recompute
+// (rather than just clearing `manualPos` and re-normalizing this one item) keeps this the single
+// code path that ever assigns positions, so there's no second, slightly-different way an
+// unpinned item could end up placed.
+function resetItemPosition(id){
+  const item = state.items.find(i => i.id === id);
+  if(!item) return;
+  item.manualPos = null;
+  recomputeAxes();
 }
 
 // Ranks every other embedded item by 2D cosine similarity of origin-vectors to `item` --
@@ -947,6 +1067,9 @@ function updateInfoPanel(){
   if(!item || !item.embedding){ panel.classList.remove('visible'); return; }
   panel.classList.add('visible');
   document.getElementById('infoTitle').textContent = `${item.text} Similarity`;
+  const resetBtn = document.getElementById('resetPositionBtn');
+  resetBtn.style.display = item.manualPos ? 'inline-block' : 'none';
+  resetBtn.onclick = () => resetItemPosition(item.id);
   const others = rankOthers(item);
   const ranksEl = document.getElementById('infoRanks');
   ranksEl.innerHTML = '';
@@ -990,7 +1113,7 @@ function updateEmbeddingTable(){
   intro.innerHTML = '';
   const lead = document.createTextNode('Nice — you just generated ');
   const count = document.createElement('b'); count.style.color = 'var(--ink)';
-  count.textContent = `${n} real CLIP embedding${n === 1 ? '' : 's'}`;
+  count.textContent = `${n} real embedding${n === 1 ? '' : 's'}`;
   const tail = document.createTextNode(` and turned ${n === 1 ? 'it' : 'them'} into coordinates. ` +
     `Here's the exact (x, y) position each one landed on, after rescaling:`);
   intro.append(lead, count, tail);
@@ -1093,7 +1216,7 @@ document.getElementById('downloadNetworkBtn').addEventListener('click', () => ex
   const scoreEl = document.getElementById('quickScore'), statusEl = document.getElementById('quickStatus');
   let timer = null;
   async function run(){
-    if(!textReady){ statusEl.textContent = 'Waiting for the language model to finish loading…'; return; }
+    if(!generalTextReady){ statusEl.textContent = 'Waiting for the language model to finish loading…'; return; }
     if(!a.value.trim() || !b.value.trim()) return;
     statusEl.textContent = 'Comparing…';
     try{
@@ -1143,7 +1266,7 @@ fitCanvas();
 requestAnimationFrame(loop);
 updateEmbeddingTable();
 loadExample();
-warmText();
+warmGeneralText();
 </script>
 </body>
 </html>
