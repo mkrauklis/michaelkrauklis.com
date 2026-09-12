@@ -243,6 +243,9 @@
           <button data-fill="photo">Outline on photo</button>
         </div>
 
+        <label class="field" id="merchStackRowsLabel">Number of lines — <span class="field-value" id="merchStackRowsVal">8</span></label>
+        <input type="range" id="merchStackRowsRange" min="3" max="10" step="1" value="8">
+
         <label class="field" id="merchStackFillLabel">
           <input type="checkbox" id="merchStackPhotoCheck" checked style="accent-color: var(--amber); margin-right:6px;">
           Fill the final line with your photo
@@ -1485,7 +1488,7 @@
   });
 
   // ---------- Merch designs ----------
-  const merchState = { style: 'stack', accent: '#e0a54c', bg: 'dark', fill: 'filled', stackPhotoFill: true, padding: true };
+  const merchState = { style: 'stack', accent: '#e0a54c', bg: 'dark', fill: 'filled', stackPhotoFill: true, stackRows: 8, padding: true };
   const MERCH_DARK_BG = '#10131a', MERCH_LIGHT_BG = '#f5f0e6';
   const MERCH_SIZES = {
     line:  { w: 1800, h: 2200 },
@@ -1593,7 +1596,7 @@
     ctx.fillRect(0, 0, w, h);
 
     const N = state.N, M = state.M;
-    const rows = 8;
+    const rows = opts.stackRows || 8;
     const counts = panelCounts(state.comps.length, rows);
     const marginX = w*(opts.padding ? 0.1 : 0.03);
     const availW = w - 2*marginX;
@@ -1734,6 +1737,7 @@
       bgColor: merchState.bg === 'dark' ? MERCH_DARK_BG : MERCH_LIGHT_BG,
       fill: merchState.fill,
       stackPhotoFill: merchState.stackPhotoFill,
+      stackRows: merchState.stackRows,
       padding: merchState.padding,
       caption: document.getElementById('merchCaptionInput').value.trim()
     };
@@ -1793,6 +1797,8 @@
     document.getElementById('merchFillLabel').style.display = merchState.style==='line' ? 'block' : 'none';
     document.getElementById('merchFillToggle').style.display = merchState.style==='line' ? 'flex' : 'none';
     document.getElementById('merchStackFillLabel').style.display = merchState.style==='stack' ? 'block' : 'none';
+    document.getElementById('merchStackRowsLabel').style.display = merchState.style==='stack' ? 'block' : 'none';
+    document.getElementById('merchStackRowsRange').style.display = merchState.style==='stack' ? 'block' : 'none';
     renderMerch();
   });
 
@@ -1815,6 +1821,12 @@
 
   document.getElementById('merchStackPhotoCheck').addEventListener('change', e=>{
     merchState.stackPhotoFill = e.target.checked;
+    renderMerch();
+  });
+
+  document.getElementById('merchStackRowsRange').addEventListener('input', e=>{
+    merchState.stackRows = parseInt(e.target.value, 10);
+    document.getElementById('merchStackRowsVal').textContent = String(merchState.stackRows);
     renderMerch();
   });
 

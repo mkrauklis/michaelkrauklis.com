@@ -183,6 +183,17 @@ Afterimage's crop-box dragger.
 - Color tokens are CSS custom properties in `:root` (`--amber`, `--teal`, `--danger`,
   etc.) — reuse these rather than hardcoding new hex values so the palette stays
   coherent if it's ever retuned.
+- **Stack style's row count** (`merchState.stackRows`, default 8) used to be a hardcoded
+  `const rows = 8` inside `drawMerchStack()` — now a slider (`#merchStackRowsRange`,
+  min 3, max 10) threaded through `currentMerchOpts()` like every other merch option.
+  The max of 10 isn't arbitrary: with a photo filling the final row (`stackPhotoFill`),
+  each of the other rows takes a *fixed* `contentH*0.08` slice regardless of row count
+  (see `drawMerchStack()`'s comment on why), so pushing the count much higher directly
+  shrinks the photo panel's remaining share — verified visually at both ends (3 and 10)
+  before picking 10 as the ceiling, not just computed on paper. The min of 3 is just
+  "fewer than that doesn't read as a stack." If `stackPhotoFill` is ever removed or its
+  layout logic changes, re-check whether 10 is still a safe max rather than assuming it
+  still holds.
 
 ## Monetization
 
@@ -211,7 +222,10 @@ them up — serve the repo root, e.g. `python -m http.server`, and browse to `/l
 Run the golden path: upload a photo → check the auto-extracted outline looks right → render
 steps/video → download. Check both the "Line" and "Stack" merch styles, and both video styles
 (sequential summation, epicycle arms), since they share the reconstruction math but have
-separate drawing code paths.
+separate drawing code paths. For "Stack" specifically, drag the "Number of lines" slider to both
+ends (3 and 10) and confirm the layout still looks sane at each — the photo panel shrinking too
+far at the high end is the specific regression to watch for (see "Conventions specific to this
+file" above for why that's the actual constraint the max was picked against).
 
 If you touch `detectSkyline()` or `autoTuneAndExtract()`, also check: a synthetic photo with a
 smooth vertical sky gradient and a jagged silhouette (a `<canvas>` gradient fill plus a filled
