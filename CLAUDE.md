@@ -37,8 +37,17 @@ the palette and the paragraph-width bug drifted out of sync across pages in the 
 `lab/index.html`'s tool list is ordered newest-first, top to bottom (currently Inkling, Echo
 State, Neural Viaduct, Vectis, Afterimage, Ridgeline) — add a new tool's card at the *top* of
 `.tool-list`, not the bottom. Each card also gets a `/lab/<tool>/thumbnail.jpg` (16:9,
-`object-fit:cover`, falls back cleanly via `onerror="this.remove()"` if the file doesn't exist
-yet) — build it from the tool's own real output, not placeholder art.
+`object-fit:cover`) — build it from the tool's own real output, not placeholder art. The
+thumbnail sits to the *right* of each card's text, scaled to that card's own height rather than a
+fixed size, via a small inline script (`syncThumbHeights()`, bottom of `lab/index.html`) that
+measures each card's rendered text height and applies it directly to the thumbnail — a pure-CSS
+version of "image height matches sibling's content height, width follows from its own aspect
+ratio" isn't reliably achievable in a flex row (a flex item's auto width can't be derived from
+`aspect-ratio` × a stretch-resolved cross size within one layout pass), so don't try to replace
+the script with CSS alone without re-confirming that's actually changed. `onerror` on the `<img>`
+removes the whole `.tool-thumb-link` (not just the image) if `thumbnail.jpg` doesn't exist yet —
+collapsing back to a clean text-only card — since the link's box has no size of its own to fall
+back to once the image is gone.
 
 A third shared file, **`/echo-state-trace-mkconceptlab.png`**, is the site's favicon — a real
 Echo State trace of the text "MKConceptLab" (default reservoir: seed 42, H=8, spectral radius
