@@ -512,6 +512,57 @@ worked around with a temporary `window.__forceRender = () => render(performance.
 before shipping. If you're testing this again, don't trust a "the ring isn't there" result without
 checking `document.visibilityState` first.
 
+## Deselecting: clicking empty space, not just another point
+
+Originally, the only way to change what's selected was to click a *different* point — there was
+no way back to "nothing selected" once something was, so the arcs/lines and info panel stayed
+stuck on screen even while dragging other items around, with no way to turn them off. Direct
+report: *"there's no way to click off once you've selected something... I don't want the
+difference arcs showing."* Fixed at the source in the same `mousedown` handler that already does
+hit-testing for drag-start: `hitTestItem()` returning `null` (empty space) now calls
+`selectItem(null)` immediately, rather than just falling through and doing nothing. This only
+fires on an actual miss, so it can't interfere with starting a drag on a real point.
+
+## Compare-by toggle: cosine (arcs) vs. Euclidean (lines)
+
+Direct follow-up request, alongside the deselect fix: offer Euclidean distance as an alternative
+to cosine for the *selected-item* comparison (the ranked list and its on-canvas visualization) —
+explicitly not for axis placement itself, which stays cosine-only (see `recomputeAxes()`/
+`normalizeGroup()`, untouched) since that's a different question ("how similar is this to the
+axis word") from "which other plotted items is the selected one closest to," and the spec's
+original ranked-list design was already scoped to the latter.
+
+**`state.compareMode`** (`'cosine'` default, or `'euclidean'`), toggled via `#compareToggle`
+(same `.toggle-group` pattern as `#viewToggle`, placed directly below it). `rankOthers(item)` is
+the single function both the ranked list and the canvas visualization already shared, so it's
+also the only place the metric choice needed to live: Euclidean distance between the two plotted
+points is remapped onto the same `-1..1` "sim" scale cosine already produces (`1 - 2*dist/
+MAX_PLOT_DIST`, where `MAX_PLOT_DIST = hypot(2,2)` is the actual maximum distance two points can
+ever be, given `screenToPlot()` clamps both axes to `[-1,1]`) — this is what lets the bar-width
+formula, the `.toFixed(2)` display, and the best/worst sort direction in `updateInfoPanel()` and
+`drawCompass()` stay completely unmodified regardless of which metric produced the number. Don't
+special-case Euclidean further downstream of `rankOthers()`; if a display bug shows up, the fix
+almost certainly belongs in the remapping formula, not in a new branch somewhere else.
+
+**Arcs vs. lines**: cosine's arc visualization (`drawSimilarityArc()`) is unchanged and answers a
+question that's inherently about the *origin* — the angle between two vectors from center.
+Euclidean distance isn't a question about the origin at all, so sweeping an arc around one for it
+would be a visual answering the wrong question. `drawSimilarityLine()` instead draws a plain
+straight segment directly between the selected point and its best/worst match — literally what
+the distance being measured *is*, geometrically — following the same green-best/red-worst,
+worst-drawn-first convention as the arc version. The `if(state.compareMode === 'euclidean')`
+branch in `drawCompass()` returns early after drawing lines specifically so the arc code below it
+(which assumes cosine-style geometry: an origin point, a swept angle) never runs in the same
+frame — the two visual languages don't blend, they replace each other.
+
+**Not wired into Network view.** Network's edges already use Euclidean distance unconditionally
+(see the "Edges use Euclidean distance" comment on `drawNetwork()`) — a separate, earlier design
+decision unrelated to this toggle. Leaving that as-is (rather than making it respect
+`state.compareMode` too) was deliberate: Network's edges answer "how does everything relate to
+everything," while this toggle only ever governed the *selected-item* comparison, which Network
+doesn't have a click-to-select interaction for in the first place (the mousedown handler is
+gated to `state.view === 'compass'`).
+
 ## Two real CLIP quirks this surfaces, on purpose
 
 - **Raw text-text cosine similarity used to run hot and cluster tight** — see the rescaling
@@ -818,6 +869,13 @@ dashed amber ring, and the info panel shows a "Reset to computed position" butto
 button and confirm the point returns to its original computed position exactly; change either
 axis word afterward (with a fresh drag in place) and confirm the pin is gone and the point is back
 to auto-placement under the new axis, not still sitting at the old manual position.
+
+Also: click a point, then click empty canvas space and confirm the arcs/lines and info panel both
+disappear (not just one of the two); click a point, toggle "Compare selected by" to Euclidean and
+confirm the arcs are replaced by straight point-to-point lines, the info panel title switches to
+"(euclidean)", and the ranked list's order/bars update immediately without needing to reselect;
+toggle back to Cosine and confirm the arcs return exactly as before. Drag a point around while
+Euclidean is active and confirm its line follows live, the same as the arc does in Cosine mode.
 
 One easy-to-miss testing trap: this page's whole render loop runs on `requestAnimationFrame`,
 which browsers fully pause whenever `document.visibilityState !== 'visible'` — every visual check

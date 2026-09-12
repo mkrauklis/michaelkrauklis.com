@@ -210,6 +210,11 @@
       <button data-view="compass" class="active">Compass</button>
       <button data-view="network">Network</button>
     </div>
+    <div class="toggle-group" id="compareToggle" style="margin-top:8px;">
+      <span class="status" style="margin-right:2px; align-self:center;">Compare selected by:</span>
+      <button data-compare="cosine" class="active">Cosine (arcs)</button>
+      <button data-compare="euclidean">Euclidean (lines)</button>
+    </div>
     <div class="canvas-wrap">
       <canvas id="plotCanvas" width="720" height="720"></canvas>
       <span class="axis-label top pos" id="labelTop"></span>
@@ -533,7 +538,13 @@ const state = {
   view: 'compass',
   mode: 'text', // 'text' or 'image' -- never mixed, see mode toggle below
   selectedId: null,
+  compareMode: 'cosine', // 'cosine' (angle from origin, drawn as arcs) or 'euclidean' (straight-line distance between points, drawn as lines) -- see rankOthers()
 };
+// Farthest apart two points can ever land, given screenToPlot() clamps both axes to [-1, 1]:
+// the diagonal between opposite corners, sqrt(2^2 + 2^2). Used to normalize a raw Euclidean
+// distance onto the same -1..1 "sim" scale cosine already produces, so every downstream
+// consumer (bar width, ranking, the arc/line switch) can stay agnostic to which metric is active.
+const MAX_PLOT_DIST = Math.hypot(2, 2);
 const EXAMPLE_ITEMS = ['surfing', 'summit', 'coral reef', 'ski lodge', 'sailboat', 'hiking trail'];
 
 function addTextItem(text){
@@ -893,10 +904,24 @@ function drawCompass(ctx, now){
     if(others.length){
       const selP = liveXY(selectedItem, now);
       const [selX, selY] = toScreen(selP.x, selP.y);
+      const best = others[0], worst = others[others.length - 1];
+
+      if(state.compareMode === 'euclidean'){
+        // Euclidean is a point-to-point distance, so its visual is point-to-point too: a
+        // straight line from the selected item directly to its nearest/farthest neighbor,
+        // rather than an arc swept around an origin that this metric never actually refers to.
+        const bp = liveXY(best.item, now); const [bx, by] = toScreen(bp.x, bp.y);
+        if(worst.item.id !== best.item.id){
+          const wp = liveXY(worst.item, now); const [wx, wy] = toScreen(wp.x, wp.y);
+          drawSimilarityLine(ctx, selX, selY, wx, wy, '#e0615a');
+        }
+        drawSimilarityLine(ctx, selX, selY, bx, by, '#5fd88a');
+        return;
+      }
+
       const [ox, oy] = toScreen(0, 0);
       const selDist = Math.hypot(selX - ox, selY - oy);
       const selAngle = Math.atan2(selY - oy, selX - ox);
-      const best = others[0], worst = others[others.length - 1];
       const bestP = liveXY(best.item, now);
       const [bx, by] = toScreen(bestP.x, bestP.y);
       const bestDist = Math.hypot(bx - ox, by - oy);
@@ -922,6 +947,19 @@ function drawSimilarityArc(ctx, ox, oy, radius, selAngle, targetItem, now, color
   ctx.shadowColor = color; ctx.shadowBlur = 9;
   ctx.beginPath();
   ctx.arc(ox, oy, radius, selAngle, selAngle + diff, diff < 0);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+}
+
+// Euclidean mode's counterpart to drawSimilarityArc() -- a straight line directly between the
+// two points it's relating, since "distance" (unlike cosine's angle-from-origin) is already a
+// point-to-point quantity with nothing meaningful to swing an arc around.
+function drawSimilarityLine(ctx, x1, y1, x2, y2, color){
+  ctx.strokeStyle = color; ctx.lineWidth = 3;
+  ctx.shadowColor = color; ctx.shadowBlur = 9;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
   ctx.stroke();
   ctx.shadowBlur = 0;
 }
@@ -1016,7 +1054,13 @@ canvas.addEventListener('mousedown', e => {
   if(state.view !== 'compass') return;
   const { px, py } = canvasPoint(e);
   const id = hitTestItem(px, py);
-  if(id == null) return;
+  if(id == null){
+    // Clicking empty space deselects -- the only way to turn off the most-/least-similar
+    // arcs once something's selected, since there was previously no way back to "nothing
+    // selected" short of picking a different item.
+    if(state.selectedId != null) selectItem(null);
+    return;
+  }
   dragId = id; dragMoved = false;
 });
 window.addEventListener('mousemove', e => {
@@ -1057,12 +1101,23 @@ function resetItemPosition(id){
   recomputeAxes();
 }
 
-// Ranks every other embedded item by 2D cosine similarity of origin-vectors to `item` --
-// the same formula spec §3 defines for the ranked list, shared here with the on-canvas
-// most-/least-similar arcs so both are guaranteed to agree with each other.
+// Ranks every other embedded item against `item`, shared by the ranked list and the on-canvas
+// most-/least-similar arcs/lines so both are guaranteed to agree with each other. Two metrics:
+// 'cosine' (spec §3's default -- angle between origin-vectors, ignores how far out either point
+// sits) or 'euclidean' (straight-line distance between the two plotted points -- cares about
+// proximity, not direction, which is what "draw a line to its nearest neighbor" actually means).
+// Euclidean's raw distance is remapped onto the same -1..1 "sim" scale cosine produces (0 ->
+// +1, MAX_PLOT_DIST -> -1) so every downstream consumer (bar width formula, sort order, the
+// "which end is best/worst" logic) works unmodified regardless of which metric is active.
 function rankOthers(item){
+  const euclidean = state.compareMode === 'euclidean';
   return state.items.filter(i => i.id !== item.id && i.embedding)
-    .map(i => ({ item: i, sim: cosine2D(item.pos.x, item.pos.y, i.pos.x, i.pos.y) }))
+    .map(i => {
+      const sim = euclidean
+        ? 1 - 2 * (Math.hypot(item.pos.x - i.pos.x, item.pos.y - i.pos.y) / MAX_PLOT_DIST)
+        : cosine2D(item.pos.x, item.pos.y, i.pos.x, i.pos.y);
+      return { item: i, sim };
+    })
     .sort((a, b) => b.sim - a.sim);
 }
 
@@ -1071,7 +1126,8 @@ function updateInfoPanel(){
   const item = state.items.find(i => i.id === state.selectedId);
   if(!item || !item.embedding){ panel.classList.remove('visible'); return; }
   panel.classList.add('visible');
-  document.getElementById('infoTitle').textContent = `${item.text} Similarity`;
+  const compareLabel = state.compareMode === 'euclidean' ? 'euclidean' : 'cosine';
+  document.getElementById('infoTitle').textContent = `${item.text} Similarity (${compareLabel})`;
   const resetBtn = document.getElementById('resetPositionBtn');
   resetBtn.style.display = item.manualPos ? 'inline-block' : 'none';
   resetBtn.onclick = () => resetItemPosition(item.id);
@@ -1144,6 +1200,17 @@ document.getElementById('viewToggle').addEventListener('click', e => {
   if(!btn) return;
   state.view = btn.dataset.view;
   [...document.querySelectorAll('#viewToggle button')].forEach(b => b.classList.toggle('active', b === btn));
+});
+
+// ---------- compare-method toggle ----------
+// Only affects the selected-item arcs/lines and the ranked similarity list -- axis placement
+// itself always stays cosine-based (see rankOthers()'s comment for why the two are unrelated).
+document.getElementById('compareToggle').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-compare]');
+  if(!btn) return;
+  state.compareMode = btn.dataset.compare;
+  [...document.querySelectorAll('#compareToggle button')].forEach(b => b.classList.toggle('active', b === btn));
+  updateInfoPanel(); // the ranked list's bars/values are computed once per call, not per animation frame
 });
 
 // ---------- export ----------
