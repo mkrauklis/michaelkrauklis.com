@@ -193,6 +193,25 @@ a plain static page rather than a `claude.ai`-hosted artifact. "Print the text u
 **defaults off** (was on) — a clean, caption-free signature is what a visitor wants for the
 two-sided-mug idea below.
 
+## Two Zazzle links, two different jobs — don't conflate them
+
+There are now two separate Zazzle links on this page, and they serve different purposes:
+
+- **The hero CTA** ("Want to see what this looks like as a gift? Here's an example on a mug,"
+  right under the intro paragraph) links to a **real, live, specific product** — the
+  "Automate the C-Suite First" mug (`automate_the_c_suite_first_mug-256161326676791673`, with
+  the site's standard `?rf=238054754631086278` ambassador param). This is a curated, pre-made
+  example meant to sell the *idea* of "you can put this on a mug" at a glance, before a visitor
+  has even touched the tool — it is not something a visitor's own input feeds into. This is the
+  first tool on the site to get this pattern; if other tools get their own real product links,
+  put them in the same spot (top of the hero, right after the intro paragraph) for consistency.
+- **`#shareSection`'s mug template link** (below) is the generic "make it a gift" DIY flow — a
+  visitor downloads *their own* PNG/QR output and uploads it to a blank "upload your own image"
+  template themselves. This one is still a placeholder (see below), unrelated to the real product
+  link above. Don't merge these two into one link or assume fixing one fixes the other — the hero
+  link points at a finished product; the share-section link points at a blank template a visitor
+  personalizes themselves.
+
 ## Zazzle link is a placeholder, not a verified template
 
 `#shareSection`'s mug template URL is the **same product ID already used by Ridgeline's own mug
