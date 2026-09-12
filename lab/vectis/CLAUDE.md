@@ -398,6 +398,19 @@ upheld by every tool here) or an impractically large in-browser model, and was e
 pursued for that reason. If this ever gets revisited, that trade-off needs to be made
 consciously and by name, not slipped in as an implementation detail.
 
+**This limitation was only documented here, not to visitors, until a real user hit it live** —
+reproduced directly with the exact "fast"/"hairy" axis pair (sloth landed furthest out on "fast,"
+ahead of cheetah, matching the numbers above almost exactly) before concluding it was the same
+known issue rather than a new regression. The `.select-hint` paragraph right under the compass
+(always visible, not tucked in the collapsed "Tips" disclosure) now names this directly —
+properties you can see or read work reliably, behavioral ones like speed/loudness often don't,
+and that's a real limit of the technique rather than a bug — immediately next to the reminder that
+dragging a point is the actual fix. Don't move this explanation into the collapsed disclosure or
+delete it as "redundant with CLAUDE.md" — CLAUDE.md is never read by an actual visitor, and this
+exact gap (a real limitation, fully understood and even fixed via manual override, but invisible
+to the person hitting it) is what produced the "this isn't working at all" report in the first
+place.
+
 ## Two embedding models, one per mode
 
 Direct follow-up once the above was diagnosed: *"are there actually solutions? A different
