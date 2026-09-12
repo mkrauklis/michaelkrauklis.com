@@ -34,8 +34,8 @@ When adding a new lab tool, link both files and rely on `theme.css`'s defaults b
 new CSS — copying a whole `<style>` block from an existing tool page (the old pattern) is how
 the palette and the paragraph-width bug drifted out of sync across pages in the first place.
 
-`lab/index.html`'s tool list is ordered newest-first, top to bottom (currently Echo State,
-Neural Viaduct, Vectis, Afterimage, Ridgeline) — add a new tool's card at the *top* of
+`lab/index.html`'s tool list is ordered newest-first, top to bottom (currently Inkling, Echo
+State, Neural Viaduct, Vectis, Afterimage, Ridgeline) — add a new tool's card at the *top* of
 `.tool-list`, not the bottom. Each card also gets a `/lab/<tool>/thumbnail.jpg` (16:9,
 `object-fit:cover`, falls back cleanly via `onerror="this.remove()"` if the file doesn't exist
 yet) — build it from the tool's own real output, not placeholder art.

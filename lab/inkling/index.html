@@ -1,0 +1,1145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="google-adsense-account" content="ca-pub-5936916546458743">
+<title>Inkling — teach a tiny network to read your handwriting</title>
+<meta name="description" content="Draw a letter, tell a tiny neural network what it is, and watch real backpropagation update every weight and bias live — then test it on a whole word. No libraries, no black box, entirely in your browser.">
+<link rel="canonical" href="https://michaelkrauklis.me/lab/inkling/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Michael Krauklis">
+<meta property="og:title" content="Inkling — teach a tiny network to read your handwriting">
+<meta property="og:description" content="Draw a letter, tell a tiny neural network what it is, and watch real backpropagation update every weight and bias live — then test it on a whole word. No libraries, no black box, entirely in your browser.">
+<meta property="og:url" content="https://michaelkrauklis.me/lab/inkling/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Inkling — teach a tiny network to read your handwriting">
+<meta name="twitter:description" content="Draw a letter, tell a tiny neural network what it is, and watch real backpropagation update every weight and bias live — then test it on a whole word. No libraries, no black box, entirely in your browser.">
+<link rel="icon" type="image/png" href="/echo-state-trace-mkconceptlab.png">
+<link rel="stylesheet" href="/theme.css">
+<!-- theme.css already imports Fraunces + Inter; JetBrains Mono is specific to this page's
+     numeric/label chrome (ledger, chips, tiles) and needs its own import. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --accent: #c81d4f; --accent-dim: #7a1030;
+    --cool: #2f6fe0; --paper: #efe7d6; --stroke: #7a1030;
+    --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  }
+  .wrap{ max-width: 900px; margin: 0 auto; padding: 0 24px; }
+  .mono{ font-family: var(--mono); }
+  .tabular{ font-variant-numeric: tabular-nums; }
+
+  .hero-line.eyebrow{
+    font-family: var(--mono); font-size: 0.78rem; letter-spacing: 0.12em; text-transform: uppercase;
+  }
+
+  .step-tag{ font-family: var(--mono); }
+
+  /* ---------- scratchpad ---------- */
+  .pad-block{ display:flex; flex-direction:column; gap:0.6rem; }
+  .pad-surface{ position:relative; display:inline-block; border-radius:8px; }
+  .pad-surface:hover .expand-hint{ opacity:1; }
+  .expand-hint{
+    position:absolute; top:7px; right:7px; background:rgba(12,14,18,.78); color:var(--ink);
+    font-family:var(--mono); font-size:.62rem; letter-spacing:.03em; padding:3px 7px;
+    border-radius:6px; border:1px solid rgba(255,255,255,.14); opacity:0; transition:opacity .15s ease;
+    pointer-events:none;
+  }
+  canvas.pad{
+    background:var(--paper); border-radius:8px; cursor:pointer; touch-action:none; display:block;
+    box-shadow:0 1px 0 rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+  }
+  .pad-actions{ display:flex; gap:.6rem; align-items:center; }
+
+  /* ---------- letter chips ---------- */
+  .chips{ display:flex; flex-wrap:wrap; gap:.4rem; margin-top:1rem; }
+  .chip{
+    position:relative; width:34px; height:34px; border-radius:8px; border:1px solid var(--line);
+    background:var(--bg-panel-2); color:var(--ink-dim); font-family:'Fraunces',serif; font-size:1.02rem;
+    display:flex; align-items:center; justify-content:center; cursor:pointer; user-select:none;
+    transition:all .12s ease;
+  }
+  .chip[data-taught="1"]{ border-color:var(--accent-dim); color:var(--ink); background:color-mix(in srgb, var(--accent) 16%, transparent); }
+  .chip.active{ background:var(--accent); border-color:var(--accent); color:#fff; }
+  .chip .n{
+    position:absolute; bottom:-6px; right:-6px; background:var(--bg); border:1px solid var(--line);
+    color:var(--ink-dim); font-family:var(--mono); font-size:.58rem; border-radius:6px;
+    padding:0 3px; line-height:1.3;
+  }
+  .chip.active .n{ color:var(--ink); border-color:rgba(255,255,255,.4); }
+
+  .status-mono{ font-family:var(--mono); font-size:.78rem; color:var(--ink-dim); margin-top:.9rem; }
+  .status-mono b{ color:var(--ink); }
+
+  /* ---------- stage (forward/back animation) ---------- */
+  .stage-wrap{ margin-top:1.6rem; }
+  canvas#stage{ width:100%; max-width:760px; height:auto; display:block; background:var(--bg-panel-2); border-radius:10px; border:1px solid var(--line); }
+  .stage-caption{ font-family:var(--mono); font-size:.78rem; color:var(--ink-dim); margin-top:.7rem; min-height:1.4em; }
+  .legend{ display:flex; gap:1.2rem; flex-wrap:wrap; margin-top:.6rem; }
+  .legend span{ font-family:var(--mono); font-size:.72rem; color:var(--ink-dim); display:flex; align-items:center; gap:.4em; }
+  .legend-swatch{ width:10px; height:10px; border-radius:3px; display:inline-block; }
+
+  /* ---------- test word ---------- */
+  .word-row{ display:flex; flex-wrap:wrap; gap:.7rem; margin-top:1.2rem; }
+  .word-pad-block{ display:flex; flex-direction:column; align-items:center; gap:.3rem; }
+  canvas.mini-pad{
+    width:60px; height:60px; background:var(--paper); border-radius:6px; cursor:pointer; touch-action:none;
+    box-shadow:0 6px 16px -10px rgba(0,0,0,.6); display:block;
+  }
+  .mini-x{
+    width:60px; text-align:center; font-family:var(--mono); font-size:.62rem; color:var(--ink-dim);
+    background:none; border:none; padding:2px 0; cursor:pointer;
+  }
+  .mini-x:hover{ color:var(--accent); }
+  .decoded{
+    font-family:'Fraunces',serif; font-size:clamp(1.8rem,5vw,2.6rem); letter-spacing:.08em;
+    margin-top:1.4rem; color:var(--ink); min-height:1.3em;
+  }
+  .decoded .gap{ color:var(--ink-dim); }
+  .attempts{ margin-top:1rem; display:flex; flex-direction:column; gap:.35rem; max-height:180px; overflow-y:auto; }
+  .attempt-row{ font-family:var(--mono); font-size:.8rem; color:var(--ink-dim); display:flex; gap:.8em; }
+  .attempt-row b{ color:var(--ink); min-width:5.5em; }
+
+  /* ---------- look inside ---------- */
+  .tiles{ display:grid; grid-template-columns:repeat(6,1fr); gap:.5rem; margin-top:1.4rem; max-width:520px; }
+  .tile{ border-radius:6px; padding:3px; background:var(--bg-panel-2); border:2px solid var(--ink-faint,#545a66); }
+  .tile canvas{ display:block; width:100%; height:auto; border-radius:3px; }
+  #heatmapWrap{ margin-top:2rem; overflow-x:auto; }
+  #heatmap{ display:block; }
+
+  /* ---------- export ---------- */
+  .quant-toggle{ display:flex; gap:.5rem; margin-top:1.2rem; }
+  .quant-toggle button.on{ background:var(--accent); border-color:var(--accent); color:#fff; }
+  .ledger{
+    margin-top:1.2rem; font-family:var(--mono); font-size:.82rem; display:grid;
+    grid-template-columns:1fr auto; gap:.35rem 1.2rem; max-width:420px;
+  }
+  .ledger .k{ color:var(--ink-dim); }
+  .ledger .v{ color:var(--ink); text-align:right; }
+  .ledger .v.good{ color:#3fa66b; }
+  .ledger .rule{ grid-column:1/-1; height:1px; background:var(--line); margin:.3rem 0; }
+  .qr-block{ display:flex; gap:1.6rem; flex-wrap:wrap; align-items:flex-start; margin-top:1.4rem; }
+  #qrHolder{ background:#fff; padding:10px; border-radius:8px; width:160px; height:160px; display:flex; align-items:center; justify-content:center; }
+  #qrHolder img, #qrHolder canvas, #qrHolder table{ width:140px!important; height:140px!important; }
+  .qr-note{ max-width:36ch; font-size:.85rem; }
+  textarea{
+    width:100%; min-height:110px; background:var(--bg); color:var(--ink-dim); border:1px solid var(--line);
+    border-radius:8px; padding:.8rem; font-family:var(--mono); font-size:.72rem; resize:vertical;
+  }
+  .export-io{ display:grid; grid-template-columns:1fr 1fr; gap:1.6rem; margin-top:2rem; }
+  @media (max-width:720px){ .export-io{ grid-template-columns:1fr; } }
+  .io-block h3{ font-size:.95rem; margin-bottom:.5rem; font-family:'Fraunces',serif; font-weight:500; }
+  #portraitImg{ max-width:100%; border-radius:8px; margin-top:1rem; border:1px solid var(--line); display:none; }
+
+  svg.arch text{ font-family:var(--mono); fill:var(--ink-dim); }
+  svg.arch .accent-line{ stroke:var(--accent); }
+  code.inline{ font-family:var(--mono); background:var(--bg-panel-2); padding:.15em .4em; border-radius:4px; font-size:.85em; color:var(--ink); }
+  .toast{ display:inline-block; font-family:var(--mono); font-size:.75rem; color:var(--accent); margin-left:.7rem; opacity:0; transition:opacity .2s ease; }
+  .toast.show{ opacity:1; }
+
+  /* ---------- expand-to-draw overlay ---------- */
+  .expand-overlay{
+    position:fixed; inset:0; background:rgba(6,7,10,.8); backdrop-filter:blur(2px);
+    display:flex; align-items:center; justify-content:center; z-index:80; padding:20px;
+  }
+  .expand-overlay[hidden]{ display:none; }
+  .expand-card{
+    background:var(--bg-panel); border:1px solid var(--line); border-radius:16px; padding:1.3rem;
+    display:flex; flex-direction:column; gap:.9rem; box-shadow:0 30px 70px -20px rgba(0,0,0,.7);
+  }
+  .expand-head{ display:flex; align-items:center; justify-content:space-between; gap:1.2rem; }
+  .expand-head h3{ font-size:1.05rem; margin:0; font-family:'Fraunces',serif; font-weight:500; }
+  .expand-actions{ display:flex; gap:.5rem; }
+  #expandCanvas{
+    background:var(--paper); border-radius:12px; cursor:crosshair; touch-action:none; display:block;
+    width:min(78vmin,520px); height:min(78vmin,520px);
+    box-shadow:0 1px 0 rgba(0,0,0,.4), 0 16px 40px -18px rgba(0,0,0,.7);
+  }
+  .expand-foot{ font-family:var(--mono); font-size:.72rem; color:var(--ink-dim); text-align:center; }
+</style>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5936916546458743"
+     crossorigin="anonymous"></script>
+</head>
+<body>
+<script src="/nav.js"></script>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="hero-line eyebrow">Concept Lab — feedforward &amp; backprop</span>
+    <h1>Inkling</h1>
+    <p style="max-width:56ch; font-size:1.05rem;">A network small enough to hold in one hand. Draw a
+    letter, tell it what you drew, and watch <b style="color:var(--ink);">every weight and bias</b> get
+    nudged by real backpropagation — then hand it a whole word and watch its guesses sharpen, one
+    lesson at a time.</p>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section>
+    <span class="step-tag">01 — teach</span>
+    <h2>Teach it a letter</h2>
+    <p>Draw a character, pick the letter it's supposed to be, then press Train. The net sees your
+    ink, guesses, checks itself against the label you gave it, and adjusts — a full forward pass
+    followed by a full backward pass, every time.</p>
+
+    <div class="panel">
+      <div class="row">
+        <div class="pad-block">
+          <div class="pad-surface">
+            <canvas id="padCanvas" class="pad" width="220" height="220"></canvas>
+            <span class="expand-hint">⤢ tap to draw</span>
+          </div>
+          <div class="pad-actions">
+            <button type="button" class="secondary" style="padding:.35em .7em; font-size:.74rem;" id="clearPad">Clear</button>
+            <span class="status-mono" id="padHint" style="margin:0;"></span>
+          </div>
+        </div>
+        <div class="col" style="min-width:260px;">
+          <div class="status-mono" style="margin-top:0;">this is <b id="selectedLetterLabel">—</b> select a letter:</div>
+          <div class="chips" id="letterChips"></div>
+          <div class="actions">
+            <button type="button" class="primary" id="trainBtn">Train ↳</button>
+            <button type="button" class="secondary" id="resetBtn">Reset network</button>
+            <span class="toast" id="resetToast">click again to confirm</span>
+          </div>
+          <div class="status-mono" id="trainStatus"></div>
+        </div>
+      </div>
+
+      <div class="stage-wrap">
+        <canvas id="stage" width="760" height="260"></canvas>
+        <div class="stage-caption" id="stageCaption">Draw a letter and press Train to watch it learn.</div>
+        <div class="legend">
+          <span><i class="legend-swatch" style="background:var(--accent);"></i>excites (+ weight / + activation)</span>
+          <span><i class="legend-swatch" style="background:var(--cool);"></i>inhibits (− weight / − activation)</span>
+          <span><i class="legend-swatch" style="background:var(--ink);"></i>backprop signal, flowing right→left</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <span class="step-tag">02 — test word</span>
+    <h2>Give it a word</h2>
+    <p>Spell something out, one letter per box. Every time you train the network above, it
+    re-reads this whole word from scratch — no memorization, just its current weights doing the
+    work — so you can watch the decoded output tighten up as you teach it more letters.</p>
+
+    <div class="panel">
+      <div class="word-row" id="wordPads"></div>
+      <div class="decoded" id="wordOutput"></div>
+      <div class="actions" style="margin-top:0;">
+        <button type="button" class="secondary" id="decodeNowBtn">Decode now</button>
+        <span class="status-mono" style="margin:0;">or wait — it re-decodes automatically after every Train</span>
+      </div>
+      <div class="attempts" id="attemptsLog"></div>
+    </div>
+  </section>
+
+  <section>
+    <span class="step-tag">03 — look inside</span>
+    <h2>Look inside the network</h2>
+    <p>Each of the 18 hidden units below has learned to look for one pattern of ink across your
+    drawing grid — its <i>receptive field</i>. The larger grid shows how strongly each hidden unit
+    votes for each letter. Both update live as you train.</p>
+
+    <div class="panel">
+      <div class="tiles" id="tilesGrid"></div>
+      <div id="heatmapWrap">
+        <canvas id="heatmap" width="440" height="306"></canvas>
+      </div>
+      <p style="margin-top:1rem; font-size:.82rem;">Tile border color is that neuron's bias. Tile
+      interior is its 100 input weights, reshaped to the drawing grid. Rose = excitatory, blue =
+      inhibitory.</p>
+    </div>
+  </section>
+
+  <section id="shareSection">
+    <span class="step-tag">04 — save &amp; share</span>
+    <h2>Take it with you</h2>
+    <p>The whole trained network — every weight, every bias — is small enough to fit in a QR
+    code. Quantize it down, scan it, and this exact net comes back to life somewhere else.</p>
+
+    <div class="panel">
+      <div class="quant-toggle" id="quantToggle">
+        <button type="button" class="secondary" id="q8">8-bit</button>
+        <button type="button" class="secondary on" id="q4">4-bit</button>
+      </div>
+      <div class="ledger" id="ledger"></div>
+
+      <div class="qr-block">
+        <div id="qrHolder"></div>
+        <div>
+          <p class="qr-note" id="qrNote">Scan this to carry the trained network — seed, shape, and
+          every quantized weight — anywhere the site can read it back.</p>
+          <button type="button" class="secondary" style="margin-top:.6rem;" id="downloadQrBtn">Download QR as PNG</button>
+        </div>
+      </div>
+
+      <div class="export-io">
+        <div class="io-block">
+          <h3>Copy full-precision weights</h3>
+          <p style="font-size:.82rem;">The raw floats, no quantization — paste this back in below
+          to restore a network exactly.</p>
+          <textarea id="weightsOut" readonly></textarea>
+          <button type="button" class="secondary" style="margin-top:.6rem; padding:.35em .7em; font-size:.74rem;" id="copyWeightsBtn">Copy to clipboard</button>
+          <span class="toast" id="copyToast">copied</span>
+        </div>
+        <div class="io-block">
+          <h3>Load weights</h3>
+          <p style="font-size:.82rem;">Paste a previously exported network here to pick up where
+          it left off.</p>
+          <textarea id="weightsIn" placeholder="paste exported JSON here"></textarea>
+          <button type="button" class="secondary" style="margin-top:.6rem; padding:.35em .7em; font-size:.74rem;" id="loadWeightsBtn">Load</button>
+          <span class="toast" id="loadToast">loaded</span>
+        </div>
+      </div>
+
+      <div style="margin-top:2rem;">
+        <button type="button" class="secondary" id="portraitBtn">Render a network portrait</button>
+        <p style="font-size:.8rem; max-width:50ch;">Composites the tiles, the weight grid, and your
+        current decoded word into one image.</p>
+        <img id="portraitImg" alt="Rendered portrait of the current network">
+        <div class="actions" id="downloadPortraitRow" style="display:none;">
+          <button type="button" class="primary" id="downloadPortraitBtn">Download portrait PNG</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:24px;">
+      <span class="step-tag">make it a gift</span>
+      <p style="font-size:0.9rem;">Render a portrait above, download it, and it's ready for print —
+      a mug, a shirt, a poster, whatever Zazzle will put an uploaded image on.</p>
+      <p style="font-size:0.85rem;">
+        <a href="https://www.zazzle.com/design_your_own_logo_design_coffee_mug-256206116898885602?rf=238054754631086278" target="_blank" rel="noopener">Open a Zazzle "upload your own image" template &rarr;</a>
+        — works for a mug, and most of Zazzle's other blank templates take the same kind of upload.
+      </p>
+    </div>
+  </section>
+
+  <details class="disclosure advanced">
+    <summary>How this actually works <span class="adv-sub">— the whole network, in one screen</span></summary>
+    <div class="disclosure-body">
+      <p>Every drawing is downsampled to a 10×10 grid — 100 numbers between 0 (blank) and 1 (full
+      ink). That's the entire input. From there it's the plainest network there is:</p>
+      <svg class="arch" viewBox="0 0 640 260" role="img" aria-label="Diagram of the network: 100 input pixels feed a hidden layer of 18 tanh units, which feeds an output layer of 26 softmax units for A through Z; a forward arrow and a labeled backward arrow connect the layers.">
+        <g id="inGrid" transform="translate(20,80)"></g>
+        <text x="55" y="220" text-anchor="middle" font-size="11">100 pixels</text>
+        <g id="hidGrid" transform="translate(230,40)"></g>
+        <text x="240" y="220" text-anchor="middle" font-size="11">18 hidden (tanh)</text>
+        <g id="outGrid" transform="translate(330,50)"></g>
+        <text x="480" y="220" text-anchor="middle" font-size="11">26 output (softmax, A–Z)</text>
+
+        <line x1="105" y1="130" x2="225" y2="130" stroke="currentColor" stroke-width="1.4" marker-end="url(#arrH)"/>
+        <line x1="255" y1="130" x2="325" y2="130" stroke="currentColor" stroke-width="1.4" marker-end="url(#arrH)"/>
+        <text x="165" y="122" text-anchor="middle" font-size="10">z=Wx+b</text>
+        <text x="290" y="122" text-anchor="middle" font-size="10">z=Wa+b</text>
+
+        <path d="M 630 150 C 500 190, 150 190, 20 150" fill="none" class="accent-line" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#arrA)"/>
+        <text x="325" y="210" text-anchor="middle" font-size="11" fill="var(--accent)">backward: ∂L/∂W, ∂L/∂b — one gradient step per Train click</text>
+
+        <defs>
+          <marker id="arrH" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+          </marker>
+          <marker id="arrA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/>
+          </marker>
+        </defs>
+      </svg>
+      <p><b style="color:var(--ink);">Forward:</b> <code class="inline">a₁ = tanh(W₁x + b₁)</code>,
+      then <code class="inline">ŷ = softmax(W₂a₁ + b₂)</code>. <b style="color:var(--ink);">Loss:</b>
+      cross-entropy against the label you gave it. <b style="color:var(--ink);">Backward:</b> the
+      standard chain rule — <code class="inline">δ₂ = ŷ − y</code>, then
+      <code class="inline">δ₁ = (W₂ᵀδ₂) ⊙ (1 − a₁²)</code> — with every <code class="inline">W</code>
+      and <code class="inline">b</code> nudged by <code class="inline">−η·∂L</code>. Pressing Train
+      adds your sample to everything taught so far and re-runs several passes over all of it, so
+      earlier letters don't get forgotten as new ones arrive.</p>
+      <p>Total parameters: 100×18+18 hidden, 18×26+26 output =
+      <b style="color:var(--ink);">2,312</b> numbers. At 8 bits each that's 2,312 bytes; at 4 bits,
+      1,156 — small enough to ride along in a QR code, which is what step 04 is for. Loading
+      weights back in only restores the numbers, not this session's drawn examples — teaching is
+      one-way unless you keep the browser tab open.</p>
+      <p>Nothing you draw ever leaves your browser — every forward pass, every gradient, every
+      export happens right here.</p>
+    </div>
+  </details>
+
+  <hr class="divider">
+</main>
+
+<footer>
+  <div class="wrap">
+    Inkling runs entirely in your browser — nothing you draw is uploaded anywhere.
+    Part of <a href="/lab/">The Concept Lab</a> by <a href="/">Michael Krauklis</a>.
+  </div>
+</footer>
+
+<div class="expand-overlay" id="expandOverlay" hidden>
+  <div class="expand-card">
+    <div class="expand-head">
+      <h3 id="expandLabel">Draw</h3>
+      <div class="expand-actions">
+        <button type="button" class="secondary" style="padding:.35em .7em; font-size:.74rem;" id="expandClear">Clear</button>
+        <button type="button" class="primary" style="padding:.35em .7em; font-size:.74rem;" id="expandDone">Done</button>
+      </div>
+    </div>
+    <canvas id="expandCanvas" width="520" height="520"></canvas>
+    <div class="expand-foot">draw, then Done — or click outside, or press Esc</div>
+  </div>
+</div>
+
+<script src="qrcode.min.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  var ALPHA = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  var GRID = 10, GRIDN = 100, HID = 18, OUT = 26;
+  var LR = 0.45, EPOCHS = 16;
+  var C_BG='#10131a', C_PANEL2='#1d2230', C_LINE='#2a3040', C_INK='#e9e7de',
+      C_INKDIM='#9aa0ae', C_ACCENT='#c81d4f', C_COOL='#2f6fe0',
+      C_NEUTRAL='#545a66', C_GOOD='#5fd88a', C_PAPER='#efe7d6', C_STROKE='#7a1030';
+
+  function $(id){ return document.getElementById(id); }
+  function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+  function lerp(a,b,t){ return a+(b-a)*t; }
+  function hexToRgb(h){ h=h.replace('#',''); return [parseInt(h.substr(0,2),16),parseInt(h.substr(2,2),16),parseInt(h.substr(4,2),16)]; }
+  function rgbStr(rgb,a){ return 'rgba('+rgb[0]+','+rgb[1]+','+rgb[2]+','+(a==null?1:a)+')'; }
+  var NEUTRAL_RGB=hexToRgb(C_NEUTRAL), ACCENT_RGB=hexToRgb(C_ACCENT), COOL_RGB=hexToRgb(C_COOL);
+  function divergingColor(v, maxAbs, alpha){
+    if (maxAbs<1e-6) maxAbs=1e-6;
+    var t = clamp(v/maxAbs,-1,1);
+    var rgb = t>=0 ? [lerp(NEUTRAL_RGB[0],ACCENT_RGB[0],t),lerp(NEUTRAL_RGB[1],ACCENT_RGB[1],t),lerp(NEUTRAL_RGB[2],ACCENT_RGB[2],t)]
+                   : [lerp(NEUTRAL_RGB[0],COOL_RGB[0],-t),lerp(NEUTRAL_RGB[1],COOL_RGB[1],-t),lerp(NEUTRAL_RGB[2],COOL_RGB[2],-t)];
+    return rgbStr(rgb.map(Math.round), alpha==null?1:alpha);
+  }
+
+  function setupCanvas(canvas, cssW, cssH){
+    var dpr = Math.min(window.devicePixelRatio||1, 2);
+    canvas.width = Math.round(cssW*dpr);
+    canvas.height = Math.round(cssH*dpr);
+    canvas.style.width = cssW+'px';
+    canvas.style.height = cssH+'px';
+    var ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    return ctx;
+  }
+
+  // ---------------- random init (seeded xorshift32 -- deterministic, reproducible) ----------------
+  var rngState = 88675123;
+  function rnd(){ rngState ^= rngState<<13; rngState ^= rngState>>>17; rngState ^= rngState<<5; return ((rngState>>>0)/4294967296); }
+  function randn(scale){ return (rnd()*2-1)*scale; }
+
+  var W1, b1, W2, b2;
+  function initNet(){
+    W1 = []; b1 = new Float32Array(HID);
+    for (var h=0; h<HID; h++){ var row=new Float32Array(GRIDN); for (var k=0;k<GRIDN;k++) row[k]=randn(0.35); W1.push(row); b1[h]=randn(0.05); }
+    W2 = []; b2 = new Float32Array(OUT);
+    for (var o=0; o<OUT; o++){ var row2=new Float32Array(HID); for (var h2=0;h2<HID;h2++) row2[h2]=randn(0.45); W2.push(row2); b2[o]=randn(0.05); }
+  }
+  initNet();
+
+  var dataset = []; // {x:Float32Array(100), y:index}
+  var counts = new Array(26).fill(0);
+
+  // ---------------- math: forward pass, backprop, one SGD step ----------------
+  function forward(x){
+    var z1=new Float32Array(HID), a1=new Float32Array(HID);
+    for (var h=0;h<HID;h++){ var s=b1[h], row=W1[h]; for (var k=0;k<GRIDN;k++) s+=row[k]*x[k]; z1[h]=s; a1[h]=Math.tanh(s); }
+    var z2=new Float32Array(OUT);
+    for (var o=0;o<OUT;o++){ var s2=b2[o], row2=W2[o]; for (var h2=0;h2<HID;h2++) s2+=row2[h2]*a1[h2]; z2[o]=s2; }
+    var maxz=-Infinity; for (var i=0;i<OUT;i++) if (z2[i]>maxz) maxz=z2[i];
+    var exps=new Float32Array(OUT), sum=0;
+    for (var i2=0;i2<OUT;i2++){ exps[i2]=Math.exp(z2[i2]-maxz); sum+=exps[i2]; }
+    var probs=new Float32Array(OUT); for (var i3=0;i3<OUT;i3++) probs[i3]=exps[i3]/sum;
+    var predIdx=0, best=-1; for (var i4=0;i4<OUT;i4++) if (probs[i4]>best){best=probs[i4]; predIdx=i4;}
+    return {a1:a1, probs:probs, predIdx:predIdx};
+  }
+
+  function forwardAndGrad(x, yIdx){
+    var f = forward(x);
+    var a1=f.a1, probs=f.probs;
+    var dz2=new Float32Array(OUT);
+    for (var o=0;o<OUT;o++) dz2[o]=probs[o]-(o===yIdx?1:0);
+    var da1=new Float32Array(HID);
+    for (var h=0;h<HID;h++){ var s=0; for (var o2=0;o2<OUT;o2++) s+=W2[o2][h]*dz2[o2]; da1[h]=s; }
+    var dz1=new Float32Array(HID);
+    for (var h2=0;h2<HID;h2++) dz1[h2]=da1[h2]*(1-a1[h2]*a1[h2]);
+    return {a1:a1, probs:probs, predIdx:f.predIdx, dz1:dz1, dz2:dz2, x:x};
+  }
+
+  function applyGrad(g, lr){
+    for (var h=0;h<HID;h++){
+      var row=W1[h], dv=g.dz1[h]*lr;
+      for (var k=0;k<GRIDN;k++) row[k]-=dv*g.x[k];
+      b1[h]-=dv;
+    }
+    for (var o=0;o<OUT;o++){
+      var row2=W2[o], dv2=g.dz2[o]*lr;
+      for (var h2=0;h2<HID;h2++) row2[h2]-=dv2*g.a1[h2];
+      b2[o]-=dv2;
+    }
+  }
+
+  function runEpochs(epochs, lr){
+    if (!dataset.length) return;
+    var idxs = dataset.map(function(_,i){return i;});
+    for (var e=0;e<epochs;e++){
+      for (var i=idxs.length-1;i>0;i--){ var j=(rnd()*(i+1))|0; var t=idxs[i]; idxs[i]=idxs[j]; idxs[j]=t; }
+      for (var k=0;k<idxs.length;k++){
+        var s = dataset[idxs[k]];
+        var g = forwardAndGrad(s.x, s.y);
+        applyGrad(g, lr);
+      }
+    }
+  }
+
+  // ---------------- seed letters (bootstrap so the page isn't empty) ----------------
+  var SEED = {
+    H: [".........#","#........#","#........#","#........#","##########","#........#","#........#","#........#","#........#",".........."],
+    I: [".........#","##########","....##....","....##....","....##....","....##....","....##....","....##....","##########",".........."],
+    A: ["....##....","...####...","..##..##..","..##..##..","..######..","..##..##..","..##..##..","..##..##..","..##..##..",".........."],
+    B: ["#.........","#####.....","#....#....","#....#....","#####.....","#....#....","#....#....","#....#....","#####.....",".........."],
+    C: ["..#####...",".#....#...","#.........","#.........","#.........","#.........","#.........",".#....#...","..#####...",".........."],
+    T: ["##########","....##....","....##....","....##....","....##....","....##....","....##....","....##....","....##....",".........."]
+  };
+  function patternToGrid(rows, dx){
+    dx = dx||0;
+    var g = new Float32Array(GRIDN);
+    for (var r=0;r<GRID;r++){
+      var row = rows[r];
+      for (var c=0;c<GRID;c++){
+        var sc = c-dx;
+        var v = (sc>=0 && sc<GRID && row[sc]==='#') ? 1 : 0;
+        g[r*GRID+c] = v;
+      }
+    }
+    return g;
+  }
+  function seedTrain(){
+    Object.keys(SEED).forEach(function(letter){
+      var yIdx = ALPHA.indexOf(letter);
+      [0,1].forEach(function(variant){
+        var grid = patternToGrid(SEED[letter], variant===0?0:1);
+        dataset.push({x:grid, y:yIdx});
+        counts[yIdx]++;
+      });
+    });
+    runEpochs(60, 0.5);
+  }
+  seedTrain();
+
+  // ---------------- letter chips ----------------
+  var currentLetter = null;
+  var chipsEl = $('letterChips');
+  var chipRefs = {};
+  ALPHA.split('').forEach(function(letter){
+    var idx = ALPHA.indexOf(letter);
+    var chip = document.createElement('div');
+    chip.className = 'chip';
+    chip.setAttribute('role','button');
+    chip.setAttribute('tabindex','0');
+    chip.innerHTML = letter + '<span class="n">'+counts[idx]+'</span>';
+    chip.addEventListener('click', function(){ selectLetter(letter); });
+    chipsEl.appendChild(chip);
+    chipRefs[letter] = chip;
+  });
+  function refreshChipCounts(){
+    ALPHA.split('').forEach(function(letter){
+      var idx = ALPHA.indexOf(letter);
+      var chip = chipRefs[letter];
+      chip.querySelector('.n').textContent = counts[idx];
+      chip.setAttribute('data-taught', counts[idx]>0 ? '1':'0');
+    });
+  }
+  function selectLetter(letter){
+    currentLetter = letter;
+    Object.keys(chipRefs).forEach(function(l){ chipRefs[l].classList.toggle('active', l===letter); });
+    $('selectedLetterLabel').textContent = letter;
+  }
+  refreshChipCounts();
+  selectLetter('H');
+
+  // ---------------- scratchpad (static thumbnail -- all drawing happens in the expander) ----------------
+  function paintPaper(ctx, cssSize){
+    ctx.clearRect(0,0,cssSize,cssSize);
+    ctx.fillStyle=C_PAPER; ctx.fillRect(0,0,cssSize,cssSize);
+    ctx.strokeStyle='rgba(30,20,10,.08)'; ctx.lineWidth=1;
+    var step=cssSize/GRID;
+    for (var i=1;i<GRID;i++){ ctx.beginPath(); ctx.moveTo(i*step,0); ctx.lineTo(i*step,cssSize); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0,i*step); ctx.lineTo(cssSize,i*step); ctx.stroke(); }
+  }
+  function makeScratchpad(canvas, cssSize){
+    var ctx = setupCanvas(canvas, cssSize, cssSize);
+    var dirty=false;
+    function paint(){ paintPaper(ctx, cssSize); }
+    paint();
+    return {
+      canvasEl: canvas,
+      ctx: ctx,
+      cssSize: cssSize,
+      clear: function(){ paint(); dirty=false; },
+      isDirty: function(){ return dirty; },
+      markDirty: function(){ dirty=true; },
+      getGrid: function(){
+        var off = document.createElement('canvas'); off.width=GRID; off.height=GRID;
+        var octx = off.getContext('2d');
+        octx.drawImage(canvas, 0,0,octx.canvas.width,octx.canvas.height);
+        var data = octx.getImageData(0,0,GRID,GRID).data;
+        var g = new Float32Array(GRIDN);
+        for (var i=0;i<GRIDN;i++){
+          var r=data[i*4], gg=data[i*4+1], b=data[i*4+2];
+          var lum = (0.299*r+0.587*gg+0.114*b)/255;
+          g[i] = clamp(1-lum, 0, 1);
+        }
+        return g;
+      }
+    };
+  }
+
+  // ---------------- shared full-size expander (the only place actual drawing happens) ----------------
+  var EXPAND_SIZE = 520;
+  var expandOverlay = $('expandOverlay');
+  var expandCanvasEl = $('expandCanvas');
+  var expandCtx = setupCanvas(expandCanvasEl, EXPAND_SIZE, EXPAND_SIZE);
+  expandCanvasEl.style.width = 'min(78vmin,520px)';
+  expandCanvasEl.style.height = 'min(78vmin,520px)';
+  (function(){
+    var drawing=false, lastX=0, lastY=0;
+    expandCtx.lineCap='round'; expandCtx.lineJoin='round';
+    function pos(e){
+      var r = expandCanvasEl.getBoundingClientRect();
+      var cx = (e.touches? e.touches[0].clientX : e.clientX) - r.left;
+      var cy = (e.touches? e.touches[0].clientY : e.clientY) - r.top;
+      return [cx*(EXPAND_SIZE/r.width), cy*(EXPAND_SIZE/r.height)];
+    }
+    function down(e){ e.preventDefault(); drawing=true; var p=pos(e); lastX=p[0]; lastY=p[1];
+      expandCtx.strokeStyle=C_STROKE; expandCtx.lineWidth=Math.max(6, EXPAND_SIZE/24);
+      expandCtx.beginPath(); expandCtx.moveTo(p[0],p[1]); expandCtx.lineTo(p[0]+0.1,p[1]+0.1); expandCtx.stroke();
+      expandDirty=true; }
+    function move(e){ if(!drawing) return; e.preventDefault(); var p=pos(e);
+      expandCtx.beginPath(); expandCtx.moveTo(lastX,lastY); expandCtx.lineTo(p[0],p[1]); expandCtx.stroke();
+      lastX=p[0]; lastY=p[1]; expandDirty=true; }
+    function up(){ drawing=false; }
+    expandCanvasEl.addEventListener('pointerdown', down);
+    expandCanvasEl.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  })();
+  var expandDirty = false;
+  var expandTarget = null;
+  function openExpander(padApi, label){
+    expandTarget = padApi;
+    $('expandLabel').textContent = label;
+    paintPaper(expandCtx, EXPAND_SIZE);
+    // carry over whatever's already on the thumbnail, scaled up, so re-opening never loses work
+    if (padApi.isDirty()) expandCtx.drawImage(padApi.canvasEl, 0, 0, EXPAND_SIZE, EXPAND_SIZE);
+    expandDirty = padApi.isDirty();
+    expandOverlay.hidden = false;
+  }
+  function closeExpander(commit){
+    if (commit && expandTarget && expandDirty){
+      var t = expandTarget;
+      t.ctx.clearRect(0,0,t.cssSize,t.cssSize);
+      t.ctx.drawImage(expandCanvasEl, 0, 0, t.cssSize, t.cssSize);
+      t.markDirty();
+      if (t.onCommit) t.onCommit();
+    }
+    expandOverlay.hidden = true;
+    expandTarget = null;
+  }
+  $('expandClear').addEventListener('click', function(){ paintPaper(expandCtx, EXPAND_SIZE); expandDirty=false; });
+  $('expandDone').addEventListener('click', function(){ closeExpander(true); });
+  expandOverlay.addEventListener('click', function(e){ if (e.target===expandOverlay) closeExpander(true); });
+  window.addEventListener('keydown', function(e){ if (e.key==='Escape' && !expandOverlay.hidden) closeExpander(true); });
+
+  var pad = makeScratchpad($('padCanvas'), 220);
+  $('padCanvas').addEventListener('click', function(){ openExpander(pad, 'Teach it a letter'); });
+  $('clearPad').addEventListener('click', function(){ pad.clear(); });
+
+  // ---------------- test word pads ----------------
+  var WORD_LEN = 8;
+  var wordPads = [];
+  var wordPadsEl = $('wordPads');
+  for (var wi=0; wi<WORD_LEN; wi++){
+    var block = document.createElement('div'); block.className='word-pad-block';
+    var surface = document.createElement('div'); surface.className='pad-surface';
+    var c = document.createElement('canvas'); c.className='mini-pad'; c.width=60; c.height=60;
+    var hint = document.createElement('span'); hint.className='expand-hint'; hint.textContent='⤢';
+    var clr = document.createElement('button'); clr.className='mini-x'; clr.textContent='clear';
+    surface.appendChild(c); surface.appendChild(hint);
+    block.appendChild(surface); block.appendChild(clr);
+    wordPadsEl.appendChild(block);
+    var sp = makeScratchpad(c, 60);
+    (function(sp, clr, idx){
+      clr.addEventListener('click', function(){ sp.clear(); renderDecoded(decodeWordPads()); });
+      c.addEventListener('click', function(){ openExpander(sp, 'Word — letter '+(idx+1)); });
+      sp.onCommit = function(){ renderDecoded(decodeWordPads()); };
+    })(sp, clr, wi);
+    wordPads.push(sp);
+  }
+  // seed the test word with "HAT" so the page opens mid-story
+  (function seedWord(){
+    var word = [{l:'H',dx:0},{l:'A',dx:0},{l:'T',dx:0}];
+    word.forEach(function(w, i){
+      var g = patternToGrid(SEED[w.l], w.dx);
+      var canvas = wordPadsEl.children[i].querySelector('canvas');
+      var ctx = canvas.getContext('2d');
+      var cssSize=60, step=cssSize/GRID;
+      ctx.setTransform(1,0,0,1,0,0);
+      var dpr = canvas.width/cssSize;
+      ctx.setTransform(dpr,0,0,dpr,0,0);
+      ctx.fillStyle=C_PAPER; ctx.fillRect(0,0,cssSize,cssSize);
+      ctx.fillStyle=C_STROKE;
+      for (var r=0;r<GRID;r++) for (var c2=0;c2<GRID;c2++) if (g[r*GRID+c2]>0.5) ctx.fillRect(c2*step, r*step, step, step);
+      wordPads[i].markDirty();
+    });
+  })();
+
+  function decodeWordPads(){
+    var out = '';
+    wordPads.forEach(function(sp){
+      if (!sp.isDirty()) { out += ' '; return; }
+      var g = sp.getGrid();
+      var sum=0; for (var i=0;i<GRIDN;i++) sum+=g[i];
+      if (sum < 2) { out += ' '; return; }
+      var f = forward(g);
+      out += ALPHA[f.predIdx];
+    });
+    return out.replace(/\s+$/,'');
+  }
+  function renderDecoded(str){
+    var el = $('wordOutput');
+    if (!str) { el.innerHTML = '<span class="gap">— draw a word above —</span>'; return; }
+    el.textContent = str.replace(/ /g,'·');
+  }
+  var attemptN = 0;
+  function pushAttempt(str){
+    attemptN++;
+    var row = document.createElement('div'); row.className='attempt-row';
+    var bEl = document.createElement('b'); bEl.textContent = 'attempt '+attemptN;
+    var span = document.createElement('span'); span.textContent = str || '—';
+    row.appendChild(bEl); row.appendChild(span);
+    var log = $('attemptsLog');
+    log.insertBefore(row, log.firstChild);
+  }
+  // seed the very first attempt so the log isn't empty at rest
+  (function(){ var d = decodeWordPads(); renderDecoded(d); pushAttempt(d); })();
+
+  $('decodeNowBtn').addEventListener('click', function(){ var d=decodeWordPads(); renderDecoded(d); pushAttempt(d); });
+
+  // ---------------- look inside: tiles + heatmap ----------------
+  var tileCanvases = [];
+  var tilesGrid = $('tilesGrid');
+  for (var t=0;t<HID;t++){
+    var wrap = document.createElement('div'); wrap.className='tile';
+    var tc = document.createElement('canvas'); tc.width=64; tc.height=64;
+    wrap.appendChild(tc); tilesGrid.appendChild(wrap);
+    tileCanvases.push({wrap:wrap, canvas:tc, ctx:tc.getContext('2d')});
+  }
+  var heatmapCtx = $('heatmap').getContext('2d');
+
+  function refreshLookInside(){
+    var maxAbsW1=1e-6;
+    for (var h=0;h<HID;h++){ var row=W1[h]; for (var k=0;k<GRIDN;k++){ var av=Math.abs(row[k]); if (av>maxAbsW1) maxAbsW1=av; } }
+    var maxAbsB1=1e-6; for (var h1=0;h1<HID;h1++){ var ab=Math.abs(b1[h1]); if (ab>maxAbsB1) maxAbsB1=ab; }
+    for (var hh=0; hh<HID; hh++){
+      var cell = 64/GRID;
+      var ctx = tileCanvases[hh].ctx;
+      var row = W1[hh];
+      for (var r=0;r<GRID;r++) for (var c=0;c<GRID;c++){
+        ctx.fillStyle = divergingColor(row[r*GRID+c], maxAbsW1, 1);
+        ctx.fillRect(c*cell, r*cell, cell+0.5, cell+0.5);
+      }
+      tileCanvases[hh].wrap.style.borderColor = divergingColor(b1[hh], maxAbsB1, 1);
+    }
+
+    var maxAbsW2=1e-6;
+    for (var o=0;o<OUT;o++){ var row2=W2[o]; for (var hi=0;hi<HID;hi++){ var av2=Math.abs(row2[hi]); if (av2>maxAbsW2) maxAbsW2=av2; } }
+    var leftM=22, topM=16, cellW=16, cellH=16;
+    heatmapCtx.clearRect(0,0,440,306);
+    heatmapCtx.fillStyle = C_PANEL2; heatmapCtx.fillRect(0,0,440,306);
+    for (var o2=0;o2<OUT;o2++){
+      heatmapCtx.fillStyle = C_INKDIM;
+      heatmapCtx.font = '9px "JetBrains Mono", monospace';
+      heatmapCtx.textAlign='center';
+      heatmapCtx.fillText(ALPHA[o2], leftM+o2*cellW+cellW/2, topM-4);
+      for (var h3=0;h3<HID;h3++){
+        heatmapCtx.fillStyle = divergingColor(W2[o2][h3], maxAbsW2, 1);
+        heatmapCtx.fillRect(leftM+o2*cellW, topM+h3*cellH, cellW-1, cellH-1);
+      }
+    }
+    heatmapCtx.fillStyle = C_INKDIM;
+    heatmapCtx.textAlign='right'; heatmapCtx.font='8px "JetBrains Mono", monospace';
+    for (var h4=0;h4<HID;h4++) heatmapCtx.fillText(String(h4), leftM-4, topM+h4*cellH+cellH/2+3);
+  }
+  refreshLookInside();
+
+  // ---------------- stage animation ----------------
+  var stageCanvas = $('stage');
+  var stageCtx = setupCanvas(stageCanvas, 760, 260);
+  stageCanvas.style.width = '100%';
+  stageCanvas.style.maxWidth = '760px';
+  stageCanvas.style.height = 'auto';
+  var inputCenter = {x:96, y:130};
+  var hiddenPos = []; for (var hp=0; hp<HID; hp++) hiddenPos.push({x:300, y:30+hp*(200/(HID-1))});
+  var outputPos = []; for (var op=0; op<OUT; op++){
+    var row = op<13?0:1, col = op%13;
+    outputPos.push({x:400+col*27, y: row===0?80:190});
+  }
+
+  function drawInputRaster(ctx, x, x0,y0,size){
+    var cell=size/GRID;
+    ctx.fillStyle=C_PANEL2; ctx.fillRect(x0,y0,size,size);
+    for (var r=0;r<GRID;r++) for (var c=0;c<GRID;c++){
+      var v = x ? x[r*GRID+c] : 0;
+      ctx.fillStyle = v>0.02 ? rgbStr(hexToRgb('#efe7d6'), 0.25+0.75*v) : 'rgba(255,255,255,.03)';
+      ctx.fillRect(x0+c*cell, y0+r*cell, cell-0.5, cell-0.5);
+    }
+    ctx.strokeStyle=C_LINE; ctx.strokeRect(x0,y0,size,size);
+  }
+  function drawDot(ctx, p, r, fill){ ctx.beginPath(); ctx.arc(p.x,p.y,r,0,7); ctx.fillStyle=fill; ctx.fill(); }
+  function idleStage(){
+    stageCtx.clearRect(0,0,760,260);
+    drawInputRaster(stageCtx, null, 16,50,160);
+    for (var h=0;h<HID;h++) drawDot(stageCtx, hiddenPos[h], 4, 'rgba(255,255,255,.08)');
+    for (var o=0;o<OUT;o++) drawDot(stageCtx, outputPos[o], 3, 'rgba(255,255,255,.06)');
+    stageCtx.fillStyle=C_INKDIM; stageCtx.font='9px "JetBrains Mono", monospace'; stageCtx.textAlign='center';
+    for (var o2=0;o2<OUT;o2++){
+      var p=outputPos[o2];
+      stageCtx.fillText(ALPHA[o2], p.x, p.y<130 ? p.y-8 : p.y+14);
+    }
+    stageCtx.textAlign='left'; stageCtx.fillText('drawing →', 20, 44);
+  }
+  idleStage();
+
+  var animating = false;
+  function animateSequence(pre, x, yIdx){
+    return new Promise(function(resolve){
+      animating = true;
+      var start = performance.now();
+      var TOTAL = 1700;
+      var trueIdx = yIdx, predIdx = pre.predIdx;
+      function frame(now){
+        var el = now-start;
+        var t = clamp(el/TOTAL, 0, 1);
+        stageCtx.clearRect(0,0,760,260);
+        drawInputRaster(stageCtx, x, 16,50,160);
+
+        var p2 = clamp((el-300)/500,0,1);
+        var p3 = clamp((el-750)/450,0,1);
+        var p4 = clamp((el-1150)/450,0,1);
+
+        // forward: input -> hidden
+        for (var h=0; h<HID; h++){
+          var a = pre.a1[h];
+          var lineA = 0.15+0.55*Math.abs(a)*p2;
+          stageCtx.beginPath();
+          stageCtx.moveTo(inputCenter.x+70, inputCenter.y);
+          stageCtx.lineTo(hiddenPos[h].x, hiddenPos[h].y);
+          stageCtx.strokeStyle = a>=0 ? rgbStr(ACCENT_RGB, lineA) : rgbStr(COOL_RGB, lineA);
+          stageCtx.lineWidth = 0.6+1.6*Math.abs(a)*p2;
+          stageCtx.stroke();
+          var rad = 4+5*Math.abs(a)*p2;
+          drawDot(stageCtx, hiddenPos[h], rad, divergingColor(a,1,0.35+0.55*p2));
+        }
+
+        // forward: hidden -> {true, pred} output
+        var targets = trueIdx===predIdx ? [trueIdx] : [trueIdx, predIdx];
+        var maxContrib=1e-6;
+        var contribs = [];
+        targets.forEach(function(o){
+          var arr=[];
+          for (var h2=0;h2<HID;h2++){ var c = W2[o][h2]*pre.a1[h2]; arr.push(c); if (Math.abs(c)>maxContrib) maxContrib=Math.abs(c); }
+          contribs.push(arr);
+        });
+        targets.forEach(function(o, ti){
+          for (var h3=0;h3<HID;h3++){
+            var c = contribs[ti][h3];
+            var a2 = clamp(Math.abs(c)/maxContrib,0,1)*p3;
+            stageCtx.beginPath();
+            stageCtx.moveTo(hiddenPos[h3].x, hiddenPos[h3].y);
+            stageCtx.lineTo(outputPos[o].x, outputPos[o].y);
+            stageCtx.strokeStyle = c>=0 ? rgbStr(ACCENT_RGB, 0.1+0.5*a2) : rgbStr(COOL_RGB, 0.1+0.5*a2);
+            stageCtx.lineWidth = 0.5+1.3*a2;
+            stageCtx.stroke();
+          }
+        });
+
+        // backward: output -> hidden -> input, colored by gradient
+        var maxDz2=1e-6; for (var o3=0;o3<OUT;o3++) if (Math.abs(pre.dz2[o3])>maxDz2) maxDz2=Math.abs(pre.dz2[o3]);
+        targets.forEach(function(o){
+          for (var h4=0;h4<HID;h4++){
+            var g2 = pre.dz2[o];
+            var a3 = clamp(Math.abs(g2)/maxDz2,0,1)*p4;
+            stageCtx.beginPath();
+            stageCtx.setLineDash([5,4]);
+            stageCtx.lineDashOffset = -el/12;
+            stageCtx.moveTo(outputPos[o].x, outputPos[o].y);
+            stageCtx.lineTo(hiddenPos[h4].x, hiddenPos[h4].y);
+            stageCtx.strokeStyle = rgbStr(hexToRgb(C_INK), 0.08+0.5*a3);
+            stageCtx.lineWidth = 0.5+1.4*a3;
+            stageCtx.stroke();
+            stageCtx.setLineDash([]);
+          }
+        });
+        var maxDz1=1e-6; for (var h5=0;h5<HID;h5++) if (Math.abs(pre.dz1[h5])>maxDz1) maxDz1=Math.abs(pre.dz1[h5]);
+        for (var h6=0;h6<HID;h6++){
+          var a4 = clamp(Math.abs(pre.dz1[h6])/maxDz1,0,1)*p4;
+          stageCtx.beginPath();
+          stageCtx.setLineDash([5,4]);
+          stageCtx.lineDashOffset = -el/12;
+          stageCtx.moveTo(hiddenPos[h6].x, hiddenPos[h6].y);
+          stageCtx.lineTo(inputCenter.x+70, inputCenter.y);
+          stageCtx.strokeStyle = rgbStr(hexToRgb(C_INK), 0.06+0.4*a4);
+          stageCtx.lineWidth = 0.5+1.1*a4;
+          stageCtx.stroke();
+          stageCtx.setLineDash([]);
+        }
+
+        // output dots
+        for (var o4=0;o4<OUT;o4++){
+          var isTarget = targets.indexOf(o4)>=0;
+          var rad2 = isTarget ? 4+4*p3 : 3;
+          var fill = isTarget ? (o4===trueIdx ? rgbStr(hexToRgb(C_GOOD),0.5+0.4*p3) : rgbStr(ACCENT_RGB,0.4+0.4*p3)) : 'rgba(255,255,255,.08)';
+          drawDot(stageCtx, outputPos[o4], rad2, fill);
+          if (o4===trueIdx && p3>0.05){
+            stageCtx.beginPath(); stageCtx.arc(outputPos[o4].x,outputPos[o4].y,rad2+3,0,7);
+            stageCtx.strokeStyle=rgbStr(hexToRgb(C_GOOD),0.7); stageCtx.lineWidth=1.2; stageCtx.stroke();
+          }
+        }
+        stageCtx.fillStyle=C_INKDIM; stageCtx.font='9px "JetBrains Mono", monospace'; stageCtx.textAlign='center';
+        for (var o5=0;o5<OUT;o5++){ var p=outputPos[o5]; stageCtx.fillText(ALPHA[o5], p.x, p.y<130?p.y-8:p.y+14); }
+
+        var caption = 'reading your ink…';
+        if (el>350 && el<=750) caption = 'forward pass → hidden layer lighting up';
+        else if (el>750 && el<=1150) caption = 'forward pass → guessing "'+ALPHA[predIdx]+'"'+(predIdx===trueIdx?' — got it':' (you said "'+ALPHA[trueIdx]+'")');
+        else if (el>1150) caption = 'backprop → nudging weights toward "'+ALPHA[trueIdx]+'"';
+        $('stageCaption').textContent = caption;
+
+        if (t<1){ requestAnimationFrame(frame); } else { resolve(); }
+      }
+      requestAnimationFrame(frame);
+    });
+  }
+
+  // ---------------- train button ----------------
+  function setControlsEnabled(en){
+    $('trainBtn').disabled = !en;
+    $('clearPad').disabled = !en;
+  }
+  var PAD_TIP = 'tap the pad to draw';
+  $('padHint').textContent = PAD_TIP;
+  $('trainBtn').addEventListener('click', function(){
+    if (animating) return;
+    if (!currentLetter){ $('padHint').textContent='pick a letter first'; return; }
+    if (!pad.isDirty()){ $('padHint').textContent='draw something first'; return; }
+    $('padHint').textContent=PAD_TIP;
+    var grid = pad.getGrid();
+    var yIdx = ALPHA.indexOf(currentLetter);
+    var pre = forwardAndGrad(grid, yIdx);
+    dataset.push({x:grid, y:yIdx});
+    counts[yIdx]++;
+    refreshChipCounts();
+    setControlsEnabled(false);
+    animateSequence(pre, grid, yIdx).then(function(){
+      runEpochs(EPOCHS, LR);
+      refreshLookInside();
+      refreshLedger();
+      var d = decodeWordPads();
+      renderDecoded(d);
+      pushAttempt(d);
+      pad.clear();
+      setControlsEnabled(true);
+      animating = false;
+      $('trainStatus').innerHTML = '<b>'+dataset.length+'</b> examples taught across <b>'+counts.filter(function(c){return c>0;}).length+'</b> letters';
+    });
+  });
+  $('trainStatus').innerHTML = '<b>'+dataset.length+'</b> examples taught across <b>'+counts.filter(function(c){return c>0;}).length+'</b> letters';
+
+  var resetArmed=false, resetTimer=null;
+  $('resetBtn').addEventListener('click', function(){
+    if (!resetArmed){
+      resetArmed=true; $('resetToast').classList.add('show');
+      resetTimer=setTimeout(function(){ resetArmed=false; $('resetToast').classList.remove('show'); }, 2600);
+      return;
+    }
+    clearTimeout(resetTimer); resetArmed=false; $('resetToast').classList.remove('show');
+    dataset=[]; counts=new Array(26).fill(0); initNet(); seedTrain(); refreshChipCounts(); refreshLookInside(); refreshLedger(); idleStage();
+    $('trainStatus').innerHTML = '<b>'+dataset.length+'</b> examples taught across <b>'+counts.filter(function(c){return c>0;}).length+'</b> letters';
+  });
+
+  // ---------------- export: quantization + ledger + qr ----------------
+  var quantBits = 4;
+  function flattenParams(){
+    var arr=[];
+    for (var h=0;h<HID;h++) for (var k=0;k<GRIDN;k++) arr.push(W1[h][k]);
+    for (var h2=0;h2<HID;h2++) arr.push(b1[h2]);
+    for (var o=0;o<OUT;o++) for (var h3=0;h3<HID;h3++) arr.push(W2[o][h3]);
+    for (var o2=0;o2<OUT;o2++) arr.push(b2[o2]);
+    return arr;
+  }
+  function quantizePayload(bits){
+    var params = flattenParams();
+    var maxAbs=1e-6; params.forEach(function(v){ if (Math.abs(v)>maxAbs) maxAbs=Math.abs(v); });
+    var levels = bits===8?127:7;
+    var scale = maxAbs/levels;
+    var qs = params.map(function(v){ return clamp(Math.round(v/scale), -levels-1, levels); });
+    var bytes = [];
+    var header = new Float32Array([scale]);
+    var hb = new Uint8Array(header.buffer);
+    for (var i=0;i<4;i++) bytes.push(hb[i]);
+    bytes.push(bits, GRID, HID, OUT);
+    if (bits===8){
+      qs.forEach(function(q){ bytes.push(q & 0xFF); });
+    } else {
+      for (var i2=0;i2<qs.length;i2+=2){
+        var a = qs[i2] & 0x0F;
+        var b = (i2+1<qs.length) ? (qs[i2+1] & 0x0F) : 0;
+        bytes.push((a<<4)|b);
+      }
+    }
+    return {bytes:bytes, scale:scale, paramCount:params.length};
+  }
+  function bytesToBase64(bytes){
+    var bin=''; for (var i=0;i<bytes.length;i++) bin+=String.fromCharCode(bytes[i]);
+    return btoa(bin);
+  }
+  // A real QR code (even at the most permissive error-correction level, L) tops out around
+  // 2950 base64 characters -- confirmed directly against this exact vendored qrcodejs build via
+  // a binary search (new QRCode() throws past this point rather than degrading gracefully), not
+  // assumed from a byte-capacity table. 2312 parameters at 8 bits each produces ~3096 base64
+  // characters -- genuinely too big for one QR code -- so this has to be checked for real and
+  // handled before calling new QRCode(), not just hoped past.
+  var QR_MAX_B64_CHARS = 2900;
+  function refreshLedger(){
+    var params = flattenParams().length;
+    var raw32 = params*4;
+    var q8 = 8 + Math.ceil(params*1);
+    var q4 = 8 + Math.ceil(params/2);
+    var current = quantBits===8?q8:q4;
+    var currentB64Len = Math.ceil(current/3)*4;
+    var fits = currentB64Len <= QR_MAX_B64_CHARS;
+    $('ledger').innerHTML =
+      '<div class="k">parameters</div><div class="v tabular">'+params.toLocaleString()+'</div>'+
+      '<div class="k">full precision (float32)</div><div class="v tabular">'+raw32.toLocaleString()+' B</div>'+
+      '<div class="k">quantized · 8-bit</div><div class="v tabular">'+q8.toLocaleString()+' B</div>'+
+      '<div class="k">quantized · 4-bit</div><div class="v tabular">'+q4.toLocaleString()+' B</div>'+
+      '<div class="rule"></div>'+
+      '<div class="k">selected ('+quantBits+'-bit)</div><div class="v tabular '+(fits?'good':'')+'">'+current.toLocaleString()+' B '+(fits?'✓ fits a QR code':'— too dense for one QR code')+'</div>';
+
+    var payload = quantizePayload(quantBits);
+    var b64 = bytesToBase64(payload.bytes);
+    var holder = $('qrHolder');
+    holder.innerHTML='';
+    if (b64.length > QR_MAX_B64_CHARS){
+      holder.innerHTML = '<div style="color:#333; font-family:monospace; font-size:.68rem; padding:8px; text-align:center;">Too large for one QR code at '+quantBits+'-bit — try 4-bit, or use the full-precision copy/paste export below instead.</div>';
+      $('downloadQrBtn').disabled = true;
+    } else if (window.QRCode){
+      try {
+        new QRCode(holder, {text: b64, width:140, height:140, correctLevel: QRCode.CorrectLevel.L});
+        $('downloadQrBtn').disabled = false;
+      } catch(e){
+        // Belt-and-suspenders: the length check above should already prevent this, but a QR
+        // library throwing must never be allowed to abort the rest of this script (it did,
+        // the first time this shipped -- everything after this call silently never ran).
+        holder.innerHTML = '<div style="color:#333; font-family:monospace; font-size:.68rem; padding:8px; text-align:center;">QR generation failed for this payload — use the full-precision copy/paste export below instead.</div>';
+        $('downloadQrBtn').disabled = true;
+      }
+    }
+    $('qrNote').innerHTML = 'Payload: <span class="mono">'+b64.length+'</span> base64 characters ('+payload.bytes.length+' bytes) encoding the shape (10×'+GRID+', '+HID+' hidden, '+OUT+' outputs) and every quantized weight and bias.';
+    cachedQrText = b64;
+  }
+  var cachedQrText = '';
+  $('q8').addEventListener('click', function(){ quantBits=8; $('q8').classList.add('on'); $('q4').classList.remove('on'); refreshLedger(); });
+  $('q4').addEventListener('click', function(){ quantBits=4; $('q4').classList.add('on'); $('q8').classList.remove('on'); refreshLedger(); });
+  refreshLedger();
+
+  $('downloadQrBtn').addEventListener('click', function(){
+    var img = $('qrHolder').querySelector('img'), canvasEl = $('qrHolder').querySelector('canvas');
+    var src = img ? img.src : (canvasEl ? canvasEl.toDataURL('image/png') : null);
+    if (!src) return;
+    var link = document.createElement('a');
+    link.download = 'inkling-qr.png';
+    link.href = src;
+    link.click();
+  });
+
+  // ---------------- full precision copy / load ----------------
+  function fullPrecisionJSON(){
+    return JSON.stringify({
+      grid:GRID, hidden:HID, out:OUT, alphabet:ALPHA,
+      W1: W1.map(function(r){ return Array.from(r); }), b1: Array.from(b1),
+      W2: W2.map(function(r){ return Array.from(r); }), b2: Array.from(b2)
+    });
+  }
+  function refreshWeightsOut(){ $('weightsOut').value = fullPrecisionJSON(); }
+  refreshWeightsOut();
+  $('copyWeightsBtn').addEventListener('click', function(){
+    refreshWeightsOut();
+    var ta = $('weightsOut'); ta.select();
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(ta.value).then(showCopyToast, showCopyToast);
+    } else {
+      try{ document.execCommand('copy'); }catch(e){}
+      showCopyToast();
+    }
+  });
+  function showCopyToast(){ var t=$('copyToast'); t.classList.add('show'); setTimeout(function(){t.classList.remove('show');},1500); }
+
+  $('loadWeightsBtn').addEventListener('click', function(){
+    try{
+      var obj = JSON.parse($('weightsIn').value);
+      if (obj.grid!==GRID || obj.hidden!==HID || obj.out!==OUT) throw new Error('shape mismatch');
+      W1 = obj.W1.map(function(r){ return Float32Array.from(r); });
+      b1 = Float32Array.from(obj.b1);
+      W2 = obj.W2.map(function(r){ return Float32Array.from(r); });
+      b2 = Float32Array.from(obj.b2);
+      refreshLookInside(); refreshLedger(); refreshWeightsOut();
+      var d=decodeWordPads(); renderDecoded(d); pushAttempt(d);
+      var t=$('loadToast'); t.classList.add('show'); setTimeout(function(){t.classList.remove('show');},1500);
+    }catch(e){
+      $('padHint').textContent = 'could not load: '+e.message;
+    }
+  });
+
+  // ---------------- portrait export ----------------
+  $('portraitBtn').addEventListener('click', function(){
+    var W=560, H=520;
+    var out = document.createElement('canvas'); out.width=W; out.height=H;
+    var ctx = out.getContext('2d');
+    ctx.fillStyle=C_BG; ctx.fillRect(0,0,W,H);
+    ctx.font='600 26px Fraunces, serif'; ctx.fillStyle=C_INK; ctx.fillText('Inkling', 24, 44);
+    ctx.font='11px "JetBrains Mono", monospace'; ctx.fillStyle=C_INKDIM;
+    ctx.fillText(dataset.length+' examples taught · '+counts.filter(function(c){return c>0;}).length+' letters', 24, 64);
+
+    tileCanvases.forEach(function(tc, i){
+      var col=i%6, row=(i/6)|0;
+      var x = 24+col*84, y=90+row*84;
+      ctx.drawImage(tc.canvas, x, y, 76, 76);
+    });
+    ctx.drawImage($('heatmap'), 24, 350, 440, 306*0.55);
+    var decoded = $('wordOutput').textContent || '';
+    ctx.font='600 30px Fraunces, serif'; ctx.fillStyle=C_INK;
+    ctx.fillText(decoded, 24, 500);
+
+    var img = $('portraitImg');
+    img.src = out.toDataURL('image/png');
+    img.style.display='block';
+    $('downloadPortraitRow').style.display='flex';
+  });
+
+  $('downloadPortraitBtn').addEventListener('click', function(){
+    var link = document.createElement('a');
+    link.download = 'inkling-portrait.png';
+    link.href = $('portraitImg').src;
+    link.click();
+  });
+
+})();
+</script>
+</body>
+</html>
