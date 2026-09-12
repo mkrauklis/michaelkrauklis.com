@@ -190,22 +190,6 @@
           photo, falling with every step. The jump partway across is where personalization
           begins.</div>
         </div>
-        <div class="result-col">
-          <div class="canvas-wrap">
-            <canvas id="lossLandscapeCanvas" width="320" height="320"></canvas>
-            <div class="spinner" id="landscapeSpinner"></div>
-          </div>
-          <div class="result-label">the descent, as a 2D slice of terrain</div>
-          <div class="result-desc" id="landscapeDesc">The curve on the left plots error against
-          time — one number, falling. This plots it against <i>position</i> instead: two
-          directions pulled out of your own descent path, so the actual multi-dimensional
-          terrain gradient descent is walking becomes visible as a landscape, with the white
-          line as the path your training actually walked. Where it bends, the network corrected
-          course.</div>
-          <div class="actions" id="downloadLandscapeRow" style="margin-top:8px; display:none;">
-            <button class="secondary" id="downloadLandscapeBtn" style="padding:6px 14px; font-size:0.82rem;">Download</button>
-          </div>
-        </div>
       </div>
       <div id="headProofRow" class="row" style="margin-top:28px; display:none;">
         <div class="col" style="text-align:center;">
@@ -231,67 +215,8 @@
     </div>
   </section>
 
-  <section id="exploreSection" style="display:none;">
-    <span class="step-tag">04 — explore nearby</span>
-    <h2>Drive the latent vector yourself</h2>
-    <p>Before dragging anything: the <b style="color:var(--ink);">latent space</b> is the
-    256-dimensional room the decoder actually lives in. It isn't pixels and it isn't your photo —
-    it's the network's own compressed sense of what a photo can mean, shaped entirely by the
-    thirteen thousand photos it trained on. Your photo landed at one specific point in that room.
-    Every nearby point decodes to something too — a plausible image the network can imagine,
-    blending smoothly into whatever's next to it. This section lets you leave that point on
-    purpose and see what's nearby.</p>
-    <p>The grid below is the same 256 numbers as the live heatmap above, plotted on the exact same
-    black-to-white scale — black is this scale's minimum, white is its maximum, and that's the
-    entire axis every dimension lives on. Drag across the grid to select a region (a single click
-    selects one cell; shift-drag adds a second region without losing the first). Then drag the
-    slider — styled as that same black-to-white scale, on purpose — to set exactly where the
-    selected cells sit on it. Everything unselected stays exactly where the search left it.</p>
-    <div class="panel">
-      <div class="result-grid">
-        <div class="result-col" style="max-width:140px;">
-          <canvas id="exploreBaseCanvas" width="96" height="96"></canvas>
-          <div class="result-label">your trained photo</div>
-          <div class="result-desc">Fixed reference — nothing selected, nothing moved. Compare
-          everything else to this.</div>
-        </div>
-        <div class="result-col">
-          <canvas id="exploreCanvas" width="96" height="96"></canvas>
-          <div class="result-label" id="exploreLabel">live</div>
-          <div class="result-desc">The decoder's output at whatever point you've currently
-          selected.</div>
-        </div>
-        <div class="result-col">
-          <canvas id="exploreLatentCanvas" width="320" height="320" style="cursor:crosshair;"></canvas>
-          <div class="result-label" id="exploreSelLabel">drag to select a region</div>
-          <div class="result-desc">Same brightness = value coding as above — the outlined cells
-          are the ones the slider currently controls.</div>
-        </div>
-      </div>
-      <label class="field">Position of selected on the scale below — <span class="field-value" id="explorePositionVal">0.00</span></label>
-      <div style="display:flex; align-items:center; gap:10px;">
-        <span class="result-desc" style="flex-shrink:0;">−4 black</span>
-        <input type="range" id="explorePositionSlider" min="-400" max="400" value="0" style="background: linear-gradient(to right, #000, #fff); border-radius:4px;">
-        <span class="result-desc" style="flex-shrink:0;">white +4</span>
-      </div>
-      <p class="result-desc">This is an absolute position, not a nudge: dragging sets every
-      selected cell to this exact point on the black-to-white scale, all at once. Selecting a new
-      region snaps the slider to show where that region already sits, so nothing jumps until you
-      actually drag it.</p>
-      <div style="margin-top:10px;">
-        <span class="result-desc" id="exploreDistanceLabel">distance from your trained photo: 0.00</span>
-        <div class="gauge-track"><div class="gauge-fill" id="exploreDistanceGauge"></div></div>
-      </div>
-      <div class="actions">
-        <button class="secondary" id="exploreClearBtn">Clear selection</button>
-        <button class="secondary" id="exploreResetBtn">Reset to your photo</button>
-        <button class="secondary" id="exploreRandomBtn">Select 8 at random</button>
-      </div>
-    </div>
-  </section>
-
   <section id="shareSection" style="display:none;">
-    <span class="step-tag">05 — save &amp; share</span>
+    <span class="step-tag">04 — save &amp; share</span>
     <h2>Take the impression with you</h2>
     <p>None of the three QR codes below contain your photo — only numbers, rebuilt through the
     same frozen decoder anyone else on this page has. The first two split into a matched pair on
@@ -393,6 +318,14 @@
         — works for a mug, and most of Zazzle's other blank templates take the same kind of upload,
         so pick two different products if you want the pair to feel like separate gifts.
       </p>
+      <p style="font-size:0.85rem; margin-top:10px;">Prefer one object instead of two? Some mug
+      templates print two separate images — one per side — rather than a single wraparound design.
+      If you find one of those, put <b style="color:var(--ink);">the key QR</b> on one side and
+      <b style="color:var(--ink);">the essence QR</b> (plus the impression, if there's room) on the
+      other, and the whole locket lives on a single mug: nobody can unlock the sharp version from
+      only one side of their own coffee cup, but scanning both sides back here does it. Check the
+      product listing for "front and back" or "two-sided" printing before assuming any given
+      template supports this — plenty only take one image.</p>
     </div>
 
     <details class="disclosure">
@@ -419,6 +352,65 @@
     fun, not a permanent service with any guarantees. It could change or disappear entirely someday
     — printed impressions will still be lovely on their own, but a future version of this page may
     not be able to decode an old QR code. Keep the original photo too, if that would ever matter.</p>
+  </section>
+
+  <section id="exploreSection" style="display:none;">
+    <span class="step-tag">05 — explore nearby</span>
+    <h2>Drive the latent vector yourself</h2>
+    <p>Before dragging anything: the <b style="color:var(--ink);">latent space</b> is the
+    256-dimensional room the decoder actually lives in. It isn't pixels and it isn't your photo —
+    it's the network's own compressed sense of what a photo can mean, shaped entirely by the
+    thirteen thousand photos it trained on. Your photo landed at one specific point in that room.
+    Every nearby point decodes to something too — a plausible image the network can imagine,
+    blending smoothly into whatever's next to it. This section lets you leave that point on
+    purpose and see what's nearby.</p>
+    <p>The grid below is the same 256 numbers as the live heatmap above, plotted on the exact same
+    black-to-white scale — black is this scale's minimum, white is its maximum, and that's the
+    entire axis every dimension lives on. Drag across the grid to select a region (a single click
+    selects one cell; shift-drag adds a second region without losing the first). Then drag the
+    slider — styled as that same black-to-white scale, on purpose — to set exactly where the
+    selected cells sit on it. Everything unselected stays exactly where the search left it.</p>
+    <div class="panel">
+      <div class="result-grid">
+        <div class="result-col" style="max-width:140px;">
+          <canvas id="exploreBaseCanvas" width="96" height="96"></canvas>
+          <div class="result-label">your trained photo</div>
+          <div class="result-desc">Fixed reference — nothing selected, nothing moved. Compare
+          everything else to this.</div>
+        </div>
+        <div class="result-col">
+          <canvas id="exploreCanvas" width="96" height="96"></canvas>
+          <div class="result-label" id="exploreLabel">live</div>
+          <div class="result-desc">The decoder's output at whatever point you've currently
+          selected.</div>
+        </div>
+        <div class="result-col">
+          <canvas id="exploreLatentCanvas" width="320" height="320" style="cursor:crosshair;"></canvas>
+          <div class="result-label" id="exploreSelLabel">drag to select a region</div>
+          <div class="result-desc">Same brightness = value coding as above — the outlined cells
+          are the ones the slider currently controls.</div>
+        </div>
+      </div>
+      <label class="field">Position of selected on the scale below — <span class="field-value" id="explorePositionVal">0.00</span></label>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <span class="result-desc" style="flex-shrink:0;">−4 black</span>
+        <input type="range" id="explorePositionSlider" min="-400" max="400" value="0" style="background: linear-gradient(to right, #000, #fff); border-radius:4px;">
+        <span class="result-desc" style="flex-shrink:0;">white +4</span>
+      </div>
+      <p class="result-desc">This is an absolute position, not a nudge: dragging sets every
+      selected cell to this exact point on the black-to-white scale, all at once. Selecting a new
+      region snaps the slider to show where that region already sits, so nothing jumps until you
+      actually drag it.</p>
+      <div style="margin-top:10px;">
+        <span class="result-desc" id="exploreDistanceLabel">distance from your trained photo: 0.00</span>
+        <div class="gauge-track"><div class="gauge-fill" id="exploreDistanceGauge"></div></div>
+      </div>
+      <div class="actions">
+        <button class="secondary" id="exploreClearBtn">Clear selection</button>
+        <button class="secondary" id="exploreResetBtn">Reset to your photo</button>
+        <button class="secondary" id="exploreRandomBtn">Select 8 at random</button>
+      </div>
+    </div>
   </section>
 
   <details id="learnSection" class="disclosure advanced" style="display:none;">
@@ -943,106 +935,6 @@
     ctx.fillText('step '+last.x, x0, H-6);
   }
 
-  // The loss curve plots error against time, in one dimension. But the actual search happens
-  // in a 256-dimensional space, and gradient descent doesn't move in a straight line through
-  // it -- it corrects course, the way the loss curve's own kink at the phase boundary hints
-  // at. This picks two directions out of the real recorded path and evaluates the frozen
-  // decoder's error on a grid spanning them, so that correction becomes a visible bend in a
-  // 2D slice of terrain instead of an invisible property of a 256-dim path.
-  async function renderLossLandscape(trajectory, decoder, target, canvas){
-    if (trajectory.length < 4) return false;
-    const dim = trajectory[0].length;
-    const start = trajectory[0], end = trajectory[trajectory.length-1];
-
-    // Direction 1: the net direction of travel, start to finish.
-    let u = end.map((v,i)=> v - start[i]);
-    let uLen = Math.sqrt(u.reduce((s,v)=> s+v*v, 0)) || 1;
-    u = u.map(v=> v/uLen);
-
-    // Direction 2: whichever recorded point strayed furthest from the straight line between
-    // start and end, with its along-u component removed. That's exactly where the path
-    // swerved hardest, so this is the direction the "correction" is most visible in.
-    let bestPerpLen = -1, farPoint = trajectory[Math.floor(trajectory.length/2)];
-    for (const p of trajectory){
-      const rel = p.map((v,i)=> v - start[i]);
-      const along = rel.reduce((s,v,i)=> s+v*u[i], 0);
-      const perpLen = Math.sqrt(rel.reduce((s,v,i)=> s+(v-along*u[i])**2, 0));
-      if (perpLen > bestPerpLen){ bestPerpLen = perpLen; farPoint = p; }
-    }
-    let v = farPoint.map((val,i)=> val - start[i]);
-    const along = v.reduce((s,val,i)=> s+val*u[i], 0);
-    v = v.map((val,i)=> val - along*u[i]);
-    let vLen = Math.sqrt(v.reduce((s,val)=> s+val*val, 0));
-    if (vLen < 1e-6){ // the path was ~a straight line -- fall back to an arbitrary orthogonal axis
-      v = u.map((val,i)=> (i===1?1:0) - val*u[1]);
-      vLen = Math.sqrt(v.reduce((s,val)=> s+val*val, 0)) || 1;
-    }
-    v = v.map(val=> val/vLen);
-
-    const project = p => {
-      const rel = p.map((val,i)=> val - start[i]);
-      return [rel.reduce((s,val,i)=> s+val*u[i], 0), rel.reduce((s,val,i)=> s+val*v[i], 0)];
-    };
-    const path2d = trajectory.map(project);
-    let aMin=Infinity, aMax=-Infinity, bMin=Infinity, bMax=-Infinity;
-    for (const [a,b] of path2d){ aMin=Math.min(aMin,a); aMax=Math.max(aMax,a); bMin=Math.min(bMin,b); bMax=Math.max(bMax,b); }
-    const aPad = (aMax-aMin)*0.3 || 1, bPad = (bMax-bMin)*0.3 || 1;
-    aMin -= aPad; aMax += aPad; bMin -= bPad; bMax += bPad;
-
-    const GRID = 22;
-    const losses = new Float32Array(GRID*GRID);
-    let lossMin = Infinity, lossMax = -Infinity;
-    for (let gy = 0; gy < GRID; gy++){
-      for (let gx = 0; gx < GRID; gx++){
-        const a = aMin + (aMax-aMin)*gx/(GRID-1);
-        const b = bMin + (bMax-bMin)*gy/(GRID-1);
-        const point = start.map((val,i)=> val + a*u[i] + b*v[i]);
-        const loss = tf.tidy(()=>{
-          const lat = tf.tensor(point, [1, dim]);
-          const out = decodeFull(lat, decoder, null);
-          return tf.losses.meanSquaredError(target, out).dataSync()[0];
-        });
-        losses[gy*GRID+gx] = loss;
-        if (loss < lossMin) lossMin = loss;
-        if (loss > lossMax) lossMax = loss;
-      }
-      await new Promise(r=> setTimeout(r, 0)); // yield between rows so the tab stays responsive
-    }
-
-    const ctx = canvas.getContext('2d');
-    const W = canvas.width, H = canvas.height;
-    const cell = W/GRID;
-    const span = (lossMax-lossMin) || 1;
-    for (let gy = 0; gy < GRID; gy++){
-      for (let gx = 0; gx < GRID; gx++){
-        const t = (losses[gy*GRID+gx]-lossMin)/span;
-        // dark = low error, bright = high -- same "brightness tracks magnitude" language as
-        // every other heatmap on this page, with a faint blue cast so it doesn't read as
-        // the plain grayscale latent/head plots
-        const gray = Math.round(20 + t*130);
-        ctx.fillStyle = `rgb(${gray},${gray},${Math.min(255,Math.round(gray*1.12))})`;
-        ctx.fillRect(gx*cell, H-(gy+1)*cell, cell+1, cell+1);
-      }
-    }
-
-    const toPx = ([a,b]) => [ (a-aMin)/(aMax-aMin)*W, H-(b-bMin)/(bMax-bMin)*H ];
-    ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 2;
-    ctx.beginPath();
-    path2d.forEach((p,i)=>{ const [x,y]=toPx(p); i===0?ctx.moveTo(x,y):ctx.lineTo(x,y); });
-    ctx.stroke();
-
-    const [sx,sy] = toPx(path2d[0]);
-    ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.arc(sx,sy,4,0,Math.PI*2); ctx.stroke();
-    const [ex,ey] = toPx(path2d[path2d.length-1]);
-    ctx.fillStyle = '#fff';
-    ctx.beginPath(); ctx.arc(ex,ey,3.5,0,Math.PI*2); ctx.fill();
-
-    ctx.fillStyle = '#9aa0ae'; ctx.font = '10px Inter, sans-serif';
-    ctx.fillText('start (hollow) → trained (filled)', 6, H-6);
-    return true;
-  }
-
   // ---------- Downloads ----------
   function downloadCanvas(canvas, filename, upscaleTo){
     let source = canvas;
@@ -1063,8 +955,6 @@
     downloadCanvas(document.getElementById('latentHeatmapCanvas'), 'afterimage-latent.png'));
   document.getElementById('downloadHeadBtn').addEventListener('click', ()=>
     downloadCanvas(document.getElementById('headHeatmapCanvas'), 'afterimage-head.png'));
-  document.getElementById('downloadLandscapeBtn').addEventListener('click', ()=>
-    downloadCanvas(document.getElementById('lossLandscapeCanvas'), 'afterimage-landscape.png'));
   document.getElementById('downloadQrLatentBtn').addEventListener('click', ()=>
     downloadCanvas(document.getElementById('qrLatentCanvas'), 'afterimage-qr-essence.png'));
   document.getElementById('downloadQrHeadOnlyBtn').addEventListener('click', ()=>
@@ -1220,8 +1110,7 @@
   const latentHeatmapCanvas = document.getElementById('latentHeatmapCanvas');
   const headHeatmapCanvas = document.getElementById('headHeatmapCanvas');
   const lossCurveCanvas = document.getElementById('lossCurveCanvas');
-  const lossLandscapeCanvas = document.getElementById('lossLandscapeCanvas');
-  let lossHistory = [], phase1End = null, latentTrajectory = [];
+  let lossHistory = [], phase1End = null;
 
   // Each result canvas has a spinner sibling shown until that canvas actually has something
   // real painted into it -- e.g. the head's spinner deliberately stays up through all of phase
@@ -1238,7 +1127,7 @@
     const rowId = SPINNER_DOWNLOAD_ROW[id];
     if (rowId) document.getElementById(rowId).style.display = 'none';
   }
-  function resetSpinners(){ ['reconSpinner','latentSpinner','headSpinner','lossSpinner','landscapeSpinner'].forEach(showSpinner); }
+  function resetSpinners(){ ['reconSpinner','latentSpinner','headSpinner','lossSpinner'].forEach(showSpinner); }
 
   // A mix of plain-English explanation and lighter asides, cycling under the progress bar so
   // the wait has *something* happening even during the several-second gaps between
@@ -1298,7 +1187,6 @@
     const latentArr = await latent.data();
     renderLatentHeatmap(latentArr, latentHeatmapCanvas);
     hideSpinner('latentSpinner');
-    latentTrajectory.push(Array.from(latentArr));
     if (adapter){
       const [scaleIn,shiftIn,scaleOut,shiftOut] = await Promise.all(
         [adapter.scaleIn.data(), adapter.shiftIn.data(), adapter.scaleOut.data(), adapter.shiftOut.data()]);
@@ -1381,7 +1269,7 @@
     const latent = tf.variable(initLatent);
     initLatent.dispose();
     renderHeadFingerprint(null, headHeatmapCanvas);
-    lossHistory = []; phase1End = null; latentTrajectory = [];
+    lossHistory = []; phase1End = null;
     document.getElementById('headProofRow').style.display = 'none';
     document.getElementById('headProofNote').style.display = 'none';
 
@@ -1407,9 +1295,6 @@
       scaleOut: await scaleOut.data(), shiftOut: await shiftOut.data(),
     };
     await showHeadProof(latent, adapter, decoder, target);
-    const landscapeDrawn = await renderLossLandscape(latentTrajectory, decoder, target, lossLandscapeCanvas);
-    hideSpinner('landscapeSpinner');
-    if (landscapeDrawn) document.getElementById('downloadLandscapeRow').style.display = 'flex';
     target.dispose(); latent.dispose();
     scaleIn.dispose(); shiftIn.dispose(); scaleOut.dispose(); shiftOut.dispose();
 
@@ -1501,9 +1386,8 @@
     hideSpinner('latentSpinner');
     renderHeadFingerprint(adapterArrs, headHeatmapCanvas);
     hideSpinner('headSpinner');
-    // no training happens on this path, so there's no loss curve or descent path to wait for
+    // no training happens on this path, so there's no loss curve to wait for
     hideSpinner('lossSpinner');
-    hideSpinner('landscapeSpinner');
     document.getElementById('learnSection').style.display = 'block';
     buildShareArtifacts(latentArr, adapterArrs);
     setupExplore(latentArr, adapterArrs, decoder);

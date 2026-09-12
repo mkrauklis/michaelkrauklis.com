@@ -326,53 +326,36 @@ loss briefly gets *worse* right at the transition before dropping again as they'
 is expected and worth leaving visible, not smoothing away — it's honest evidence that two separate
 optimizations are happening, not one continuous one.
 
-## The loss landscape (`renderLossLandscape`)
-
-The loss curve plots error against *time* — a single number falling, which is genuinely what
-gradient descent optimizes, but doesn't look like "descending a landscape" the way the name
-suggests, since the actual search happens in a 256-dimensional space the curve never shows.
-This plots error against *position* instead, as a 2D slice through that space: `checkpoint()`
-pushes a copy of the latent vector into `latentTrajectory` on every checkpoint (reset alongside
-`lossHistory` in `reconstruct()`), and once training finishes, `renderLossLandscape()` picks two
-directions out of that recorded path — direction 1 is start-to-finish net travel, direction 2 is
-whichever recorded point strayed furthest from that straight line (with its along-direction-1
-component removed), which is deliberately *where the path swerved hardest*, not an
-arbitrary or variance-maximizing axis. It then evaluates the frozen decoder's MSE against the
-target photo on a 22×22 grid spanning those two directions (`decodeFull(..., null)` — no
-adapter, since this is specifically the 256-dim latent landscape) and renders it as a heatmap
-with the actual path traced on top in white. A visible bend in that white line is a real,
-literal course-correction, not a metaphor. This is a supplementary visualization, not a
-replacement for the loss curve — don't change what the loss curve plots or how; add
-context here instead if the landscape needs adjusting.
-
-`decodeFull` gets called ~484 times (22×22) synchronously-ish with a `setTimeout(r,0)` yield
-between grid rows, which is why it's a `hideSpinner`-gated canvas like the others rather than
-appearing instantly — on a slower device this can take a few seconds after training itself
-finishes. It only runs on a live training run (needs both `latentTrajectory` and the target
-photo); `loadFromParams()` has neither, so it just hides the spinner and leaves the canvas
-blank, same as the loss curve does on that path.
-
 ## Result-canvas spinners and the status ticker
 
-Each of the five canvases that only get real content partway through training (impression,
-latent heatmap, head fingerprint, loss curve, loss landscape) has a `.spinner` sibling inside a
-`.canvas-wrap`, shown by `resetSpinners()` at the start of `reconstruct()` and hidden individually
-the moment that specific canvas gets its first real paint — `hideSpinner('headSpinner')` only
-fires inside `checkpoint()`'s `if (adapter)` branch, for instance, so it correctly stays spinning
-through all of phase 1, since there's genuinely nothing to show there until phase 2 starts.
-`loadFromParams()` (no training, so no loss curve or descent path at all) hides all five
-immediately rather than leaving any of them spinning forever.
+Each of the four canvases that only get real content partway through training (impression,
+latent heatmap, head fingerprint, loss curve) has a `.spinner` sibling inside a `.canvas-wrap`,
+shown by `resetSpinners()` at the start of `reconstruct()` and hidden individually the moment
+that specific canvas gets its first real paint — `hideSpinner('headSpinner')` only fires inside
+`checkpoint()`'s `if (adapter)` branch, for instance, so it correctly stays spinning through all
+of phase 1, since there's genuinely nothing to show there until phase 2 starts. `loadFromParams()`
+(no training, so no loss curve at all) hides all four immediately rather than leaving any of them
+spinning forever.
 
 The impression, latent, and head canvases also each have a Download button, and that button's
 row (`downloadReconRow`/`downloadLatentRow`/`downloadHeadRow`) starts `display:none` in the HTML
 and is only revealed by `hideSpinner()` itself, via the `SPINNER_DOWNLOAD_ROW` map — so a
 download button for a canvas can't appear before that canvas has anything real painted into it.
-The loss landscape's row (`downloadLandscapeRow`) isn't in that map, since `loadFromParams()`
-hides `landscapeSpinner` without ever drawing anything there; instead `reconstruct()` reveals it
-directly, only when `renderLossLandscape()` actually returns `true`. If a new result canvas gets
-a spinner and a download button in the future, wire it the same way — never leave a canvas's
-Download button visible while its spinner (or the section it's in) implies there's nothing there
-yet.
+If a new result canvas gets a spinner and a download button in the future, wire it the same way —
+never leave a canvas's Download button visible while its spinner (or the section it's in) implies
+there's nothing there yet.
+
+**A fifth canvas — a "2D slice of the loss landscape" plotting error against two directions
+pulled out of the actual descent path, with the recorded path traced on top — used to sit here
+too** (`renderLossLandscape()`, `latentTrajectory`, `lossLandscapeCanvas`/`landscapeSpinner`/
+`downloadLandscapeRow`). Cut on direct feedback that it didn't add much: interesting as a "here's
+what a 256-dimensional search actually looks like" curiosity, but the loss curve already tells
+the more legible version of the same story (error dropping, with a visible kink at the phase
+boundary), and the terrain plot's own 2D slice is an arbitrary two-directions-out-of-256
+projection that doesn't generalize the way the curve does. If something like this comes back,
+build it as an opt-in "for the curious" extra rather than a default result panel — it costs a
+real, visible few seconds of grid-evaluation time (22×22 forward passes through the decoder)
+for something most visitors won't find worth that wait.
 
 `startStatusTicker()`/`stopStatusTicker()` cross-fade through `STATUS_MESSAGES`, a mix of
 plain-English explanation and lighter asides, under the progress bar — purely there so the
@@ -407,6 +390,17 @@ nothing. Each of the four paired visualizations also has its own Download button
 `downloadShareBothHeadBtn`) — unlike the training-step canvases these don't need spinner-gating,
 since `buildShareArtifacts()` only ever runs once every canvas in `shareSection` is already
 painted, and the whole section is `display:none` until that call finishes.
+
+**The "make it a gift" copy in `#shareSection` presents two physical variants of this split**:
+two separate gifts (the documented default — essence+impression on one item, key on another), and
+a single-object variant added on direct request, for a mug/product template that prints two
+independent images (front and back, or two panels) rather than one wraparound design — key on one
+side, essence (plus the impression if there's room) on the other. Deliberately doesn't link a
+specific Zazzle template for the two-sided case, unlike the single-image template linked just
+above it: no specific two-sided product was verified to exist at the time this was written, and
+guessing/fabricating a product URL would be worse than telling the visitor to check the listing
+themselves. If a real two-sided template is ever found and verified, link it directly instead of
+the generic "check the listing" phrasing.
 
 The "prove the head matters" comparison (above, in the training section) also gets a third image
 when it can: `proofOriginalCol`/`proofOriginalCanvas` show the actual downsampled source photo
@@ -497,14 +491,21 @@ bringing to the other tools too. Two changes:
   concisely, exactly where someone needs it (right before they pick a file) — keeping both was
   pure redundancy. If you're tempted to re-add an illustrative example up top, check whether step
   01's existing "works well / works less well" paragraph already covers it first.
-- **`#exploreSection` ("explore nearby," the latent-space slider tool) now comes *before*
-  `#shareSection` ("save & share," which holds the Zazzle link)**, not after. It used to be the
-  reverse — a second interactive tool sitting between the merch CTA and the deep-dive explainer,
-  which doesn't match "tool, then save & share, then done." Renumbered accordingly: upload (01) →
-  crop (02) → train (03) → explore nearby (04) → save & share (05). Both sections are revealed
+- **`#shareSection` ("save & share," which holds the Zazzle link) now comes *before*
+  `#exploreSection` ("explore nearby," the latent-space slider tool)**. This flipped once already
+  (an earlier pass put explore first, reasoning that "tool, then save & share, then done" should
+  mean the interactive step comes immediately after training) and then flipped back on direct
+  feedback: save & share is meant to read as *the* call to action right after the result you came
+  for, not something you only reach after a second, more exploratory tool. Explore-nearby is a
+  "keep playing if you want" side quest, not a required stop on the way to sharing — it now comes
+  last, after the thing most visitors actually want to do. Renumbered accordingly: upload (01) →
+  crop (02) → train (03) → save & share (04) → explore nearby (05). Both sections are revealed
   independently by `getElementById` from the training-completion callback (not via DOM sibling
-  traversal), so reordering them was safe — confirmed by reading both reveal call sites
-  (`shareSection`'s and `setupExplore()`'s) before moving anything, not assumed.
+  traversal), so reordering them was safe both times — confirmed by reading both reveal call sites
+  (`shareSection`'s and `setupExplore()`'s) before moving anything, not assumed. If this gets
+  reordered again, resist flip-flopping without a concrete reason — two reversals already, driven
+  by two different plausible-sounding arguments, is a sign this is a judgment call rather than a
+  clearly correct ordering; don't spend a third round on it without new information.
 
 ## Testing changes
 
@@ -540,6 +541,8 @@ would surface, and it's more likely to show up now that personalization
 touches three layers instead of one. Also confirm each of the impression/
 latent/head Download buttons stays hidden until its canvas actually has
 something painted (reload and watch the training step closely — a button
-appearing before its spinner clears is the regression to catch), and that
-the loss-landscape canvas fills in with a visible bent path a few seconds
-after training completes, with its own Download button appearing only then.
+appearing before its spinner clears is the regression to catch). Confirm
+"save & share" (04) appears and is usable immediately after training, before
+ever touching "explore nearby" (05) — the two sections don't depend on each
+other, but the page-flow ordering above is exactly the thing to catch a
+regression in if a future change touches either section's reveal logic.
