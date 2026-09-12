@@ -225,9 +225,19 @@ Afterimage's crop-box dragger.
 
 - AdSense: script tag + `google-adsense-account` meta tag in `<head>`, publisher id
   `ca-pub-5936916546458743` (matches the rest of the site — don't change independently).
-- Zazzle affiliate: a plain link (not an API integration) to a pre-made mug template
-  with `?rf=<ambassador_id>` cross-promotion param. User manually downloads the PNG and
-  uploads it to Zazzle themselves — there's no server-side handoff of the design.
+- Two Zazzle links now, serving different jobs (same pattern as Echo State — see that tool's
+  CLAUDE.md for the fuller writeup of the distinction):
+  - **The hero CTA** ("Want to see what this looks like as a gift?", right under the intro
+    paragraph) links to a real, specific, finished product — "Glacier National Park — Traced in
+    Waves" (`glacier_national_park_traced_in_waves_mug-256459456782885365`), a mug built from a
+    real Ridgeline export of an actual Glacier National Park photo. This sells the idea at a
+    glance, before a visitor has touched the tool.
+  - **`#shareSection`'s mug template link** (further down) is the generic "upload your own
+    image" template — a plain link (not an API integration) to a pre-made blank template with
+    the `?rf=<ambassador_id>` cross-promotion param, where a visitor downloads *their own*
+    PNG and uploads it themselves. There's no server-side handoff of the design either way.
+  - Both links carry `?rf=238054754631086278` — every Zazzle link on this site does; never add
+    one without it.
 
 ## Page flow: explanation → tool → save & share → deep dive
 
