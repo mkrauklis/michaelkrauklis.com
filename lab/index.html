@@ -22,9 +22,19 @@
   p.lede{ max-width: 60ch; }
   .tool-list{ margin-top: 40px; display:flex; flex-direction:column; gap:16px; }
   .tool{
-    border:1px solid var(--line); border-radius:8px; padding:20px 22px;
+    border:1px solid var(--line); border-radius:8px; overflow:hidden;
     background:#171b24;
   }
+  .tool-thumb-link{ display:block; }
+  /* aspect-ratio (not a fixed height) so a thumbnail sized for one tool doesn't dictate every
+     other tool's crop. onerror="this.remove()" on the <img> itself (below) means a tool with no
+     thumbnail.jpg yet just collapses back to the old text-only card -- no broken-image icon, no
+     empty placeholder box sitting there either. */
+  .tool-thumb{
+    display:block; width:100%; aspect-ratio:16/9; object-fit:cover;
+    background:var(--bg-panel-2);
+  }
+  .tool-body{ padding:20px 22px; }
   .tool h2{ font-family:'Fraunces', serif; font-weight:500; font-size:1.25rem; margin:0 0 6px; }
   .tool p{ color:var(--ink-dim); font-size:0.92rem; margin:0; }
 </style>
@@ -36,24 +46,49 @@
     <p class="lede">Small browser-based tools that take a concept — Fourier decomposition, autoencoders, embeddings — and turn it into something you build, break, and watch work, instead of just reading about it. Open source and free to use.</p>
     <div class="tool-list">
       <div class="tool">
-        <h2><a href="/lab/echostate/">Echo State</a></h2>
-        <p>Type anything and watch a tiny untrained recurrent network's memory trace a unique path through space, character by character — export it as a print, or a QR code that replays the exact model live.</p>
+        <a class="tool-thumb-link" href="/lab/echostate/" tabindex="-1" aria-hidden="true">
+          <img class="tool-thumb" src="/lab/echostate/thumbnail.jpg" alt="" loading="lazy" onerror="this.remove()">
+        </a>
+        <div class="tool-body">
+          <h2><a href="/lab/echostate/">Echo State</a></h2>
+          <p>Type anything and watch a tiny untrained recurrent network's memory trace a unique path through space, character by character — export it as a print, or a QR code that replays the exact model live.</p>
+        </div>
       </div>
       <div class="tool">
-        <h2><a href="/lab/viaduct/">Neural Viaduct</a></h2>
-        <p>Run a real plain network and a real residual network on your own photo, side by side, and watch the skip connections actually happen — the same mechanism that let vision networks stop breaking as they got deeper.</p>
+        <a class="tool-thumb-link" href="/lab/viaduct/" tabindex="-1" aria-hidden="true">
+          <img class="tool-thumb" src="/lab/viaduct/thumbnail.jpg" alt="" loading="lazy" onerror="this.remove()">
+        </a>
+        <div class="tool-body">
+          <h2><a href="/lab/viaduct/">Neural Viaduct</a></h2>
+          <p>Run a real plain network and a real residual network on your own photo, side by side, and watch the skip connections actually happen — the same mechanism that let vision networks stop breaking as they got deeper.</p>
+        </div>
       </div>
       <div class="tool">
-        <h2><a href="/lab/vectis/">Vectis</a></h2>
-        <p>Pick two words as axes and plot anything — text or your own photos — by how similar it is to each one, using a CLIP model running entirely in your browser.</p>
+        <a class="tool-thumb-link" href="/lab/vectis/" tabindex="-1" aria-hidden="true">
+          <img class="tool-thumb" src="/lab/vectis/thumbnail.jpg" alt="" loading="lazy" onerror="this.remove()">
+        </a>
+        <div class="tool-body">
+          <h2><a href="/lab/vectis/">Vectis</a></h2>
+          <p>Pick two words as axes and plot anything — text or your own photos — by how similar it is to each one, using a CLIP model running entirely in your browser.</p>
+        </div>
       </div>
       <div class="tool">
-        <h2><a href="/lab/afterimage/">Afterimage</a></h2>
-        <p>Reconstructs an uploaded photo from a 256-number impression, using a small neural network trained once and shipped frozen — the reconstruction happens entirely in your browser.</p>
+        <a class="tool-thumb-link" href="/lab/afterimage/" tabindex="-1" aria-hidden="true">
+          <img class="tool-thumb" src="/lab/afterimage/thumbnail.jpg" alt="" loading="lazy" onerror="this.remove()">
+        </a>
+        <div class="tool-body">
+          <h2><a href="/lab/afterimage/">Afterimage</a></h2>
+          <p>Reconstructs an uploaded photo from a 256-number impression, using a small neural network trained once and shipped frozen — the reconstruction happens entirely in your browser.</p>
+        </div>
       </div>
       <div class="tool">
-        <h2><a href="/lab/ridgeline/">Ridgeline</a></h2>
-        <p>Traces a mountain silhouette from a photo, decomposes it with a discrete Fourier transform, and renders the reconstruction as an image sequence or animation.</p>
+        <a class="tool-thumb-link" href="/lab/ridgeline/" tabindex="-1" aria-hidden="true">
+          <img class="tool-thumb" src="/lab/ridgeline/thumbnail.jpg" alt="" loading="lazy" onerror="this.remove()">
+        </a>
+        <div class="tool-body">
+          <h2><a href="/lab/ridgeline/">Ridgeline</a></h2>
+          <p>Traces a mountain silhouette from a photo, decomposes it with a discrete Fourier transform, and renders the reconstruction as an image sequence or animation.</p>
+        </div>
       </div>
     </div>
   </div>
