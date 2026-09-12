@@ -183,17 +183,43 @@ Afterimage's crop-box dragger.
 - Color tokens are CSS custom properties in `:root` (`--amber`, `--teal`, `--danger`,
   etc.) — reuse these rather than hardcoding new hex values so the palette stays
   coherent if it's ever retuned.
-- **Stack style's row count** (`merchState.stackRows`, default 8) used to be a hardcoded
-  `const rows = 8` inside `drawMerchStack()` — now a slider (`#merchStackRowsRange`,
-  min 3, max 10) threaded through `currentMerchOpts()` like every other merch option.
-  The max of 10 isn't arbitrary: with a photo filling the final row (`stackPhotoFill`),
-  each of the other rows takes a *fixed* `contentH*0.08` slice regardless of row count
-  (see `drawMerchStack()`'s comment on why), so pushing the count much higher directly
-  shrinks the photo panel's remaining share — verified visually at both ends (3 and 10)
-  before picking 10 as the ceiling, not just computed on paper. The min of 3 is just
-  "fewer than that doesn't read as a stack." If `stackPhotoFill` is ever removed or its
-  layout logic changes, re-check whether 10 is still a safe max rather than assuming it
-  still holds.
+- **Stack style's row count** (`merchState.stackRows`, default 8) is a slider
+  (`#merchStackRowsRange`, min 3, max 20 — kept in sync with `MERCH_STACK_MIN_ROWS`/
+  `MERCH_STACK_MAX_ROWS` in `drawMerchStack()`) threaded through `currentMerchOpts()`
+  like every other merch option. This went through a real redesign, not just a wider
+  range, after direct feedback caught three separate problems with the first version:
+
+  1. **Off-by-one, by design intent rather than arithmetic**: the old code treated
+     `rows` as the *total* line count, so the photo's own bold ridge line silently
+     consumed one of the requested rows — asking for 3 only ever showed 2 faint lines
+     above the photo. Fixed by making `rows` mean *only* the faint build-up lines
+     (`counts = [1, 2, ..., rows]`); one additional bolder "result" line (the photo's
+     ridge, or an extra standalone line with no photo) is always appended after that,
+     never counted against the slider's number.
+  2. **A taller stack used to mean a taller (or photo-squeezing) graphic**: with a
+     photo, each wave row took a *fixed* `contentH*0.08` slice regardless of row count,
+     so more rows directly grew the total space the wave stack consumed and shrank
+     the photo panel — this was the original reason the max was capped at 10 at all.
+     Fixed by reserving a **fixed total** height for the whole wave stack
+     (`waveStackH`, a constant share of `contentH`) and dividing *that* by the row
+     count — more rows now packs the same lines closer together (overlapping at high
+     counts, which is fine — direct feedback: "I don't care if they overlap") instead
+     of growing the graphic or eating into the photo panel. This is *why* the max
+     could safely become 20 instead of 10 — the original constraint that capped it is
+     gone.
+  3. **The final line's own fidelity used to just be `rows` itself** — capped at
+     3-20 Fourier components no matter how much real detail the photo actually has, so
+     the "sharp result" line barely changed between slider positions. `finalCount` now
+     ramps from ~15% up to 100% of `state.comps.length` as the slider moves from its
+     min to its max (`t = (rows-MIN)/(MAX-MIN)`, `finalCount = totalComps*(0.15+0.85*t)`),
+     so cranking the slider actually sharpens the one line that's supposed to look like
+     the real result — verified by computing `finalCount` at both ends against a
+     realistic `totalComps` (~220, this file's own outline-detail ceiling), not just
+     eyeballing a low-detail test silhouette where the difference is barely visible.
+
+  If either of `MERCH_STACK_MIN_ROWS`/`MAX_ROWS` or the slider's own `min`/`max`
+  attributes change, update both together — the fidelity ramp's `t` calculation
+  reads the constants, not the DOM element.
 
 ## Monetization
 
@@ -223,9 +249,12 @@ Run the golden path: upload a photo → check the auto-extracted outline looks r
 steps/video → download. Check both the "Line" and "Stack" merch styles, and both video styles
 (sequential summation, epicycle arms), since they share the reconstruction math but have
 separate drawing code paths. For "Stack" specifically, drag the "Number of lines" slider to both
-ends (3 and 10) and confirm the layout still looks sane at each — the photo panel shrinking too
-far at the high end is the specific regression to watch for (see "Conventions specific to this
-file" above for why that's the actual constraint the max was picked against).
+ends (3 and 20) and confirm: the count of faint lines actually shown matches the slider (not one
+fewer), the photo panel's size stays constant across the whole range (only the line spacing
+should change), and — using a photo with real jagged detail, not a smooth test silhouette — the
+bold final line visibly sharpens as the slider goes up rather than looking the same at every
+position (see "Conventions specific to this file" above for the exact formula and why a
+low-detail test image won't show this last one).
 
 If you touch `detectSkyline()` or `autoTuneAndExtract()`, also check: a synthetic photo with a
 smooth vertical sky gradient and a jagged silhouette (a `<canvas>` gradient fill plus a filled

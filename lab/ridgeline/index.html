@@ -244,7 +244,7 @@
         </div>
 
         <label class="field" id="merchStackRowsLabel">Number of lines — <span class="field-value" id="merchStackRowsVal">8</span></label>
-        <input type="range" id="merchStackRowsRange" min="3" max="10" step="1" value="8">
+        <input type="range" id="merchStackRowsRange" min="3" max="20" step="1" value="8">
 
         <label class="field" id="merchStackFillLabel">
           <input type="checkbox" id="merchStackPhotoCheck" checked style="accent-color: var(--amber); margin-right:6px;">
@@ -1488,6 +1488,9 @@
   });
 
   // ---------- Merch designs ----------
+  // Must stay in sync with #merchStackRowsRange's min/max attributes -- used to normalize the
+  // slider's position for the final line's fidelity ramp in drawMerchStack().
+  const MERCH_STACK_MIN_ROWS = 3, MERCH_STACK_MAX_ROWS = 20;
   const merchState = { style: 'stack', accent: '#e0a54c', bg: 'dark', fill: 'filled', stackPhotoFill: true, stackRows: 8, padding: true };
   const MERCH_DARK_BG = '#10131a', MERCH_LIGHT_BG = '#f5f0e6';
   const MERCH_SIZES = {
@@ -1596,8 +1599,29 @@
     ctx.fillRect(0, 0, w, h);
 
     const N = state.N, M = state.M;
-    const rows = opts.stackRows || 8;
-    const counts = panelCounts(state.comps.length, rows);
+    const rows = opts.stackRows || 8; // how many faint build-up lines the slider asked for
+    const totalComps = state.comps.length;
+    const showPhoto = opts.stackPhotoFill && state.img;
+
+    // `rows` faint build-up lines (1, 2, 3, ... rows components each), then one additional
+    // bolder "result" line always drawn after them -- either the photo's own ridge line, or
+    // (with no photo) just an extra standalone line. This is a deliberately different rule
+    // from panelCounts()'s normal use in buildSteps(), where the *last* step already *is* the
+    // final result -- here the slider's number means "how many faint lines," full stop, with
+    // one more always added on top of that (previously the final line silently consumed one of
+    // the requested rows, so asking for 3 only ever showed 2 faint lines above the photo).
+    const waveRows = Math.min(rows, totalComps);
+    const counts = [];
+    for (let i = 1; i <= waveRows; i++) counts.push(i);
+    // The final line's own fidelity now climbs toward the actual full traced detail as the
+    // slider goes up, instead of reusing `rows` itself (3-20 components -- barely distinguishable
+    // from each other, and nowhere near this photo's real available detail). t=0 at the slider's
+    // own minimum, t=1 at its maximum -- MERCH_STACK_MIN_ROWS/MAX_ROWS must stay in sync with
+    // #merchStackRowsRange's min/max attributes.
+    const t = Math.max(0, Math.min(1, (rows - MERCH_STACK_MIN_ROWS) / (MERCH_STACK_MAX_ROWS - MERCH_STACK_MIN_ROWS)));
+    const finalCount = Math.min(totalComps, Math.max(waveRows + 1, Math.round(totalComps * (0.15 + 0.85 * t))));
+    counts.push(finalCount);
+
     const marginX = w*(opts.padding ? 0.1 : 0.03);
     const availW = w - 2*marginX;
     const contentTop = h*(opts.padding ? 0.1 : 0.03);
@@ -1605,14 +1629,16 @@
       ? h*(opts.padding ? 0.82 : 0.90)
       : h*(opts.padding ? 0.9 : 0.97);
     const contentH = contentBottom - contentTop;
-    const showPhoto = opts.stackPhotoFill && state.img;
-    const waveRows = counts.length - 1;
 
-    // when showing a photo, the 7 component rows get a compact fixed share of the height so
-    // the last "row" can instead be a properly-proportioned photo panel — a real photo can't be
-    // squeezed into a single one-eighth-height row without either cropping or stretching it
-    const waveRowH = showPhoto ? contentH*0.08 : contentH/rows;
-    const photoTop = contentTop + waveRows*waveRowH;
+    // Fixed total height for the stack of faint lines, independent of row count, so asking for
+    // more lines packs them closer together (and may overlap at high counts) instead of growing
+    // the graphic or shrinking the photo panel -- direct feedback: "don't make the graphic
+    // taller... I don't care if they overlap." With a photo, that fixed band is a constant share
+    // of contentH (leaving the rest for a properly-proportioned photo panel, same as before);
+    // without one, the final line still gets its own equal-sized slot after the build-up block.
+    const waveStackH = showPhoto ? contentH*0.56 : contentH*(waveRows/(waveRows+1));
+    const waveRowH = waveStackH / Math.max(1, waveRows);
+    const photoTop = contentTop + waveStackH;
     const photoAvailH = contentBottom - photoTop;
 
     // one shared pixels-per-source-unit scale for every row, so a dominant wave actually reads
