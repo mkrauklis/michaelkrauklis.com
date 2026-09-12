@@ -40,6 +40,7 @@
   }
   svg#trace-svg{ width:100%; height:auto; aspect-ratio: 600/380; display:block; }
   svg#diagram-svg, svg#activation-svg{ width:100%; height:auto; aspect-ratio: 640/440; display:block; }
+  svg#unroll-svg{ width:100%; height:auto; aspect-ratio: 640/220; display:block; }
   #printCanvas{ width:100%; height:auto; aspect-ratio:1/1; display:block; background:#0c0e13; }
 
   .playback{ display:flex; align-items:center; gap:12px; margin-top:14px; }
@@ -48,18 +49,14 @@
   .readhead{ font-family:'Inter', sans-serif; font-size:0.85rem; color: var(--ink-dim); margin-top:10px; word-break:break-all; }
   .readhead mark{ background: color-mix(in srgb, var(--amber) 25%, transparent); color: var(--amber); border-radius:3px; padding:0 2px; font-weight:600; }
 
-  table.ledger{ width:100%; border-collapse:collapse; font-family:'Inter', sans-serif; font-size:0.86rem; }
-  table.ledger td{ padding:9px 4px; border-bottom:1px solid var(--line); font-variant-numeric: tabular-nums; }
-  table.ledger td:first-child{ color: var(--ink-dim); padding-right:12px; }
-  table.ledger td:last-child{ text-align:right; color: var(--ink); font-weight:500; }
-  table.ledger tr:last-child td{ border-bottom:none; font-weight:600; color: var(--accent); }
-  .ledger-wrap{ overflow-x:auto; }
-
-  .qr-box{ display:flex; flex-direction:column; align-items:center; gap:10px; text-align:center; }
+  .qr-box{
+    display:flex; flex-direction:column; align-items:center; gap:12px; text-align:center;
+    max-width: 280px; margin: 0 auto;
+  }
   #qrcode{ background:#fff; padding:8px; border-radius:6px; line-height:0; }
   #qrcode img, #qrcode canvas{ display:block; image-rendering:pixelated; width:150px; height:150px; }
-  .result-label{ font-size:0.78rem; color: var(--ink); font-weight:600; margin-top:8px; }
-  .result-desc{ font-size:0.78rem; color: var(--ink-dim); }
+
+  .unroll-caption{ font-size:0.82rem; color: var(--ink-dim); margin-top:8px; }
 
   .formula{ font-size:1rem; color: var(--ink); margin: 14px 0; padding: 14px 16px; background: var(--bg-panel-2); border-radius:6px; border:1px solid var(--line); }
   .formula .op{ font-family:'Fraunces', Georgia, serif; color: var(--ink-dim); padding: 0 4px; }
@@ -75,11 +72,10 @@
     <div>
       <span class="hero-line">a sequence, remembered one character at a time</span>
       <h1>Echo State</h1>
-      <p>Type a name, a date, a line you'd actually say. A tiny recurrent network — eight
-      numbers with a memory, by default — reads it one character at a time, and the path its
-      memory takes becomes a line no other input traces quite the same way. Small enough that
-      the whole model, weights included, fits inside a QR code you can scan to watch it happen
-      again.</p>
+      <p>Type a name, a date, a line you'd actually say. A tiny recurrent network reads it one
+      character at a time, and the path its memory takes becomes a unique signature — a line no
+      other input traces quite the same way. Small enough that the whole model, weights
+      included, fits inside a QR code you can scan to watch it happen again.</p>
     </div>
     <svg id="heroCanvas" viewBox="0 0 400 220" preserveAspectRatio="xMidYMid meet"></svg>
   </div>
@@ -96,31 +92,13 @@
     <div class="panel">
       <p class="status" id="replayNote" style="display:none; margin:0 0 16px;">Replaying the exact
       weights carried in this page's link — type something new to see how the same network
-      responds, or touch any control below to break away and generate your own.</p>
-      <div class="row">
-        <div class="col">
-          <label class="field" for="text-input">Text</label>
-          <input type="text" id="text-input" value="ADA &amp; CHARLES" maxlength="60" autocomplete="off" spellcheck="false">
-          <p class="status" style="margin-top:8px;">Example shown — try your own. Lowercase a–z, digits, space, and
-          <code>. , ! ? &amp; ' -</code> are understood; anything else reads as a space.</p>
-        </div>
-        <div class="col">
-          <label class="field">Reservoir size (H)</label>
-          <div class="toggle-group" id="h-select" role="group">
-            <button type="button" data-h="2">2</button>
-            <button type="button" data-h="4">4</button>
-            <button type="button" data-h="8" class="active">8</button>
-            <button type="button" data-h="16">16</button>
-          </div>
-
-          <label class="field">Spectral radius — <span class="field-value" id="radius-val">0.90</span>
-            <span class="status" id="regime-label" style="margin-left:6px;"></span></label>
-          <input type="range" id="radius-range" min="0.3" max="1.4" step="0.05" value="0.9">
-
-          <div class="actions">
-            <button type="button" class="secondary" id="reroll-btn">↻ Reroll reservoir</button>
-          </div>
-        </div>
+      responds, or reroll below to break away and generate your own.</p>
+      <label class="field" for="text-input">Your input text</label>
+      <input type="text" id="text-input" value="A &amp; C" maxlength="60" autocomplete="off" spellcheck="false">
+      <p class="status" style="margin-top:8px;">Example shown — try your own. Lowercase a–z, digits, space, and
+      <code>. , ! ? &amp; ' -</code> are understood; anything else reads as a space.</p>
+      <div class="actions">
+        <button type="button" class="secondary" id="reroll-btn">↻ Reroll reservoir</button>
       </div>
     </div>
   </section>
@@ -139,7 +117,6 @@
           <div class="trace-frame">
             <svg id="trace-svg" viewBox="0 0 600 380" preserveAspectRatio="xMidYMid meet"></svg>
           </div>
-          <p class="status" id="proj-note" style="margin-top:8px;"></p>
         </div>
         <div class="col">
           <div class="diagram-frame">
@@ -159,8 +136,8 @@
   <section>
     <span class="step-tag">03 — your print</span>
     <h2>Pick a look</h2>
-    <p>This is what gets downloaded — either the fingerprint trace, or the network itself lit up
-    by its final activation. Pick a style, a color, and a background, and you're done.</p>
+    <p>Pick a Trace or a Fingerprint to download. That's your unique signature for the text that
+    created it, drawn from the exact network configuration built just for you above.</p>
 
     <div class="panel row">
       <div class="col">
@@ -172,7 +149,7 @@
         <label class="field">Style</label>
         <div class="toggle-group" id="printStyleToggle">
           <button type="button" data-style="trace" class="active">Trace</button>
-          <button type="button" data-style="network">Network — final frame</button>
+          <button type="button" data-style="network">Fingerprint</button>
         </div>
 
         <label class="field">Color</label>
@@ -191,7 +168,7 @@
         </div>
 
         <label class="field" style="display:flex; align-items:center; gap:6px;">
-          <input type="checkbox" id="printCaptionCheck" checked style="accent-color: var(--accent); margin:0;">
+          <input type="checkbox" id="printCaptionCheck" style="accent-color: var(--accent); margin:0;">
           Print the text underneath
         </label>
 
@@ -207,24 +184,19 @@
     <span class="step-tag">04 — save &amp; share</span>
     <h2>Take it with you</h2>
     <p>Download the PNG above, then print it yourself or turn it into something physical — this
-    one's especially suited to a mug. <a href="https://www.zazzle.com/design_your_own_logo_design_coffee_mug-256206116898885602?rf=238054754631086278" target="_blank" rel="noopener">Open this Zazzle mug template</a>
-    and upload the PNG there — click "Personalize this design" and use the file you just
+    one's especially suited to a mug. A popular way to do it: your signature on one side (leave
+    the caption off, same as the default above), and the QR code on the opposite side, so it can
+    still be scanned without disturbing the design.
+    <a href="https://www.zazzle.com/design_your_own_logo_design_coffee_mug-256206116898885602?rf=238054754631086278" target="_blank" rel="noopener">Open this Zazzle mug template</a>
+    and upload your download there — click "Personalize this design" and use the file you just
     downloaded.</p>
 
-    <div class="panel row" style="align-items:center; margin-top:16px;">
-      <div class="col ledger-wrap">
-        <p class="status" style="margin:0 0 12px;">Or skip printing entirely — this QR code carries
-        the whole reservoir, quantized weights and all, right inside the link. Scan it and this
-        exact page reruns the exact network you built above, live. Nothing about it lives on a
-        server.</p>
-        <table class="ledger" id="ledger-table"></table>
-      </div>
-      <div class="col qr-box" style="flex:0 0 200px;">
-        <div id="qrcode"></div>
-        <div class="result-label">scan to relive it</div>
-        <div class="result-desc" id="qr-caption">Opens this exact page with the model embedded in
-        the link — no text or weights are ever sent anywhere to make that work.</div>
-      </div>
+    <div class="panel qr-box" style="margin-top:16px;">
+      <p class="status" style="margin:0;">Scan this to reopen this exact page and replay the exact
+      network you built above, live — the whole reservoir travels inside the code, nothing about
+      it lives on a server.</p>
+      <div id="qrcode"></div>
+      <button type="button" class="secondary" id="downloadQrBtn">Download QR as PNG</button>
     </div>
   </section>
 
@@ -232,9 +204,22 @@
     <summary>How this actually works <span class="adv-sub">— reservoirs, spectral radius, and the node-link diagram underneath</span></summary>
     <div class="disclosure-body">
 
-      <p>The weights aren't trained — they're a seeded random reservoir (an <i>echo state network</i>,
-      which is what this tool is named for), rescaled so the recurrent matrix hits the spectral
-      radius you chose above. At every character, the hidden state updates by:</p>
+      <p>The weights aren't trained — they're a seeded random reservoir (an <i>echo state
+      network</i>, which is what this tool is named for), rescaled so the recurrent matrix hits a
+      target <b>spectral radius</b> before any of this runs. It's the single biggest lever on how
+      the network behaves, so it's worth playing with directly:</p>
+
+      <label class="field">Spectral radius — <span class="field-value" id="radius-val">0.90</span>
+        <span class="status" id="regime-label" style="margin-left:6px;"></span></label>
+      <input type="range" id="radius-range" min="0.3" max="1.4" step="0.05" value="0.9">
+      <p class="status" style="margin-top:8px;">Below about 0.55 the state settles fast and
+      forgets almost everything except the last couple of characters ("fixed point"). Above about
+      1.05 small differences compound instead of fading, so the trace can swing wildly and two
+      similar inputs can end up looking unrelated ("saturating / chaotic"). The range in between
+      is where a reservoir is actually useful — it remembers enough of what came before to make
+      the trace mean something, without either collapsing to a point or blowing up.</p>
+
+      <p style="margin-top:16px;">At every character, the hidden state updates by:</p>
 
       <div class="formula">h<sub>t</sub> <span class="op">=</span> tanh( W<sub>in</sub>·x<sub>t</sub> <span class="op">+</span> W<sub>rec</sub>·h<sub>t−1</sub> <span class="op">+</span> b )</div>
 
@@ -242,12 +227,33 @@
       basic punctuation — rather than one-hot, which is most of why this stays small). Because
       there's no "correct" version being approximated, quantizing the weights to int8 for the QR
       code loses nothing that matters: the quantized weights <i>are</i> the model. Parameter count
-      is fixed by H alone — <span class="field-value">H×(H+7)</span> — and never grows with the
-      length of what you type.</p>
+      is fixed by H alone — <span class="field-value">H×(H+7)</span> — 120 at the H=8 every new
+      reservoir here uses — and never grows with the length of what you type.</p>
 
-      <p>That also means the whole network is small enough to draw honestly, node by node,
-      connection by connection — not a stylized stand-in, the literal live weights of the
-      reservoir above:</p>
+      <p style="margin-top:16px;">Notice that formula only ever reaches back <b>one</b> step —
+      each new state depends on the character just read and the state right before it, nothing
+      further back than that. There's no backpropagation-through-time here, no training, no
+      literal "unrolled" computation graph — it's a plain loop, computed forward once. What does
+      get kept, purely for this page's own trace and playback, is every state along the way, not
+      just the current one:</p>
+
+      <div class="diagram-frame">
+        <svg id="unroll-svg" viewBox="0 0 640 220" preserveAspectRatio="xMidYMid meet"></svg>
+      </div>
+      <p class="status unroll-caption" id="unroll-caption"></p>
+
+      <p style="margin-top:16px;">That's the whole picture of the trace and playback in step 02:
+      <span class="field-value">states[t]</span> is just this loop's own output, one snapshot per
+      character, stored as it's computed rather than thrown away.</p>
+
+      <p style="margin-top:16px;">The trace itself is a projection, not the raw state — with 8
+      hidden units, the actual path lives in 8 dimensions, so what's plotted is the top 2
+      principal components of this run's own sequence of states (computed fresh for whatever you
+      typed, not a fixed or precomputed projection).</p>
+
+      <p style="margin-top:16px;">That also means the whole network is small enough to draw
+      honestly, node by node, connection by connection — not a stylized stand-in, the literal live
+      weights of the reservoir above:</p>
 
       <div class="diagram-frame">
         <svg id="diagram-svg" viewBox="0 0 640 440" preserveAspectRatio="xMidYMid meet"></svg>
@@ -263,15 +269,6 @@
       network's fixed wiring, unaffected by what you type. For how those same weights light up
       while actually reading your text, see the live diagram in step 02 above, or export it as
       its own print in step 03.</p>
-
-      <p style="margin-top:16px;">The spectral radius slider controls how the recurrent matrix is
-      rescaled before any of this runs — it's the single biggest lever on how the network behaves.
-      Below about 0.55 the state settles fast and forgets almost everything except the last couple
-      of characters ("fixed point"). Above about 1.05 small differences compound instead of fading,
-      so the trace can swing wildly and two similar inputs can end up looking unrelated
-      ("saturating / chaotic"). The range in between is where a reservoir is actually useful — it
-      remembers enough of what came before to make the trace mean something, without either
-      collapsing to a point or blowing up.</p>
 
     </div>
   </details>
@@ -440,12 +437,6 @@
     return bytes;
   }
 
-  var QR_CAP_M = [[1,14],[5,84],[10,213],[15,412],[20,666],[25,997],[30,1370],[40,2331]];
-  function estimateVersion(byteLen){
-    for (var i=0;i<QR_CAP_M.length;i++){ if (byteLen <= QR_CAP_M[i][1]) return String(QR_CAP_M[i][0]); }
-    return '40+';
-  }
-
   function hexToRgb(hex){ return [parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)]; }
   function lerpColor(hexA, hexB, t){
     var a = hexToRgb(hexA), b = hexToRgb(hexB);
@@ -455,12 +446,14 @@
   function rgba(hex, alpha){ var c = hexToRgb(hex); return 'rgba(' + c.join(',') + ',' + alpha + ')'; }
 
   // ---- state ----
-  var state = { H: 8, seed: 42, radius: 0.9, text: 'ADA & CHARLES', t: 0, playing: false, playTimer: null,
-                printColor: '#5eb0a4', printBg: 'dark', printCaption: true, printStyle: 'trace',
+  // H is fixed at 8 for every newly-generated reservoir -- a replayed link (see initFromUrl())
+  // can still carry a different H from an older share, since decodePayload() stays general.
+  var FIXED_H = 8;
+  var state = { H: FIXED_H, seed: 42, radius: 0.9, text: 'A & C', t: 0, playing: false, playTimer: null,
+                printColor: '#5eb0a4', printBg: 'dark', printCaption: false, printStyle: 'trace',
                 replayModel: null };
 
   var textInput = document.getElementById('text-input');
-  var hSelect = document.getElementById('h-select');
   var radiusRange = document.getElementById('radius-range');
   var radiusVal = document.getElementById('radius-val');
   var regimeLabel = document.getElementById('regime-label');
@@ -470,10 +463,8 @@
   var playBtn = document.getElementById('play-btn');
   var scrub = document.getElementById('scrub');
   var readhead = document.getElementById('readhead');
-  var ledgerTable = document.getElementById('ledger-table');
   var qrDiv = document.getElementById('qrcode');
-  var qrCaption = document.getElementById('qr-caption');
-  var projNote = document.getElementById('proj-note');
+  var downloadQrBtn = document.getElementById('downloadQrBtn');
   var printCanvas = document.getElementById('printCanvas');
   var printSwatches = document.getElementById('printSwatches');
   var printCustomColor = document.getElementById('printCustomColor');
@@ -484,6 +475,8 @@
   var diagramCaption = document.getElementById('diagram-caption');
   var activationSvg = document.getElementById('activation-svg');
   var activationCaption = document.getElementById('activation-caption');
+  var unrollSvg = document.getElementById('unroll-svg');
+  var unrollCaption = document.getElementById('unroll-caption');
   var printStyleToggle = document.getElementById('printStyleToggle');
   var heroCanvas = document.getElementById('heroCanvas');
 
@@ -507,10 +500,7 @@
     var points = project(states, state.H);
     var payload = buildPayload(model, state.H, state.text);
     cached = {model:model, states:states, points:points, payload:payload};
-
-    projNote.textContent = state.H <= 2
-      ? 'H=2 — plotted directly, no projection needed.'
-      : 'Top 2 principal components of the ' + state.H + '-dimensional state.';
+    cached.url = location.origin + location.pathname + '?d=' + toBase64Url(payload.bytes);
 
     regimeLabel.textContent = state.replayModel ? '' : '— ' + regimeFor(state.radius);
 
@@ -520,8 +510,8 @@
 
     renderTrace();
     renderReadhead();
+    renderUnroll();
     renderActivationDiagram();
-    renderLedger();
     renderQR();
     renderPrint();
     renderDiagram();
@@ -553,10 +543,13 @@
 
   // Shared node placement for both the structure diagram and the live activation diagram --
   // same layout so the two read as views of the same network, not two different drawings.
+  // INPUT_X + radius on the right vs. INPUT_X on the left are balanced around CX so the whole
+  // input+ring diagram centers in the 640-wide viewBox, not just the ring on its own.
+  var NODE_INPUT_X = 60, NODE_RADIUS = 170, NODE_CX = 640 - NODE_INPUT_X - NODE_RADIUS, NODE_CY = 235;
   function computeNodeLayout(H){
-    var cx = 430, cy = 220, radius = 150;
+    var cx = NODE_CX, cy = NODE_CY, radius = NODE_RADIUS;
     var hiddenPos = []; for (var i=0;i<H;i++){ var ang = (i/H)*2*Math.PI - Math.PI/2; hiddenPos.push([cx+radius*Math.cos(ang), cy+radius*Math.sin(ang)]); }
-    var inputPos = []; var top = 60, bottom = 380; for (var k=0;k<6;k++){ var y = top + (bottom-top)*(k/5); inputPos.push([70, y]); }
+    var inputPos = []; var top = 70, bottom = 400; for (var k=0;k<6;k++){ var y = top + (bottom-top)*(k/5); inputPos.push([NODE_INPUT_X, y]); }
     return {cx:cx, cy:cy, radius:radius, hiddenPos:hiddenPos, inputPos:inputPos};
   }
 
@@ -596,26 +589,6 @@
       html += (i === upto-1) ? '<mark>'+ch+'</mark>' : ch;
     }
     readhead.innerHTML = html;
-  }
-
-  function fmtBytes(n){ return n.toLocaleString() + ' B'; }
-
-  function renderLedger(){
-    var H = state.H, p = cached.payload;
-    var url = location.origin + location.pathname + '?d=' + toBase64Url(p.bytes);
-    var rows = [
-      ['Hidden units (H)', String(H)],
-      ['Parameters — H×(H+7)', String(H*(H+7))],
-      ['Header bytes', '2'],
-      ['Weight bytes (int8, quantized)', fmtBytes(p.weightBytes)],
-      ['Message bytes (UTF-8)', fmtBytes(p.textBytes)],
-      ['Total raw payload', fmtBytes(p.bytes.length)],
-      ['Base64url encoded', (p.bytes.length ? toBase64Url(p.bytes).length : 0) + ' chars'],
-      ['Full URL length', url.length + ' chars'],
-      ['Estimated QR version (M)', '≈ v' + estimateVersion(url.length)],
-    ];
-    ledgerTable.innerHTML = rows.map(function(r){ return '<tr><td>'+r[0]+'</td><td>'+r[1]+'</td></tr>'; }).join('');
-    cached.url = url;
   }
 
   function renderQR(){
@@ -761,8 +734,8 @@
       var nodeColor = bv >= 0 ? lerpColor('#2a3040', '#5eb0a4', bt) : lerpColor('#2a3040', '#d97a6c', bt);
       parts.push('<circle cx="'+hiddenPos[hN][0].toFixed(1)+'" cy="'+hiddenPos[hN][1].toFixed(1)+'" r="7" fill="'+nodeColor+'" stroke="#e9e7de" stroke-width="0.6"/>');
     }
-    parts.push('<text x="70" y="42" fill="#9aa0ae" font-family="Inter, sans-serif" font-size="12">input (6)</text>');
-    parts.push('<text x="'+(cx-40)+'" y="42" fill="#9aa0ae" font-family="Inter, sans-serif" font-size="12">hidden (H='+H+'), fully recurrent</text>');
+    parts.push('<text x="'+NODE_INPUT_X+'" y="34" fill="#9aa0ae" font-family="Inter, sans-serif" font-size="12">input (6)</text>');
+    parts.push('<text x="'+(cx-46)+'" y="34" fill="#9aa0ae" font-family="Inter, sans-serif" font-size="12">hidden (H='+H+'), fully recurrent</text>');
 
     diagramSvg.innerHTML = parts.join('');
     var edgeCount = 6*H + H*H;
@@ -820,8 +793,8 @@
       var rad = 6 + 8*mag;
       parts.push('<circle cx="'+hiddenPos[hN][0].toFixed(1)+'" cy="'+hiddenPos[hN][1].toFixed(1)+'" r="'+rad.toFixed(1)+'" fill="'+col2+'" stroke="#e9e7de" stroke-width="0.6"/>');
     }
-    parts.push('<text x="70" y="42" fill="#9aa0ae" font-family="Inter, sans-serif" font-size="12">input — current character</text>');
-    parts.push('<text x="'+(cx-56)+'" y="42" fill="#9aa0ae" font-family="Inter, sans-serif" font-size="12">hidden — live activation</text>');
+    parts.push('<text x="'+NODE_INPUT_X+'" y="34" fill="#9aa0ae" font-family="Inter, sans-serif" font-size="12">input — current character</text>');
+    parts.push('<text x="'+(cx-62)+'" y="34" fill="#9aa0ae" font-family="Inter, sans-serif" font-size="12">hidden — live activation</text>');
     activationSvg.innerHTML = parts.join('');
 
     if (state.t === 0){
@@ -831,6 +804,59 @@
     } else {
       activationCaption.textContent = 'Reading "' + state.text[state.t-1] + '" — character ' + state.t + ' of ' + state.text.length + '.';
     }
+  }
+
+  // Answers "do we unroll it, or update in place?" visually: draws a handful of the actual
+  // states this run computed as separate columns with an arrow between consecutive ones --
+  // there's no literal unrolled graph in the code (runForward() is a plain loop, one state
+  // computed from the previous), but every state along the way genuinely is kept (not
+  // overwritten in place) so this diagram can show them side by side after the fact.
+  function renderUnroll(){
+    var H = state.H;
+    var states = cached.states;
+    var n = states.length;
+    var maxFrames = 6;
+    var idxs = [];
+    if (n <= maxFrames){
+      for (var i=0;i<n;i++) idxs.push(i);
+    } else {
+      for (var i=0;i<maxFrames;i++) idxs.push(Math.round(i*(n-1)/(maxFrames-1)));
+      idxs = idxs.filter(function(v,i){ return idxs.indexOf(v)===i; });
+    }
+
+    var marginX = 46, topY = 46, colGap = H>1 ? 110/(H-1) : 0, colHeight = (H-1)*colGap, cy = topY+90;
+    var count = idxs.length, span = 640 - 2*marginX;
+
+    var parts = [];
+    for (var f=0; f<count; f++){
+      var si = idxs[f];
+      var vec = states[si];
+      var x = count>1 ? marginX + span*(f/(count-1)) : 320;
+
+      if (f>0){
+        var prevX = count>1 ? marginX + span*((f-1)/(count-1)) : 320;
+        var x0 = prevX+16, x1 = x-16;
+        parts.push('<line x1="'+x0.toFixed(1)+'" y1="'+cy+'" x2="'+x1.toFixed(1)+'" y2="'+cy+'" stroke="#9aa0ae" stroke-width="1.4"/>');
+        parts.push('<polygon points="'+x1.toFixed(1)+','+(cy-4)+' '+(x1+7).toFixed(1)+','+cy+' '+x1.toFixed(1)+','+(cy+4)+'" fill="#9aa0ae"/>');
+      }
+
+      var label = si===0 ? '(start)' : escapeXml(state.text[si-1]);
+      parts.push('<text x="'+x.toFixed(1)+'" y="'+(topY-14)+'" fill="#9aa0ae" font-family="Inter, sans-serif" font-size="12" text-anchor="middle">'+label+'</text>');
+
+      var top = cy - colHeight/2;
+      for (var u=0; u<H; u++){
+        var v = vec[u];
+        var mag = Math.min(1, Math.abs(v));
+        var col = v >= 0 ? lerpColor('#20262f', '#5eb0a4', mag) : lerpColor('#20262f', '#d97a6c', mag);
+        var y = colHeight ? top + u*colGap : cy;
+        parts.push('<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="6" fill="'+col+'" stroke="#e9e7de" stroke-width="0.6"/>');
+      }
+
+      parts.push('<text x="'+x.toFixed(1)+'" y="'+(cy+colHeight/2+22)+'" fill="#5c6272" font-family="Inter, sans-serif" font-size="11" text-anchor="middle">h'+si+'</text>');
+    }
+
+    unrollSvg.innerHTML = parts.join('');
+    unrollCaption.textContent = 'Showing ' + count + ' of the ' + n + ' states this run actually computed. Each column is the full ' + H + '-unit hidden state at that moment; the arrow into it is the only new information feeding in — everything to its left already happened and is never recomputed.';
   }
 
   function drawHero(){
@@ -858,19 +884,9 @@
     recompute();
   });
 
-  hSelect.addEventListener('click', function(e){
-    var btn = e.target.closest('button[data-h]');
-    if (!btn) return;
-    exitReplay();
-    Array.from(hSelect.children).forEach(function(b){ b.classList.toggle('active', b===btn); });
-    state.H = parseInt(btn.getAttribute('data-h'), 10);
-    stopPlay();
-    state.t = state.text.length;
-    recompute();
-  });
-
   radiusRange.addEventListener('input', function(){
     exitReplay();
+    state.H = FIXED_H;
     state.radius = parseFloat(radiusRange.value);
     radiusVal.textContent = state.radius.toFixed(2);
     recompute();
@@ -878,6 +894,7 @@
 
   rerollBtn.addEventListener('click', function(){
     exitReplay();
+    state.H = FIXED_H;
     state.seed = Math.floor(Math.random()*4294967296);
     recompute();
   });
@@ -945,8 +962,18 @@
 
   downloadPrintBtn.addEventListener('click', function(){
     var link = document.createElement('a');
-    link.download = 'echo-state-' + (state.printStyle === 'network' ? 'network' : 'fingerprint') + '.png';
+    link.download = 'echo-state-' + (state.printStyle === 'network' ? 'fingerprint' : 'trace') + '.png';
     link.href = printCanvas.toDataURL('image/png');
+    link.click();
+  });
+
+  downloadQrBtn.addEventListener('click', function(){
+    var img = qrDiv.querySelector('img'), canvasEl = qrDiv.querySelector('canvas');
+    var src = img ? img.src : (canvasEl ? canvasEl.toDataURL('image/png') : null);
+    if (!src) return;
+    var link = document.createElement('a');
+    link.download = 'echo-state-qr.png';
+    link.href = src;
     link.click();
   });
 
@@ -966,7 +993,6 @@
       state.H = decoded.H;
       state.text = decoded.text;
       textInput.value = decoded.text;
-      Array.from(hSelect.children).forEach(function(b){ b.classList.toggle('active', parseInt(b.getAttribute('data-h'),10) === decoded.H); });
       replayNote.style.display = 'block';
     } catch(e){ /* malformed link -- fall back to the default reservoir below */ }
   })();
