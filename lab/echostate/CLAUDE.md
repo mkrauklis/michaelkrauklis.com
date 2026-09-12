@@ -193,6 +193,31 @@ a plain static page rather than a `claude.ai`-hosted artifact. "Print the text u
 **defaults off** (was on) — a clean, caption-free signature is what a visitor wants for the
 two-sided-mug idea below.
 
+**Gradient option** (`state.printGradient`, `state.printColorEnd`, default off/amber): "Fade to
+a second color" reveals a second swatch row (`#printGradientRow`, same markup/wiring pattern as
+the primary `#printSwatches` row) and blends between the two picked colors instead of using one
+flat color. The two print styles interpret "gradient" differently, because they don't share an
+obvious common axis to blend across:
+- **Trace** blends by *position along the path* (`lerpColor(printColor, printColorEnd, t1)`,
+  `t1` = fraction of the way through the trace) — the same convention the live on-screen preview
+  already uses for its fixed teal→amber coloring, just user-selectable colors instead of a fixed
+  pair, and at full opacity throughout rather than fading opacity in from 0.35 (the hue change
+  itself now carries the "progression" signal, so fading opacity too would be redundant).
+- **Fingerprint** blends by *hidden-unit ring index* (`hN/(Hn-1)`) — there's no "start to end"
+  sequence in a ring the way a trace has one, but index order is still the one natural axis to
+  blend across, and only the hidden-node fills (the dominant visual element) blend; edges and
+  input dots stay on the flat `printColor` deliberately, since blending those too tested as
+  visually noisy without adding anything readable.
+
+**`lerpColor()` returns an `"rgb(...)"` string, not a hex string — it cannot be passed back into
+`rgba()`.** The gradient+magnitude combination `drawNetworkPrint()` needs (a blended hue *and* a
+magnitude-driven alpha, together) uses a separate `lerpRgba(hexA, hexB, t, alpha)` helper instead,
+which does the same interpolation but emits `rgba(...)` with the alpha baked in. Don't reach for
+`rgba(lerpColor(...), alpha)` as a shortcut — it silently produces garbage color values (`hexToRgb`
+fed a non-hex string), not a visible error, so this is exactly the kind of bug a quick test with
+the default swatch colors could still miss if the two happen to fail similarly at the alpha
+values you check.
+
 ## Two Zazzle links, two different jobs — don't conflate them
 
 There are now two separate Zazzle links on this page, and they serve different purposes:
@@ -237,7 +262,13 @@ trace/diagrams above recompute → confirm the unrolled-recurrence diagram shows
 sampled state with a plausible arrow chain and its own text matches the actual sample count →
 reroll → switch print style (Trace/Fingerprint)/color/background, confirm "print the text
 underneath" starts unchecked, and download a PNG (check the filename matches the style: `-trace`
-vs. `-fingerprint`) → confirm the QR code renders with **no ledger table** next to it → click
+vs. `-fingerprint`) → check "Fade to a second color," confirm the second swatch row appears and
+the preview actually blends two hues (Trace: along the path; Fingerprint: around the ring, on the
+hidden-node fills only) rather than showing a solid or garbled color — a `lerpColor`/`rgba`
+mixup here (see `lerpRgba()`'s note above) produces `NaN`-ish garbage colors, not a loud error, so
+actually look at the rendered canvas rather than just confirming no console error → uncheck it and
+confirm both styles cleanly return to their flat color → confirm the QR code renders with **no
+ledger table** next to it → click
 "Download QR as PNG" and confirm a real PNG saves (not an empty file) → **scan or manually open
 the QR's URL (or just append its own `?d=...` to the address bar) and confirm the page reloads
 with `#replayNote` visible, the same text pre-filled, and the trace identical to what was

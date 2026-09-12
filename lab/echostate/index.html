@@ -155,13 +155,25 @@
           <button type="button" data-style="network">Fingerprint</button>
         </div>
 
-        <label class="field">Color</label>
+        <label class="field" id="printColorLabel">Color</label>
         <div class="swatch-row" id="printSwatches">
           <button type="button" class="swatch active" data-color="#5eb0a4" style="background:#5eb0a4;" title="Teal"></button>
           <button type="button" class="swatch" data-color="#e0a54c" style="background:#e0a54c;" title="Amber"></button>
           <button type="button" class="swatch" data-color="#9b8cd9" style="background:#9b8cd9;" title="Violet"></button>
           <button type="button" class="swatch" data-color="#d97a6c" style="background:#d97a6c;" title="Danger"></button>
           <input type="color" id="printCustomColor" value="#5eb0a4" style="width:34px;height:34px;border:1px solid var(--line);border-radius:50%;background:none;cursor:pointer;padding:0;">
+        </div>
+
+        <label class="field" style="display:flex; align-items:center; gap:6px;">
+          <input type="checkbox" id="printGradientCheck" style="accent-color: var(--accent); margin:0;">
+          Fade to a second color
+        </label>
+        <div class="swatch-row" id="printGradientRow" style="display:none;">
+          <button type="button" class="swatch active" data-color="#e0a54c" style="background:#e0a54c;" title="Amber"></button>
+          <button type="button" class="swatch" data-color="#5eb0a4" style="background:#5eb0a4;" title="Teal"></button>
+          <button type="button" class="swatch" data-color="#9b8cd9" style="background:#9b8cd9;" title="Violet"></button>
+          <button type="button" class="swatch" data-color="#d97a6c" style="background:#d97a6c;" title="Danger"></button>
+          <input type="color" id="printGradientColor" value="#e0a54c" style="width:34px;height:34px;border:1px solid var(--line);border-radius:50%;background:none;cursor:pointer;padding:0;">
         </div>
 
         <label class="field">Background</label>
@@ -447,13 +459,22 @@
     return 'rgb(' + r.join(',') + ')';
   }
   function rgba(hex, alpha){ var c = hexToRgb(hex); return 'rgba(' + c.join(',') + ',' + alpha + ')'; }
+  // lerpColor() returns an "rgb(...)" string, not a hex string, so it can't be fed straight
+  // back into rgba() -- this does the same interpolation but returns rgba(...) with alpha baked
+  // in directly, for the gradient print modes that need both hue blending and opacity together.
+  function lerpRgba(hexA, hexB, t, alpha){
+    var a = hexToRgb(hexA), b = hexToRgb(hexB);
+    var r = a.map(function(v,i){ return Math.round(v + (b[i]-v)*t); });
+    return 'rgba(' + r.join(',') + ',' + alpha + ')';
+  }
 
   // ---- state ----
   // H is fixed at 8 for every newly-generated reservoir -- a replayed link (see initFromUrl())
   // can still carry a different H from an older share, since decodePayload() stays general.
   var FIXED_H = 8;
   var state = { H: FIXED_H, seed: 42, radius: 0.9, text: 'A & C', t: 0, playing: false, playTimer: null,
-                printColor: '#5eb0a4', printBg: 'dark', printCaption: false, printStyle: 'trace',
+                printColor: '#5eb0a4', printGradient: false, printColorEnd: '#e0a54c',
+                printBg: 'dark', printCaption: false, printStyle: 'trace',
                 replayModel: null };
 
   var textInput = document.getElementById('text-input');
@@ -471,6 +492,9 @@
   var printCanvas = document.getElementById('printCanvas');
   var printSwatches = document.getElementById('printSwatches');
   var printCustomColor = document.getElementById('printCustomColor');
+  var printGradientCheck = document.getElementById('printGradientCheck');
+  var printGradientRow = document.getElementById('printGradientRow');
+  var printGradientColor = document.getElementById('printGradientColor');
   var printBgToggle = document.getElementById('printBgToggle');
   var printCaptionCheck = document.getElementById('printCaptionCheck');
   var downloadPrintBtn = document.getElementById('downloadPrintBtn');
@@ -617,7 +641,12 @@
       for (var i=0;i<n-1;i++){
         var t1 = n>1 ? (i+1)/(n-1) : 0;
         var cp = catmullRomPoint(pts, i);
-        ctx.strokeStyle = rgba(state.printColor, 0.35 + 0.65*t1);
+        // Gradient mode blends hue along the trace (same convention as the live on-screen
+        // preview's teal-to-amber default) instead of fading one color's opacity -- full
+        // strength throughout, since the changing hue itself already reads as progression.
+        ctx.strokeStyle = state.printGradient
+          ? lerpColor(state.printColor, state.printColorEnd, t1)
+          : rgba(state.printColor, 0.35 + 0.65*t1);
         ctx.lineWidth = 14;
         ctx.lineCap = 'round';
         ctx.beginPath();
@@ -685,7 +714,12 @@
     }
     for (var hN=0; hN<Hn; hN++){
       var mag = Math.min(1, Math.abs(final[hN]));
-      ctx.fillStyle = rgba(state.printColor, 0.18 + 0.75*mag);
+      // Gradient mode blends hue around the ring by unit index -- there's no "start to end"
+      // sequence here the way the trace has one, but the ring order is still the one natural
+      // axis to blend across, and it's the dominant visual element in this print style.
+      ctx.fillStyle = state.printGradient
+        ? lerpRgba(state.printColor, state.printColorEnd, hN/Math.max(1,Hn-1), 0.18 + 0.75*mag)
+        : rgba(state.printColor, 0.18 + 0.75*mag);
       ctx.beginPath(); ctx.arc(hiddenPos[hN][0], hiddenPos[hN][1], (9+11*mag)*scale, 0, 2*Math.PI); ctx.fill();
     }
   }
@@ -949,6 +983,24 @@
   printCustomColor.addEventListener('input', function(){
     Array.from(printSwatches.querySelectorAll('.swatch')).forEach(function(b){ b.classList.remove('active'); });
     state.printColor = printCustomColor.value;
+    renderPrint();
+  });
+  printGradientCheck.addEventListener('change', function(){
+    state.printGradient = printGradientCheck.checked;
+    printGradientRow.style.display = state.printGradient ? 'flex' : 'none';
+    renderPrint();
+  });
+  printGradientRow.addEventListener('click', function(e){
+    var btn = e.target.closest('button.swatch');
+    if (!btn) return;
+    Array.from(printGradientRow.querySelectorAll('.swatch')).forEach(function(b){ b.classList.toggle('active', b===btn); });
+    state.printColorEnd = btn.getAttribute('data-color');
+    printGradientColor.value = state.printColorEnd;
+    renderPrint();
+  });
+  printGradientColor.addEventListener('input', function(){
+    Array.from(printGradientRow.querySelectorAll('.swatch')).forEach(function(b){ b.classList.remove('active'); });
+    state.printColorEnd = printGradientColor.value;
     renderPrint();
   });
   printBgToggle.addEventListener('click', function(e){
