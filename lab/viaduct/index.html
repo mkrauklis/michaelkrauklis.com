@@ -151,6 +151,10 @@
     <h2>Take it with you</h2>
     <p>Downloads one image: the block-flow diagram and the numbers above, with your photo's
     actual results baked in.</p>
+    <label class="field" style="display:flex; align-items:center; gap:6px; margin-top:0;">
+      <input type="checkbox" id="captionCheck" checked style="accent-color: var(--accent); margin:0;">
+      Include the title and retention numbers underneath
+    </label>
     <div class="actions">
       <button class="primary" id="downloadBtn">Download PNG</button>
     </div>
@@ -661,18 +665,21 @@
   // ---------- Download composite PNG ----------
   document.getElementById('downloadBtn').addEventListener('click', () => {
     const arch = document.getElementById('archCanvas');
+    const includeCaption = document.getElementById('captionCheck').checked;
     const out = document.createElement('canvas');
     out.width = arch.width;
-    out.height = arch.height + 130;
+    out.height = arch.height + (includeCaption ? 130 : 0);
     const octx = out.getContext('2d');
     octx.fillStyle = '#0c0e13'; octx.fillRect(0,0,out.width,out.height);
     octx.drawImage(arch, 0, 0);
-    octx.fillStyle = '#e9e7de'; octx.font = 'bold 22px Georgia, serif';
-    octx.fillText('Neural Viaduct', 24, arch.height+34);
-    octx.font = '14px Arial, sans-serif'; octx.fillStyle = '#9aa0ae';
-    if (retainV1!=null && retainV2!=null){
-      octx.fillText(`How much of the photo survived, on average:`, 24, arch.height+66);
-      octx.fillText(`Plain network: ${(retainV1*100).toFixed(0)}%   —   Network with shortcuts: ${(retainV2*100).toFixed(0)}%`, 24, arch.height+94);
+    if (includeCaption){
+      octx.fillStyle = '#e9e7de'; octx.font = 'bold 22px Georgia, serif';
+      octx.fillText('Neural Viaduct', 24, arch.height+34);
+      octx.font = '14px Arial, sans-serif'; octx.fillStyle = '#9aa0ae';
+      if (retainV1!=null && retainV2!=null){
+        octx.fillText(`How much of the photo survived, on average:`, 24, arch.height+66);
+        octx.fillText(`Plain network: ${(retainV1*100).toFixed(0)}%   —   Network with shortcuts: ${(retainV2*100).toFixed(0)}%`, 24, arch.height+94);
+      }
     }
     const a = document.createElement('a');
     a.download = 'neural-viaduct.png';
