@@ -34,8 +34,20 @@ When adding a new lab tool, link both files and rely on `theme.css`'s defaults b
 new CSS — copying a whole `<style>` block from an existing tool page (the old pattern) is how
 the palette and the paragraph-width bug drifted out of sync across pages in the first place.
 
-`lab/index.html`'s tool list is ordered newest-first, top to bottom (currently Neural Viaduct,
-Vectis, Afterimage, Ridgeline) — add a new tool's card at the *top* of `.tool-list`, not the bottom.
+`lab/index.html`'s tool list is ordered newest-first, top to bottom (currently Echo State,
+Neural Viaduct, Vectis, Afterimage, Ridgeline) — add a new tool's card at the *top* of
+`.tool-list`, not the bottom. Each card also gets a `/lab/<tool>/thumbnail.jpg` (16:9,
+`object-fit:cover`, falls back cleanly via `onerror="this.remove()"` if the file doesn't exist
+yet) — build it from the tool's own real output, not placeholder art.
+
+A third shared file, **`/echo-state-trace-mkconceptlab.png`**, is the site's favicon — a real
+Echo State trace of the text "MKConceptLab" (default reservoir: seed 42, H=8, spectral radius
+0.9), not a hand-drawn icon. Every page's `<head>` links it directly (`<link rel="icon"
+type="image/png" href="/echo-state-trace-mkconceptlab.png">`, placed right before the
+`theme.css` link) rather than relying on the browser's automatic `/favicon.ico` fallback. If the
+site ever gets a different mascot/favicon, update all 7 pages' `<link>` tags together in one
+commit — there's no shared head-include mechanism, so this one tag is duplicated per page the
+same way the SEO meta block below is.
 
 # SEO
 

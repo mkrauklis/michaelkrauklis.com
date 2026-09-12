@@ -199,7 +199,7 @@ There are now two separate Zazzle links on this page, and they serve different p
 
 - **The hero CTA** ("Want to see what this looks like as a gift? Here's an example on a mug,"
   right under the intro paragraph) links to a **real, live, specific product** — the
-  "Automate the C-Suite First" mug (`automate_the_c_suite_first_mug-256161326676791673`, with
+  "It Works on My Machine" mug (`it_works_on_my_machine_mug-256797157986925142`, with
   the site's standard `?rf=238054754631086278` ambassador param). This is a curated, pre-made
   example meant to sell the *idea* of "you can put this on a mug" at a glance, before a visitor
   has even touched the tool — it is not something a visitor's own input feeds into. This is the
