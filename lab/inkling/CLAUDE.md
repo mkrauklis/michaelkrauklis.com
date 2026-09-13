@@ -59,27 +59,58 @@ draws `W1`/`W2` from this PRNG at fixed scales (0.35 / 0.45) and small biases (0
 Six letters (H, I, A, B, C, T) are hand-authored as literal 10×10 ASCII-art patterns, each trained
 in two horizontal-shift variants (`patternToGrid(rows, dx)`, `dx` 0 or 1) — 12 examples total, run
 through 60 epochs at a higher learning rate (0.5) than live training uses (0.45), *before* the
-page shows anything to a visitor. This means: the letter chips already show non-zero counts, the
-"look inside" tiles already show real (not random-noise) receptive fields, and the seeded test
-word "HAT" (drawn programmatically from the same `SEED` patterns, not typed) already decodes to
-something close to correct on first paint. All of this is a genuine consequence of the same
-training code a visitor's own Train clicks run — not a separately hardcoded "looks trained" state.
-`Reset network` re-runs `initNet()` + `seedTrain()` from scratch, returning to this exact same
-starting point, not to a blank/untrained network.
+page shows anything to a visitor. This means: the letter chips already show non-zero counts and
+the "look inside" tiles already show real (not random-noise) receptive fields on first paint. All
+of this is a genuine consequence of the same training code a visitor's own Train clicks run — not
+a separately hardcoded "looks trained" state.
 
-## Drawing: one real canvas, two visible sizes (`makeScratchpad`, `openExpander`/`closeExpander`)
+**`Reset network` does *not* call `seedTrain()`** — it only calls `initNet()`, genuinely returning
+to fresh random weights, zeroed `dataset`/`counts`, and a re-run `decodeWordPads()` so the word
+display reflects the new (garbage) guesses immediately. This was a real, reported bug: the first
+shipped version called `initNet(); seedTrain();` on Reset, so a visitor who clicked Reset expecting
+a blank slate still saw the six seed letters' counts and their already-shaped "look inside" tiles
+— Reset silently did nothing observable to the trained state, only to whatever the visitor had
+personally added on top of the seed. Only the very first page load seeds; Reset is a genuine wipe.
 
-Every pad on the page (the main teaching pad, each of the 8 word-spelling mini-pads) is a small,
-static *thumbnail* canvas — actual drawing only ever happens in one shared, much larger
-`#expandCanvas` overlay, opened by clicking any thumbnail (`openExpander(padApi, label)`) and
-committed back on "Done," an outside click, or Esc (`closeExpander(true)`). This exists because a
-10×10-downsampled letter drawn accurately at 60×60 CSS pixels (a word pad's on-page size) is
-genuinely hard to do with a mouse or a finger — the shared expander is always a generous
-`min(78vmin, 520px)` square regardless of which tiny pad opened it. Reopening a pad that already
-has ink on it scales the existing thumbnail *up* into the expander first (`isDirty()` +
-`drawImage`), so continuing to refine a drawing never starts over from blank. `pointerdown`/
-`pointermove`/`pointerup` (not separate mouse/touch handlers) is deliberate — one code path covers
-mouse, touch, and pen input uniformly.
+## Drawing: one real canvas, opened as a two-step teach wizard (`makeScratchpad`, `openExpander`/`closeExpander`)
+
+Every pad on the page (the teach pad, each of the 8 word-spelling mini-pads) is a small canvas —
+actual drawing only ever happens in one shared, much larger `#expandCanvas` overlay. The teach
+pad's own canvas (`pad`, created via `makeScratchpad(document.createElement('canvas'), 220)`) is
+never appended to the visible page at all anymore — it exists purely as an off-screen data holder
+that `doTrain()` reads via `pad.getGrid()`, exactly the same as before, just without a redundant
+inline thumbnail taking up page space (removed on direct feedback: "we don't need the full pad and
+all the space it takes up").
+
+**`openExpander(padApi, label, opts)` now branches on `opts.wizard`.** Word-pad mode (`opts`
+omitted) is unchanged from the original design: draw, then "Done" (or an outside click, or Esc)
+commits the ink straight back to that pad's thumbnail via `commitExpanderInk()`. Teach mode
+(`{wizard:true}`) instead swaps "Done" for "Next →", and clicking Next moves the *same modal card*
+to a second, distinct body (`showLetterStep()`/`showDrawStep()` toggle two sibling `hidden`
+attributes) showing the wizard's own 26-letter picker (`#modalLetterChips` — a second, independent
+chip grid from the page's `#letterChips`, since that one is now just a read-only-except-for-opening
+overview, see below) and a "Train" button that starts disabled until a letter is picked
+(`selectWizardLetter()`). Only "Train" ever calls `doTrain()` in wizard mode — outside-click/Esc/a
+mid-wizard cancel all just discard via `closeExpander(false-ish)` (checked as `!expandWizard` before
+committing), since committing ink or starting training on an accidental dismiss would be a much
+worse surprise than losing an unsubmitted drawing.
+
+**A real, easy-to-reintroduce CSS bug found here**: `.expand-actions[hidden]` doesn't work if
+`.expand-actions{ display:flex }` is declared without it — a class selector's `display` beats the
+browser's UA-stylesheet `[hidden]{display:none}` rule on specificity, so setting the `hidden`
+*property* in JS silently does nothing and both action rows (draw-step's Clear/Next and
+letter-step's Back/Train) render on top of each other. Fixed with an explicit
+`.expand-actions[hidden]{ display:none; }` override. If you add another element that's toggled via
+`.hidden` inside `.expand-card` and it has its own `display` rule, it needs the same override.
+
+**Clicking a chip on the main page also opens this wizard, pre-aimed at that letter**
+(`openExpander(pad, 'Draw the letter "'+letter+'"', {wizard:true, presetLetter:letter})`) — the
+modal's own header names the letter, and `wizardLetter`/the modal chip grid's active state are
+pre-set from `opts.presetLetter` in `openExpander()`, so Train is already enabled the moment
+drawing finishes; the visitor can still pick a different letter in step 2 if they clicked the wrong
+chip. This was a direct, explicit request ("if you click on a letter it should open the modal but
+should tell you that you should be drawing the letter on which you clicked") — before this, the
+main-page chip grid was purely a read-only overview with no click behavior at all.
 
 **`getGrid()`'s downsample is a real resample, not a fake one**: it draws the full-resolution
 canvas into a 10×10 offscreen canvas via `drawImage` (letting the browser's own image scaling do
@@ -87,22 +118,110 @@ the area-averaging), then reads back `getImageData` and converts luminance to in
 (`1 − luminance`, clamped). This is genuine pixel data feeding the network, not a synthetic
 stand-in — the same "verify against the real thing" discipline as every other tool here.
 
-## The stage animation (`animateSequence`) — visualizing the exact pass that just ran
+## The stage animation (`animateSequence`, `idleStage`) — real per-pixel connections, not a bundled line
 
-Four overlapping phases over 1.7 seconds, driven by one `requestAnimationFrame` loop and simple
-time-windowed opacity ramps (`p2`/`p3`/`p4`, each a `clamp` of elapsed time): input raster fades
-in, then forward lines light up input→hidden (colored by each hidden unit's actual activation
-sign — rose for positive, blue for negative, via `divergingColor`), then hidden→output lines light
-up **only for the true label and the network's current prediction** (not all 26 outputs — showing
-every output's edge would be visual noise; the two that matter are the true letter and whatever
-the net guessed, which are the same dot when it already gets it right), then dashed
-right-to-left lines animate the actual backward gradients (`dz2`, `dz1`) — including a moving
-dash offset (`lineDashOffset = -el/12`) so the backward signal visibly *flows* rather than sitting
-static. The caption text changes at the same fixed time boundaries the opacity ramps use (350ms,
-750ms, 1150ms) — if you retune the ramp timings, update the caption thresholds together, or the
-text will visibly desync from what's on screen.
+**This went through a full redesign, not a tweak.** The first shipped version treated the entire
+100-pixel input as a single bundled line per hidden neuron, originating from one fixed point at the
+raster's edge — direct feedback was that this was "super weak" and didn't actually show "how the
+letter becomes pixels which feed to neurons then to the chosen letter and back." The current
+version draws a real line for every (active pixel, hidden neuron) pair: `activePixels(x, ...)`
+finds every grid cell above the same 0.05 ink threshold `drawInputRaster` uses to render it, and
+for each one, `fwdC`/`bwdC` precompute the *actual* per-connection numbers — `x[k]*W1[h][k]` for
+the forward pass, `dz1[h]*W1[h][k]` (the real per-connection contribution to that pixel's gradient)
+for backprop — once per `animateSequence()` call, not per frame. A blank pixel contributes exactly
+zero to the weighted sum, so it correctly gets no line at all; this isn't a simplification, it's
+what the math already says. Typical hand-drawn letters have 15-40 active cells, so this is at most
+a few hundred lines per hidden neuron pass, not the 100×18 worst case a fully-inked square would
+produce — verified to stay smooth in testing, not just assumed cheap.
+
+**Three explicit named phases** replace the old four overlapping opacity ramps: `p1` (250-800ms,
+pixels → hidden), `p2` (800-1300ms, hidden → output, unchanged from the original design — still
+only draws edges to the true label and the current prediction, not all 26 outputs), `p3`
+(1300-2000ms total, backward — output→hidden via the real `dz2` gradient, *and* hidden→the same
+active pixels via the real `dz1[h]*W1[h][k]` gradient, so the correction visibly retraces the exact
+path the forward pass just lit up, all the way back to the pixels). Captions change at the same
+boundaries the phases use — if you retune the timing, update both together or the text will desync
+from what's on screen, the same trap the original version already had to watch for.
+
+**Persistent column labels** (`drawStageLabels()`, called from both `idleStage()` and every
+animation frame) directly state the architecture on the diagram itself: "100 pixels", "18 hidden
+neurons (tanh) — one hidden layer —", "26 outputs (softmax, A–Z) / argmax picks the letter" — added
+after direct feedback that a visitor had no way to tell from the diagram alone that there's only
+one hidden layer, or how a letter gets chosen from the output layer.
+
+**Idle-state hidden/output dots are colored by real bias** (`b1[h]`/`b2[o]` via `divergingColor`),
+not a flat gray — direct feedback ("the network diagram should be colored based on the
+weights/biases"). There's no activation to color by before any input arrives, but there is always a
+real, current bias, the same number the "look inside" tiles' borders already use — so the training
+diagram reflects the network's actual current state even at rest, rather than looking like an inert
+placeholder until the first drawing. Once an example is drawn, the animated hidden dots switch to
+coloring by that example's real activation (`pre.a1[h]`, unchanged from the original design) —
+that's an even more specific real number than bias alone, so it isn't touched by this change.
+
+## Page order: the word comes first, teaching comes second
+
+Sections were reordered from teach→word to word→teach (now "01 — the goal / Give it a word" then
+"02 — teach / Teach it a letter"), on direct request: "the example word that's pre-loaded, that
+should be the first thing we do before we train. Give it the word, then we train it to try and
+understand the word." The reordering is purely a DOM/copy change — both sections' element IDs are
+untouched, so nothing downstream needed to change to support it. Section 01's intro paragraph now
+frames the word as the goal ("the network hasn't learned much yet, so it may well misread it —
+teach it letters in the next step and watch this decode improve"), and a compact, read-only echo of
+the same decode (`#stageWordReadout`) sits directly under section 02's training diagram — "reads
+today's word (step 01, above) as: X" — added on direct request ("we should see the word right below
+the training diagram") so the connection between "you just trained" and "here's how the word
+decode changed" doesn't require scrolling back up to section 01. `renderDecoded(str)` is the single
+function both `#wordOutput` (the full display) and `#stageWordReadout` (the compact one) read from
+— it updates both together, so they can never desync.
+
+**"Decode now" was removed entirely** — direct request: "just do that any time the letters change
+or we train." It was already redundant: `sp.onCommit` (fires when a word-pad's ink is committed)
+and the per-pad "clear" button already called `decodeWordPads()`/`renderDecoded()` on their own;
+the button only mattered for the (already rare) case of wanting a fresh attempts-log entry without
+changing anything. Both handlers now also call `pushAttempt()`, so every real decode moment — a
+letter changing, a clear, or a Train — logs an entry the same way, with no separate manual path. A
+new **"Clear all"** button (`#clearAllWordBtn`) was added in the old button's place, clearing every
+word pad and re-decoding in one click — the per-pad "clear" links under each mini-pad still exist
+for clearing just one letter.
+
+## The seeded word looks hand-drawn, not like pixel-art bricks
+
+The word pads' pre-loaded "HAT" used to render by filling a solid square for every `patternToGrid`
+cell above 0.5 — literally the training data's own blocky rasterization, drawn straight onto the
+60×60 mini-pad canvas. At that scale it read as pixel-art bricks, not handwriting — direct
+feedback: "the pre-loaded word should look like handwriting, not the brick letters we have now."
+Fixed with `HANDWRITTEN_STROKES` (hand-authored pen paths, in 0-9 grid-cell coordinates, currently
+covering H/A/T — the three letters actually shown) and `drawHandwrittenLetter()`, which strokes
+each path with a thick, round-capped/joined line — the same visual language as the live freehand
+drawing input uses (`expandCtx`'s own `lineCap='round'`), rather than `patternToGrid`'s discrete
+grid squares. `seedWord()` falls back to the old block-fill rendering for any letter without a
+hand-authored stroke path, so this degrades gracefully rather than silently drawing nothing if the
+seeded word ever changes to include a letter outside H/A/T.
+
+**This is a display-only change — `SEED`/`patternToGrid`/`seedTrain()` are untouched**, and that's
+a deliberate, accepted tradeoff, not an oversight: `decodeWordPads()` re-samples whatever is
+*currently drawn* on a word pad's canvas, independent of whatever data trained the network, so
+there's no requirement that the two match pixel-for-pixel. The practical effect is that the
+initial "HAT" decode is no longer reliably close to correct on first paint the way it used to be
+(the hand-stroke shapes differ enough from the ASCII-block shapes the seed-trained network actually
+learned that the very first decode can come out wrong, e.g. "QII" instead of "HAT" in one observed
+run) — but this now reads as *consistent* with section 01's own copy ("the network hasn't learned
+much yet, so it may well misread it"), rather than as a regression. If a pixel-perfect initial
+decode ever matters again, the real fix is regenerating `seedTrain()`'s training examples from the
+same `HANDWRITTEN_STROKES` paths (rasterized the same way `getGrid()` already resamples real ink)
+for all six seed letters, not reverting this rendering change.
 
 ## Look inside: tiles and heatmap (`refreshLookInside`)
+
+**The section's intro copy states the architecture up front, in plain language, before describing
+what the tiles/heatmap show** — added on direct feedback ("without understanding the network
+architecture I don't even truly know what the 'look inside' is showing me"). It now opens with "the
+whole network is only three layers: your drawing becomes 100 pixel values... 18 hidden neurons...
+26 output neurons" before the receptive-field explanation, and the tile/heatmap caption below was
+rewritten to say plainly that a tile *is* one hidden neuron's real 100 weights reshaped to the
+drawing grid, and the heatmap is the *next* layer's weights, one row per hidden neuron in the same
+order as the tiles — spelling out the connection between the two visuals explicitly rather than
+assuming a reader already holds the architecture in their head.
 
 Each of the 18 hidden-unit tiles reshapes that unit's 100 real `W1` weights back into a 10×10 grid
 and colors every cell with `divergingColor` (rose = excitatory/positive, blue =
@@ -116,17 +235,29 @@ Both redraw on every `refreshLookInside()` call — after every Train, every Res
 successful weight Load — so they're always the live state of the actual network, never a cached
 snapshot.
 
-## Export: quantization, the QR payload, and the two other export paths
+## Export: QR code, the network-shape diagram, and two other export paths
 
-**Quantization** (`quantizePayload`, 8-bit or 4-bit toggle): finds the single largest-magnitude
-parameter across the whole flattened network, derives one shared linear scale from it
-(`maxAbs/levels`, 127 levels at 8-bit, 7 at 4-bit — deliberately asymmetric-looking but correct:
-signed range is `-levels-1..levels`), and quantizes every weight/bias to that scale. The payload
-is a plain byte array: a float32 scale header (4 bytes), then `[bits, GRID, HID, OUT]` (4 more
-bytes) so a decoder knows the exact shape without guessing, then the packed weights — one byte
-each at 8-bit, two nibbles per byte at 4-bit. `refreshLedger()` recomputes and redraws the byte
-counts *and* the QR code together on every toggle — there's no separate "regenerate QR" step, the
-ledger and the QR always describe the same payload.
+**Quantization is hardcoded to 4-bit (`QUANT_BITS = 4`), not a toggle.** An 8-bit/4-bit choice used
+to sit in the main "04 — save & share" panel alongside a full byte-count ledger table; removed on
+direct feedback ("doesn't need all the quantization options, just go with 4-bit... doesn't need all
+the metrics"). There was never a real choice to offer anyway — see "QR capacity" below, 8-bit
+doesn't reliably fit a QR code at this network's size while 4-bit always does. `quantizePayload()`
+itself is unchanged (still takes a `bits` argument, just always called with `4` now): finds the
+single largest-magnitude parameter, derives one shared linear scale (`maxAbs/levels`, 7 levels at
+4-bit, signed range `-8..7`), quantizes every weight/bias to it, and packs
+`[float32 scale][bits, GRID, HID, OUT][packed weights, two nibbles per byte]`. The byte-count detail
+that used to live in the on-page ledger now lives as prose in "how this actually works" instead.
+
+**The network-shape diagram (`renderArchDiagram`, `#archCanvas`, `#downloadArchBtn`) sits right
+next to the QR code**, added on direct request: "I want the thing that someone might print on a
+mug: the QR code and the actual network architecture... isn't that something we should be able to
+download?" It's a canvas port of the same "100 pixels → 18 hidden (tanh) → 26 outputs (softmax)"
+diagram already in "how this actually works" as an SVG — three groups (an input-grid icon, a column
+of `HID` dots, a column of `OUT` dots) and two arrows, every position derived from the real
+`GRID`/`HID`/`OUT` constants rather than hand-tuned to "18 dots" — so if the network's shape ever
+changes this stays accurate automatically. Rendered once at load (the shape never changes, only the
+weights do), downloadable via `archCanvas.toDataURL('image/png')` the same direct way every other
+canvas export on this page works.
 
 **QR download** (`#downloadQrBtn`): qrcodejs renders a hidden `<canvas>` plus a visible `<img>`
 whose `src` it already set to that canvas's own `toDataURL('image/png')` — same confirmed behavior
@@ -134,23 +265,23 @@ already documented in Echo State's CLAUDE.md ("Two Zazzle links" section doesn't
 the img-first QR-download trick is identical) — so the button just grabs that `<img>`'s `src`
 directly, falling back to encoding the canvas itself only if qrcodejs's DOM ever changes.
 
-**Full-precision copy/paste** (`fullPrecisionJSON`, `weightsOut`/`weightsIn`) is a completely
-separate export path from the QR — raw, unquantized floats as JSON, meant for exact
-restoration (paste back in, `loadWeightsBtn` validates the shape matches `GRID`/`HID`/`OUT`
-before accepting it) rather than for physically carrying the network anywhere. Loading weights
-restores the network's numbers only, not the `dataset` array of drawn examples that produced
-them — teaching is one-way within a session unless the tab stays open, stated directly in the
-"How this actually works" copy so this isn't a silent surprise.
+**Full-precision copy/paste** (`fullPrecisionJSON`, `weightsOut`/`weightsIn`) now lives inside "how
+this actually works," not the main share panel — moved there on direct request, alongside the
+quantization/byte-count prose it's already adjacent to, since it's the more technical of the two
+export paths and the main panel is meant to stay down to "the two things worth printing." Mechanics
+unchanged: raw, unquantized floats as JSON, `loadWeightsBtn` validates the shape matches
+`GRID`/`HID`/`OUT` before accepting it, restores the network's numbers only (not the `dataset` array
+of drawn examples) — teaching is one-way within a session unless the tab stays open.
 
 **Portrait export** (`portraitBtn`/`#downloadPortraitBtn`): composites the 18 tiles, a scaled copy
 of the heatmap, and the current decoded test word into one 560×520 canvas, rendered to
 `#portraitImg` and only then exposed for download — `#downloadPortraitRow` starts hidden and is
 only revealed after a real portrait has been rendered, the same "no download button before there's
 something real to download" convention every other tool's spinner-gated downloads already follow.
-The prototype's own version only offered "right-click to save"; a proper one-click download button
-was added here to match this site's own established bar (every other tool provides a real
-Download button, not a right-click instruction) — this is the one deliberate deviation from a
-straight port of the prototype, not a case of "the prototype forgot something."
+Its on-page description was rewritten after direct feedback that "portrait" as a name didn't
+communicate anything ("I still have no idea what that network portrait is") — the paragraph now
+spells out literally what gets composited (the step-03 tiles, the step-03 heatmap, the step-01
+word) rather than assuming the "portrait" metaphor was self-explanatory.
 
 ## QR capacity: 8-bit doesn't actually fit, and defaulting to it was a real bug
 
@@ -163,16 +294,16 @@ binary search directly against this exact vendored file to be ~2,950 base64 char
 unhandled, that throw aborted every top-level `<script>` statement after it, which is why the
 first shipped version crashed silently the moment `refreshLedger()` ran on page load.
 
-Fixed three ways, all in `refreshLedger()`: (1) `QR_MAX_B64_CHARS` (`2900`, a rounded-down safety
-margin under the empirical ~2,950 ceiling) is compared against the payload's
-*actual* base64 length before ever calling `new QRCode(...)`, replacing the old and simply wrong
-`current <= 1500` raw-byte check that had no real basis; (2) the `new QRCode(...)` call is also
-wrapped in try/catch as a second line of defense, so a future change to quantization or network
-size can never again take down the whole page's script execution the way it did here — it degrades
-to a fallback message in `#qrHolder` instead, and disables `#downloadQrBtn`; (3) the page's default
-quantization was flipped from 8-bit to 4-bit (`quantBits = 4`, `#q4` starts with the `on` class)
-specifically so the page opens with a *working* QR by default rather than the fallback message —
-8-bit is still selectable and correctly shows the "too dense" message rather than crashing.
+Fixed two ways, both in `refreshLedger()`: (1) `QR_MAX_B64_CHARS` (`2900`, a rounded-down safety
+margin under the empirical ~2,950 ceiling) is compared against the payload's *actual* base64
+length before ever calling `new QRCode(...)`, replacing the old and simply wrong `current <= 1500`
+raw-byte check that had no real basis; (2) the `new QRCode(...)` call is also wrapped in try/catch
+as a second line of defense, so a future change to network size can never again take down the whole
+page's script execution the way it did here — it degrades to a fallback message in `#qrHolder`
+instead, and disables `#downloadQrBtn`. Quantization was also flipped from an 8-bit default to a
+permanent, hardcoded 4-bit (see "Export," above) — at this network's size 4-bit's ~1,552 base64
+characters always clears the ~2,900 ceiling with room to spare, so the fallback path is a real
+safety net for if the network ever grows, not something a visitor can currently trigger.
 
 If `HID`/`GRID`/`OUT` ever change (making the network smaller), 8-bit may start fitting again on
 its own — that's fine, the length check is computed live from the actual payload every time, not
@@ -183,30 +314,40 @@ hardcoded to this network's current 2,312-parameter size.
 Same situation as every other tool's *first* ship: `#shareSection`'s "make it a gift" link reuses
 the same known-working generic mug template ID (`256206116898885602`) and the site's standard
 `?rf=238054754631086278` ambassador param, since no Inkling-specific curated product exists yet.
-Unlike Echo State and Ridgeline, there's no hero CTA here at all yet either — those only got added
-once a *real, specific* product existed, and this tool was shipped without one being provided.
-Add a real hero CTA the same way (right after the intro paragraph, `?rf=` included) once a real
-product exists — don't fabricate one or guess a product URL in the meantime.
+Its copy now suggests the specific two-sided use case the QR-plus-diagram pairing above is built
+for (QR on one side, network diagram on the other), matching Echo State's established two-sided-
+mug precedent, while still pointing at the same generic template link — no real Inkling-specific
+product has been verified to exist yet. Unlike Echo State and Ridgeline, there's no hero CTA here
+at all yet either — those only got added once a *real, specific* product existed, and this tool was
+shipped without one being provided. Add a real hero CTA the same way (right after the intro
+paragraph, `?rf=` included) once a real product exists — don't fabricate one or guess a product URL
+in the meantime.
 
 ## Testing changes
 
 No test suite — static page. Verify via a local static server (root-relative `/nav.js` and
-`/theme.css` mean `file://` won't pick them up). Golden path: confirm the page opens with the
-seed letters already taught (chip counts non-zero for H/I/A/B/C/T) and the seeded "HAT" word
-pre-filled and decoding to something close to correct → click the main pad, confirm the expander
-opens at a large size, draw a letter, click Done, confirm the thumbnail shows what you drew →
-pick a letter chip, click Train, confirm the stage animation actually plays through all four
-phases (forward lighting up, prediction, dashed backward flow) and the caption text changes in
-sync → confirm chip counts, the look-inside tiles, and the heatmap all visibly update after
-training completes → draw a full word across several mini-pads (via the expander on each),
-confirm it decodes and appends to the attempts log → toggle 8-bit/4-bit, confirm the ledger byte
-counts and the QR code both update together → click "Download QR as PNG" and confirm a real,
-non-empty PNG saves → copy the full-precision weights, clear/retrain a little, then paste the
+`/theme.css` mean `file://` won't pick them up). Golden path: confirm the page opens with section
+01 ("Give it a word") showing the hand-drawn-looking "HAT" first, section 02 ("Teach it a letter")
+below it, and the seed letters already taught (chip counts non-zero for H/I/A/B/C/T) → click "Tap
+to draw a letter and teach it", confirm the wizard opens to the draw step, draw something, click
+"Next →", confirm it switches to the letter-picker step with Train disabled until a letter is
+picked, pick one, click Train, confirm the modal closes and the stage animation plays real
+per-active-pixel fan-out lines from the input raster into the hidden column (not a single bundled
+line), then hidden→output, then dashed backward lines all the way back to the same input pixels →
+confirm the compact "reads today's word... as: X" line under the diagram updates in sync with
+section 01's own decoded word → back on the page, click a specific letter chip (not the generic
+trigger), confirm the wizard opens with that letter named in the header and already pre-selected/
+Train-enabled in the letter-picker step → in section 01, change one word-pad letter and confirm it
+re-decodes and logs a new attempt with no separate button click needed, then click "Clear all" and
+confirm every pad clears and it re-decodes to blanks in one action → click "Reset network" twice
+(first click only arms the confirmation toast) and confirm chip counts and `trainStatus` both go to
+exactly 0, the look-inside tiles snap to random noise (not the seed letters' shapes), and the word
+decode updates to reflect the now-random network, not a stale pre-reset value → confirm the QR code
+and the network-shape diagram both render in step 04 with no quantization toggle or ledger table
+visible, and both "Download QR as PNG" and "Download diagram as PNG" save real, non-empty PNGs →
+open "how this actually works" and confirm the full-precision copy/load weights UI is there (not in
+step 04) → copy the full-precision weights, clear/retrain a little, then paste the
 copied JSON back into "Load weights" and confirm the look-inside tiles snap back to the earlier
-state (a real round-trip, not just "no error thrown") → confirm the page opens on 4-bit with a
-real QR already rendered, then switch to 8-bit and confirm it shows the "too dense" fallback
-message (not a crash) with the download button disabled, then switch back to 4-bit and confirm
-the QR renders again → render a portrait, confirm the download
+state (a real round-trip, not just "no error thrown") → render a portrait, confirm the download
 button only appears after rendering (not before), and confirm the downloaded PNG actually contains
-the tiles/heatmap/word, not a blank canvas → click Reset network twice (confirm the first click
-only arms a confirmation toast) and confirm it returns to the exact seed state, not an empty one.
+the tiles/heatmap/word, not a blank canvas.

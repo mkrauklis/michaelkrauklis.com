@@ -38,7 +38,6 @@
   .step-tag{ font-family: var(--mono); }
 
   /* ---------- scratchpad ---------- */
-  .pad-block{ display:flex; flex-direction:column; gap:0.6rem; }
   .pad-surface{ position:relative; display:inline-block; border-radius:8px; }
   .pad-surface:hover .expand-hint{ opacity:1; }
   .expand-hint{
@@ -52,6 +51,19 @@
     box-shadow:0 1px 0 rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
   }
   .pad-actions{ display:flex; gap:.6rem; align-items:center; }
+
+  /* ---------- draw trigger (opens the teach wizard) ---------- */
+  .draw-trigger{
+    display:flex; align-items:center; gap:.9rem; width:100%; text-align:left;
+    background:var(--bg-panel-2); border:1px dashed var(--line); border-radius:10px;
+    padding:1rem 1.2rem; color:var(--ink); font-family:'Fraunces',serif; font-size:1.08rem;
+    cursor:pointer; transition:border-color .15s ease, background .15s ease;
+  }
+  .draw-trigger:hover{ border-color:var(--accent); background:color-mix(in srgb, var(--accent) 8%, var(--bg-panel-2)); }
+  .draw-trigger-icon{
+    display:flex; align-items:center; justify-content:center; width:42px; height:42px;
+    border-radius:8px; background:var(--paper); color:var(--stroke); font-size:1.3rem; flex:0 0 auto;
+  }
 
   /* ---------- letter chips ---------- */
   .chips{ display:flex; flex-wrap:wrap; gap:.4rem; margin-top:1rem; }
@@ -110,20 +122,11 @@
   #heatmap{ display:block; }
 
   /* ---------- export ---------- */
-  .quant-toggle{ display:flex; gap:.5rem; margin-top:1.2rem; }
-  .quant-toggle button.on{ background:var(--accent); border-color:var(--accent); color:#fff; }
-  .ledger{
-    margin-top:1.2rem; font-family:var(--mono); font-size:.82rem; display:grid;
-    grid-template-columns:1fr auto; gap:.35rem 1.2rem; max-width:420px;
-  }
-  .ledger .k{ color:var(--ink-dim); }
-  .ledger .v{ color:var(--ink); text-align:right; }
-  .ledger .v.good{ color:#3fa66b; }
-  .ledger .rule{ grid-column:1/-1; height:1px; background:var(--line); margin:.3rem 0; }
   .qr-block{ display:flex; gap:1.6rem; flex-wrap:wrap; align-items:flex-start; margin-top:1.4rem; }
   #qrHolder{ background:#fff; padding:10px; border-radius:8px; width:160px; height:160px; display:flex; align-items:center; justify-content:center; }
   #qrHolder img, #qrHolder canvas, #qrHolder table{ width:140px!important; height:140px!important; }
   .qr-note{ max-width:36ch; font-size:.85rem; }
+  #archCanvas{ background:var(--bg-panel-2); border-radius:8px; border:1px solid var(--line); display:block; }
   textarea{
     width:100%; min-height:110px; background:var(--bg); color:var(--ink-dim); border:1px solid var(--line);
     border-radius:8px; padding:.8rem; font-family:var(--mono); font-size:.72rem; resize:vertical;
@@ -152,6 +155,7 @@
   .expand-head{ display:flex; align-items:center; justify-content:space-between; gap:1.2rem; }
   .expand-head h3{ font-size:1.05rem; margin:0; font-family:'Fraunces',serif; font-weight:500; }
   .expand-actions{ display:flex; gap:.5rem; }
+  .expand-actions[hidden]{ display:none; }
   #expandCanvas{
     background:var(--paper); border-radius:12px; cursor:crosshair; touch-action:none; display:block;
     width:min(78vmin,520px); height:min(78vmin,520px);
@@ -179,81 +183,87 @@
 <main class="wrap">
 
   <section>
-    <span class="step-tag">01 — teach</span>
-    <h2>Teach it a letter</h2>
-    <p>Draw a character, pick the letter it's supposed to be, then press Train. The net sees your
-    ink, guesses, checks itself against the label you gave it, and adjusts — a full forward pass
-    followed by a full backward pass, every time.</p>
-
-    <div class="panel">
-      <div class="row">
-        <div class="pad-block">
-          <div class="pad-surface">
-            <canvas id="padCanvas" class="pad" width="220" height="220"></canvas>
-            <span class="expand-hint">⤢ tap to draw</span>
-          </div>
-          <div class="pad-actions">
-            <button type="button" class="secondary" style="padding:.35em .7em; font-size:.74rem;" id="clearPad">Clear</button>
-            <span class="status-mono" id="padHint" style="margin:0;"></span>
-          </div>
-        </div>
-        <div class="col" style="min-width:260px;">
-          <div class="status-mono" style="margin-top:0;">this is <b id="selectedLetterLabel">—</b> select a letter:</div>
-          <div class="chips" id="letterChips"></div>
-          <div class="actions">
-            <button type="button" class="primary" id="trainBtn">Train ↳</button>
-            <button type="button" class="secondary" id="resetBtn">Reset network</button>
-            <span class="toast" id="resetToast">click again to confirm</span>
-          </div>
-          <div class="status-mono" id="trainStatus"></div>
-        </div>
-      </div>
-
-      <div class="stage-wrap">
-        <canvas id="stage" width="760" height="260"></canvas>
-        <div class="stage-caption" id="stageCaption">Draw a letter and press Train to watch it learn.</div>
-        <div class="legend">
-          <span><i class="legend-swatch" style="background:var(--accent);"></i>excites (+ weight / + activation)</span>
-          <span><i class="legend-swatch" style="background:var(--cool);"></i>inhibits (− weight / − activation)</span>
-          <span><i class="legend-swatch" style="background:var(--ink);"></i>backprop signal, flowing right→left</span>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section>
-    <span class="step-tag">02 — test word</span>
+    <span class="step-tag">01 — the goal</span>
     <h2>Give it a word</h2>
-    <p>Spell something out, one letter per box. Every time you train the network above, it
-    re-reads this whole word from scratch — no memorization, just its current weights doing the
-    work — so you can watch the decoded output tighten up as you teach it more letters.</p>
+    <p>Here's a word, spelled out one letter per box below. The network hasn't learned much yet,
+    so it may well misread it — teach it letters in the next step and watch this decode improve,
+    live, as you go. Every time you train, it re-reads this whole word from scratch — no
+    memorization, just its current weights doing the work.</p>
 
     <div class="panel">
       <div class="word-row" id="wordPads"></div>
       <div class="decoded" id="wordOutput"></div>
-      <div class="actions" style="margin-top:0;">
-        <button type="button" class="secondary" id="decodeNowBtn">Decode now</button>
-        <span class="status-mono" style="margin:0;">or wait — it re-decodes automatically after every Train</span>
+      <div class="actions" style="margin-top:.8rem;">
+        <button type="button" class="secondary" id="clearAllWordBtn">Clear all</button>
+        <span class="status-mono" style="margin:0;">re-decodes automatically the moment a letter above changes, or the moment you train</span>
       </div>
       <div class="attempts" id="attemptsLog"></div>
     </div>
   </section>
 
   <section>
+    <span class="step-tag">02 — teach</span>
+    <h2>Teach it a letter</h2>
+    <p>Tap below to draw a character and tell it what letter that was. The net sees your ink,
+    guesses, checks itself against the label you gave it, and adjusts — a full forward pass
+    followed by a full backward pass, every time.</p>
+
+    <div class="panel">
+      <button type="button" class="draw-trigger" id="openTeachBtn">
+        <span class="draw-trigger-icon">✎</span>
+        <span>Tap to draw a letter and teach it</span>
+      </button>
+
+      <div class="row" style="margin-top:1.3rem; align-items:flex-start;">
+        <div class="col" style="min-width:280px;">
+          <div class="status-mono" style="margin-top:0;">examples taught so far — tap a letter to teach it directly:</div>
+          <div class="chips" id="letterChips"></div>
+        </div>
+        <div class="col" style="min-width:200px;">
+          <div class="status-mono" id="trainStatus" style="margin-top:0;"></div>
+          <div class="actions">
+            <button type="button" class="secondary" id="resetBtn">Reset network</button>
+            <span class="toast" id="resetToast">click again to confirm</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="stage-wrap">
+        <canvas id="stage" width="760" height="300"></canvas>
+        <div class="stage-caption" id="stageCaption">Draw a letter to watch it learn.</div>
+        <div class="legend">
+          <span><i class="legend-swatch" style="background:var(--accent);"></i>excites (+ weight / + activation)</span>
+          <span><i class="legend-swatch" style="background:var(--cool);"></i>inhibits (− weight / − activation)</span>
+          <span><i class="legend-swatch" style="background:var(--ink);"></i>backprop signal, flowing right→left</span>
+        </div>
+        <div class="status-mono" style="margin-top:1rem;">reads today's word (step 01, above) as: <b id="stageWordReadout">—</b></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
     <span class="step-tag">03 — look inside</span>
     <h2>Look inside the network</h2>
-    <p>Each of the 18 hidden units below has learned to look for one pattern of ink across your
-    drawing grid — its <i>receptive field</i>. The larger grid shows how strongly each hidden unit
-    votes for each letter. Both update live as you train.</p>
+    <p>The whole network is only three layers: your drawing becomes <b style="color:var(--ink);">100
+    pixel values</b>, every one of which connects to all <b style="color:var(--ink);">18 hidden
+    neurons</b> below — the network's one and only hidden layer — which in turn connect to
+    <b style="color:var(--ink);">26 output neurons</b>, one per letter A–Z. The 18 tiles below
+    <i>are</i> those 18 hidden neurons: each has learned to look for one pattern of ink across your
+    drawing grid — its <i>receptive field</i>. The larger grid to the right shows how strongly
+    those same 18 neurons vote for each of the 26 letters. Both update live as you train.</p>
 
     <div class="panel">
       <div class="tiles" id="tilesGrid"></div>
       <div id="heatmapWrap">
         <canvas id="heatmap" width="440" height="306"></canvas>
       </div>
-      <p style="margin-top:1rem; font-size:.82rem;">Tile border color is that neuron's bias. Tile
-      interior is its 100 input weights, reshaped to the drawing grid. Rose = excitatory, blue =
-      inhibitory.</p>
+      <p style="margin-top:1rem; font-size:.82rem;">Each tile is one hidden neuron's real weights,
+      not a stylized icon: its border color is that neuron's bias, and its interior is its 100
+      input weights — one per pixel — reshaped back into the 10×10 drawing grid, rose where a pixel
+      excites that neuron and blue where it inhibits it. The heatmap is the <i>next</i> layer's
+      weights: one column per output letter, one row per hidden neuron (the same 18, same order as
+      the tiles), again rose/blue for how much that neuron pushes toward or away from that
+      letter.</p>
     </div>
   </section>
 
@@ -264,12 +274,6 @@
     code. Quantize it down, scan it, and this exact net comes back to life somewhere else.</p>
 
     <div class="panel">
-      <div class="quant-toggle" id="quantToggle">
-        <button type="button" class="secondary" id="q8">8-bit</button>
-        <button type="button" class="secondary on" id="q4">4-bit</button>
-      </div>
-      <div class="ledger" id="ledger"></div>
-
       <div class="qr-block">
         <div id="qrHolder"></div>
         <div>
@@ -279,29 +283,22 @@
         </div>
       </div>
 
-      <div class="export-io">
-        <div class="io-block">
-          <h3>Copy full-precision weights</h3>
-          <p style="font-size:.82rem;">The raw floats, no quantization — paste this back in below
-          to restore a network exactly.</p>
-          <textarea id="weightsOut" readonly></textarea>
-          <button type="button" class="secondary" style="margin-top:.6rem; padding:.35em .7em; font-size:.74rem;" id="copyWeightsBtn">Copy to clipboard</button>
-          <span class="toast" id="copyToast">copied</span>
-        </div>
-        <div class="io-block">
-          <h3>Load weights</h3>
-          <p style="font-size:.82rem;">Paste a previously exported network here to pick up where
-          it left off.</p>
-          <textarea id="weightsIn" placeholder="paste exported JSON here"></textarea>
-          <button type="button" class="secondary" style="margin-top:.6rem; padding:.35em .7em; font-size:.74rem;" id="loadWeightsBtn">Load</button>
-          <span class="toast" id="loadToast">loaded</span>
+      <div class="qr-block" style="margin-top:1.6rem;">
+        <canvas id="archCanvas" width="380" height="260"></canvas>
+        <div>
+          <p class="qr-note">The network's actual shape, not a stylized icon: 100 pixels in, one
+          hidden layer of 18 neurons, 26 possible letters out. Print this next to the QR code so
+          the shape and the trained weights travel together.</p>
+          <button type="button" class="secondary" style="margin-top:.6rem;" id="downloadArchBtn">Download diagram as PNG</button>
         </div>
       </div>
 
       <div style="margin-top:2rem;">
         <button type="button" class="secondary" id="portraitBtn">Render a network portrait</button>
-        <p style="font-size:.8rem; max-width:50ch;">Composites the tiles, the weight grid, and your
-        current decoded word into one image.</p>
+        <p style="font-size:.8rem; max-width:52ch;">A "portrait" here just means one snapshot image
+        of everything this trained network looks like right now: all 18 hidden-neuron tiles from
+        step 03, the neuron-to-letter heatmap next to them, and the word you're testing in step 01
+        — click the button and it renders below, ready to download and print.</p>
         <img id="portraitImg" alt="Rendered portrait of the current network">
         <div class="actions" id="downloadPortraitRow" style="display:none;">
           <button type="button" class="primary" id="downloadPortraitBtn">Download portrait PNG</button>
@@ -311,8 +308,11 @@
 
     <div class="panel" style="margin-top:24px;">
       <span class="step-tag">make it a gift</span>
-      <p style="font-size:0.9rem;">Render a portrait above, download it, and it's ready for print —
-      a mug, a shirt, a poster, whatever Zazzle will put an uploaded image on.</p>
+      <p style="font-size:0.9rem;">Print the QR code on one side of a mug and the network diagram
+      on the other — scan the QR to bring this exact trained network back to life, with the
+      diagram right there explaining its shape. Or render a portrait above and print that instead
+      — any of the three downloads on this page is ready for a mug, a shirt, a poster, whatever
+      Zazzle will put an uploaded image on.</p>
       <p style="font-size:0.85rem;">
         <a href="https://www.zazzle.com/design_your_own_logo_design_coffee_mug-256206116898885602?rf=238054754631086278" target="_blank" rel="noopener">Open a Zazzle "upload your own image" template &rarr;</a>
         — works for a mug, and most of Zazzle's other blank templates take the same kind of upload.
@@ -359,10 +359,33 @@
       adds your sample to everything taught so far and re-runs several passes over all of it, so
       earlier letters don't get forgotten as new ones arrive.</p>
       <p>Total parameters: 100×18+18 hidden, 18×26+26 output =
-      <b style="color:var(--ink);">2,312</b> numbers. At 8 bits each that's 2,312 bytes; at 4 bits,
-      1,156 — small enough to ride along in a QR code, which is what step 04 is for. Loading
+      <b style="color:var(--ink);">2,312</b> numbers. At 8 bits each that's 2,312 bytes — genuinely
+      too dense to fit in one QR code at this network's size, confirmed directly against the real
+      QR library rather than assumed. At 4 bits it's 1,156 bytes, which fits comfortably, so the QR
+      export in step 04 always quantizes to 4 bits — there's no real choice to offer there. Loading
       weights back in only restores the numbers, not this session's drawn examples — teaching is
       one-way unless you keep the browser tab open.</p>
+
+      <div class="export-io">
+        <div class="io-block">
+          <h3>Copy full-precision weights</h3>
+          <p style="font-size:.82rem;">The raw floats, no quantization — paste this back in below
+          to restore a network exactly. Useful if 4-bit's precision loss ever matters more than a
+          QR code's convenience.</p>
+          <textarea id="weightsOut" readonly></textarea>
+          <button type="button" class="secondary" style="margin-top:.6rem; padding:.35em .7em; font-size:.74rem;" id="copyWeightsBtn">Copy to clipboard</button>
+          <span class="toast" id="copyToast">copied</span>
+        </div>
+        <div class="io-block">
+          <h3>Load weights</h3>
+          <p style="font-size:.82rem;">Paste a previously exported network here to pick up where
+          it left off.</p>
+          <textarea id="weightsIn" placeholder="paste exported JSON here"></textarea>
+          <button type="button" class="secondary" style="margin-top:.6rem; padding:.35em .7em; font-size:.74rem;" id="loadWeightsBtn">Load</button>
+          <span class="toast" id="loadToast">loaded</span>
+        </div>
+      </div>
+
       <p>Nothing you draw ever leaves your browser — every forward pass, every gradient, every
       export happens right here.</p>
     </div>
@@ -382,13 +405,25 @@
   <div class="expand-card">
     <div class="expand-head">
       <h3 id="expandLabel">Draw</h3>
-      <div class="expand-actions">
+      <div class="expand-actions" id="drawStepActions">
         <button type="button" class="secondary" style="padding:.35em .7em; font-size:.74rem;" id="expandClear">Clear</button>
         <button type="button" class="primary" style="padding:.35em .7em; font-size:.74rem;" id="expandDone">Done</button>
+        <button type="button" class="primary" style="padding:.35em .7em; font-size:.74rem;" id="expandNext" hidden>Next &rarr;</button>
+      </div>
+      <div class="expand-actions" id="letterStepActions" hidden>
+        <button type="button" class="secondary" style="padding:.35em .7em; font-size:.74rem;" id="expandBack">&larr; Back</button>
+        <button type="button" class="primary" style="padding:.35em .7em; font-size:.74rem;" id="expandTrain" disabled>Train &#8627;</button>
       </div>
     </div>
-    <canvas id="expandCanvas" width="520" height="520"></canvas>
-    <div class="expand-foot">draw, then Done — or click outside, or press Esc</div>
+    <div id="drawStepBody">
+      <canvas id="expandCanvas" width="520" height="520"></canvas>
+      <div class="expand-foot" id="expandFoot">draw, then Done — or click outside, or press Esc</div>
+    </div>
+    <div id="letterStepBody" hidden>
+      <div class="status-mono" style="margin-top:0;">which letter did you draw?</div>
+      <div class="chips" id="modalLetterChips" style="max-width:420px;"></div>
+      <div class="expand-foot">pick a letter, then Train — or Back to redraw</div>
+    </div>
   </div>
 </div>
 
@@ -533,8 +568,11 @@
   }
   seedTrain();
 
-  // ---------------- letter chips ----------------
-  var currentLetter = null;
+  // ---------------- letter chips: an overview on the page that also opens the wizard ----------------
+  // Clicking one of these opens the same teach wizard as the "tap to draw" trigger, but pre-aimed
+  // at that specific letter -- both the modal's own label and its letter-picker step already
+  // reflect the clicked letter, so a visitor who clicks "Q" is told, and shown, that they should
+  // be drawing a Q, not left to guess which letter the modal wants after the fact.
   var chipsEl = $('letterChips');
   var chipRefs = {};
   ALPHA.split('').forEach(function(letter){
@@ -544,7 +582,9 @@
     chip.setAttribute('role','button');
     chip.setAttribute('tabindex','0');
     chip.innerHTML = letter + '<span class="n">'+counts[idx]+'</span>';
-    chip.addEventListener('click', function(){ selectLetter(letter); });
+    chip.addEventListener('click', function(){
+      openExpander(pad, 'Draw the letter “'+letter+'”', {wizard:true, presetLetter:letter});
+    });
     chipsEl.appendChild(chip);
     chipRefs[letter] = chip;
   });
@@ -555,14 +595,40 @@
       chip.querySelector('.n').textContent = counts[idx];
       chip.setAttribute('data-taught', counts[idx]>0 ? '1':'0');
     });
+    refreshModalChipCounts();
   }
-  function selectLetter(letter){
-    currentLetter = letter;
-    Object.keys(chipRefs).forEach(function(l){ chipRefs[l].classList.toggle('active', l===letter); });
-    $('selectedLetterLabel').textContent = letter;
+
+  // The wizard's own letter picker (step 2 of the teach modal) is a second, independent grid --
+  // duplicating the ALPHA loop rather than reusing #letterChips, since that one is now a
+  // non-interactive readout and this one needs click handling and its own "active" selection.
+  var wizardLetter = null;
+  var modalChipsEl = $('modalLetterChips');
+  var modalChipRefs = {};
+  ALPHA.split('').forEach(function(letter){
+    var idx = ALPHA.indexOf(letter);
+    var chip = document.createElement('div');
+    chip.className = 'chip';
+    chip.setAttribute('role','button');
+    chip.setAttribute('tabindex','0');
+    chip.innerHTML = letter + '<span class="n">'+counts[idx]+'</span>';
+    chip.addEventListener('click', function(){ selectWizardLetter(letter); });
+    modalChipsEl.appendChild(chip);
+    modalChipRefs[letter] = chip;
+  });
+  function refreshModalChipCounts(){
+    ALPHA.split('').forEach(function(letter){
+      var idx = ALPHA.indexOf(letter);
+      var chip = modalChipRefs[letter];
+      chip.querySelector('.n').textContent = counts[idx];
+      chip.setAttribute('data-taught', counts[idx]>0 ? '1':'0');
+    });
+  }
+  function selectWizardLetter(letter){
+    wizardLetter = letter;
+    Object.keys(modalChipRefs).forEach(function(l){ modalChipRefs[l].classList.toggle('active', l===letter); });
+    $('expandTrain').disabled = false;
   }
   refreshChipCounts();
-  selectLetter('H');
 
   // ---------------- scratchpad (static thumbnail -- all drawing happens in the expander) ----------------
   function paintPaper(ctx, cssSize){
@@ -631,34 +697,85 @@
   })();
   var expandDirty = false;
   var expandTarget = null;
-  function openExpander(padApi, label){
+  // Wizard mode (the teach flow) swaps Done for a two-step Draw -> pick-a-letter -> Train
+  // sequence; word-pad mode (unchanged) keeps the original single "Done" commit. Both share the
+  // same overlay and canvas -- only the action row and which body panel is visible differ.
+  var expandWizard = false;
+  function showDrawStep(){
+    $('drawStepBody').hidden = false;
+    $('letterStepBody').hidden = true;
+    $('drawStepActions').hidden = false;
+    $('letterStepActions').hidden = true;
+    $('expandDone').hidden = expandWizard;
+    $('expandNext').hidden = !expandWizard;
+  }
+  function showLetterStep(){
+    $('drawStepBody').hidden = true;
+    $('letterStepBody').hidden = false;
+    $('drawStepActions').hidden = true;
+    $('letterStepActions').hidden = false;
+  }
+  function openExpander(padApi, label, opts){
     expandTarget = padApi;
+    expandWizard = !!(opts && opts.wizard);
+    // A chip click already knows which letter it means -- pre-select that same letter in the
+    // wizard's own picker (step 2) and pre-enable Train, so clicking "Q" and drawing really does
+    // teach Q without a redundant re-pick, while still letting a visitor change their mind there.
+    var preset = opts && opts.presetLetter;
+    wizardLetter = preset || null;
+    if (expandWizard) Object.keys(modalChipRefs).forEach(function(l){ modalChipRefs[l].classList.toggle('active', l===preset); });
+    $('expandTrain').disabled = !preset;
     $('expandLabel').textContent = label;
     paintPaper(expandCtx, EXPAND_SIZE);
     // carry over whatever's already on the thumbnail, scaled up, so re-opening never loses work
     if (padApi.isDirty()) expandCtx.drawImage(padApi.canvasEl, 0, 0, EXPAND_SIZE, EXPAND_SIZE);
     expandDirty = padApi.isDirty();
+    $('expandFoot').textContent = expandWizard
+      ? 'draw, then Next — click outside or press Esc to cancel'
+      : 'draw, then Done — or click outside, or press Esc';
+    showDrawStep();
     expandOverlay.hidden = false;
   }
+  function commitExpanderInk(){
+    if (!expandTarget || !expandDirty) return false;
+    var t = expandTarget;
+    t.ctx.clearRect(0,0,t.cssSize,t.cssSize);
+    t.ctx.drawImage(expandCanvasEl, 0, 0, t.cssSize, t.cssSize);
+    t.markDirty();
+    if (t.onCommit) t.onCommit();
+    return true;
+  }
   function closeExpander(commit){
-    if (commit && expandTarget && expandDirty){
-      var t = expandTarget;
-      t.ctx.clearRect(0,0,t.cssSize,t.cssSize);
-      t.ctx.drawImage(expandCanvasEl, 0, 0, t.cssSize, t.cssSize);
-      t.markDirty();
-      if (t.onCommit) t.onCommit();
-    }
+    // Word-pad mode: any close (Done, outside click, Esc) commits the ink -- there's no
+    // "cancel" concept for a mini pad, just drawing or not. Wizard mode is different: only the
+    // explicit Train button should ever start training, so outside click / Esc / a mid-wizard
+    // Back-then-close all just discard and reopen fresh next time, never silently commit or train.
+    if (commit && !expandWizard) commitExpanderInk();
     expandOverlay.hidden = true;
     expandTarget = null;
   }
   $('expandClear').addEventListener('click', function(){ paintPaper(expandCtx, EXPAND_SIZE); expandDirty=false; });
   $('expandDone').addEventListener('click', function(){ closeExpander(true); });
+  $('expandNext').addEventListener('click', function(){
+    if (!expandDirty){ $('expandFoot').textContent='draw something first'; return; }
+    showLetterStep();
+  });
+  $('expandBack').addEventListener('click', function(){ showDrawStep(); });
+  $('expandTrain').addEventListener('click', function(){
+    if (!wizardLetter || !expandDirty) return;
+    commitExpanderInk();
+    expandOverlay.hidden = true;
+    expandTarget = null;
+    doTrain(wizardLetter);
+  });
   expandOverlay.addEventListener('click', function(e){ if (e.target===expandOverlay) closeExpander(true); });
   window.addEventListener('keydown', function(e){ if (e.key==='Escape' && !expandOverlay.hidden) closeExpander(true); });
 
-  var pad = makeScratchpad($('padCanvas'), 220);
-  $('padCanvas').addEventListener('click', function(){ openExpander(pad, 'Teach it a letter'); });
-  $('clearPad').addEventListener('click', function(){ pad.clear(); });
+  // The teach pad is now purely an off-screen data holder -- drawing only ever happens in the
+  // shared expander overlay above, and the wizard's letter-picker step replaces the old inline
+  // pad + chip-grid layout entirely, so this canvas never needs to be appended to the visible page.
+  var pad = makeScratchpad(document.createElement('canvas'), 220);
+  $('openTeachBtn').addEventListener('click', function(){ openExpander(pad, 'Draw the letter', {wizard:true}); });
 
   // ---------------- test word pads ----------------
   var WORD_LEN = 8;
@@ -675,26 +792,62 @@
     wordPadsEl.appendChild(block);
     var sp = makeScratchpad(c, 60);
     (function(sp, clr, idx){
-      clr.addEventListener('click', function(){ sp.clear(); renderDecoded(decodeWordPads()); });
+      clr.addEventListener('click', function(){ sp.clear(); var d=decodeWordPads(); renderDecoded(d); pushAttempt(d); });
       c.addEventListener('click', function(){ openExpander(sp, 'Word — letter '+(idx+1)); });
-      sp.onCommit = function(){ renderDecoded(decodeWordPads()); };
+      sp.onCommit = function(){ var d=decodeWordPads(); renderDecoded(d); pushAttempt(d); };
     })(sp, clr, wi);
     wordPads.push(sp);
+  }
+  $('clearAllWordBtn').addEventListener('click', function(){
+    wordPads.forEach(function(sp){ sp.clear(); });
+    var d = decodeWordPads(); renderDecoded(d); pushAttempt(d);
+  });
+  // Hand-authored pen paths (grid-cell coordinates, 0-9) for the three letters in the seeded word
+  // -- filling SEED's ASCII-art squares directly (the old approach) rendered as solid grid blocks,
+  // which reads as pixel-art bricks rather than something a hand actually wrote. These are only
+  // used for the seeded word's *display*; SEED/patternToGrid (rasterized blocks) are unrelated and
+  // still exactly what seedTrain() trains on -- decoding a word pad just re-samples whatever is
+  // currently drawn on its canvas, so the word pads' look is free to differ from the training data.
+  var HANDWRITTEN_STROKES = {
+    H: [ [[2,1],[2,8.5]], [[7,1],[7,8.5]], [[2,4.6],[7,4.4]] ],
+    A: [ [[1.5,8.5],[4.5,1],[7.5,8.5]], [[3,5.8],[6.5,5.6]] ],
+    T: [ [[1,1.3],[8,1]], [[4.5,1.1],[4.7,8.5]] ]
+  };
+  function drawHandwrittenLetter(ctx, letter, cssSize){
+    var strokes = HANDWRITTEN_STROKES[letter];
+    if (!strokes) return false;
+    var step = cssSize/GRID;
+    ctx.strokeStyle = C_STROKE;
+    ctx.lineWidth = step*0.8;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    strokes.forEach(function(pts){
+      ctx.beginPath();
+      pts.forEach(function(p, i){
+        var px=p[0]*step, py=p[1]*step;
+        if (i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+      });
+      ctx.stroke();
+    });
+    return true;
   }
   // seed the test word with "HAT" so the page opens mid-story
   (function seedWord(){
     var word = [{l:'H',dx:0},{l:'A',dx:0},{l:'T',dx:0}];
     word.forEach(function(w, i){
-      var g = patternToGrid(SEED[w.l], w.dx);
       var canvas = wordPadsEl.children[i].querySelector('canvas');
       var ctx = canvas.getContext('2d');
-      var cssSize=60, step=cssSize/GRID;
+      var cssSize=60;
       ctx.setTransform(1,0,0,1,0,0);
       var dpr = canvas.width/cssSize;
       ctx.setTransform(dpr,0,0,dpr,0,0);
       ctx.fillStyle=C_PAPER; ctx.fillRect(0,0,cssSize,cssSize);
-      ctx.fillStyle=C_STROKE;
-      for (var r=0;r<GRID;r++) for (var c2=0;c2<GRID;c2++) if (g[r*GRID+c2]>0.5) ctx.fillRect(c2*step, r*step, step, step);
+      if (!drawHandwrittenLetter(ctx, w.l, cssSize)){
+        // fallback for any letter without a hand-authored stroke path
+        var g = patternToGrid(SEED[w.l], w.dx);
+        var step = cssSize/GRID;
+        ctx.fillStyle=C_STROKE;
+        for (var r=0;r<GRID;r++) for (var c2=0;c2<GRID;c2++) if (g[r*GRID+c2]>0.5) ctx.fillRect(c2*step, r*step, step, step);
+      }
       wordPads[i].markDirty();
     });
   })();
@@ -713,8 +866,14 @@
   }
   function renderDecoded(str){
     var el = $('wordOutput');
-    if (!str) { el.innerHTML = '<span class="gap">— draw a word above —</span>'; return; }
+    var compact = $('stageWordReadout');
+    if (!str) {
+      el.innerHTML = '<span class="gap">— draw a word above —</span>';
+      if (compact) compact.textContent = '—';
+      return;
+    }
     el.textContent = str.replace(/ /g,'·');
+    if (compact) compact.textContent = str.replace(/ /g,'·');
   }
   var attemptN = 0;
   function pushAttempt(str){
@@ -728,8 +887,6 @@
   }
   // seed the very first attempt so the log isn't empty at rest
   (function(){ var d = decodeWordPads(); renderDecoded(d); pushAttempt(d); })();
-
-  $('decodeNowBtn').addEventListener('click', function(){ var d=decodeWordPads(); renderDecoded(d); pushAttempt(d); });
 
   // ---------------- look inside: tiles + heatmap ----------------
   var tileCanvases = [];
@@ -778,17 +935,18 @@
   }
   refreshLookInside();
 
-  // ---------------- stage animation ----------------
+  // ---------------- stage animation: 100 pixels -> 18 hidden neurons -> 26 outputs, and back ----------------
+  var STAGE_W=760, STAGE_H=300;
   var stageCanvas = $('stage');
-  var stageCtx = setupCanvas(stageCanvas, 760, 260);
+  var stageCtx = setupCanvas(stageCanvas, STAGE_W, STAGE_H);
   stageCanvas.style.width = '100%';
-  stageCanvas.style.maxWidth = '760px';
+  stageCanvas.style.maxWidth = STAGE_W+'px';
   stageCanvas.style.height = 'auto';
-  var inputCenter = {x:96, y:130};
-  var hiddenPos = []; for (var hp=0; hp<HID; hp++) hiddenPos.push({x:300, y:30+hp*(200/(HID-1))});
+  var INBOX = {x0:16, y0:60, size:150};
+  var hiddenPos = []; for (var hp=0; hp<HID; hp++) hiddenPos.push({x:330, y:38+hp*(232/(HID-1))});
   var outputPos = []; for (var op=0; op<OUT; op++){
     var row = op<13?0:1, col = op%13;
-    outputPos.push({x:400+col*27, y: row===0?80:190});
+    outputPos.push({x:452+col*23, y: row===0?86:224});
   }
 
   function drawInputRaster(ctx, x, x0,y0,size){
@@ -796,23 +954,54 @@
     ctx.fillStyle=C_PANEL2; ctx.fillRect(x0,y0,size,size);
     for (var r=0;r<GRID;r++) for (var c=0;c<GRID;c++){
       var v = x ? x[r*GRID+c] : 0;
-      ctx.fillStyle = v>0.02 ? rgbStr(hexToRgb('#efe7d6'), 0.25+0.75*v) : 'rgba(255,255,255,.03)';
+      ctx.fillStyle = v>0.05 ? rgbStr(hexToRgb('#efe7d6'), 0.25+0.75*v) : 'rgba(255,255,255,.03)';
       ctx.fillRect(x0+c*cell, y0+r*cell, cell-0.5, cell-0.5);
     }
     ctx.strokeStyle=C_LINE; ctx.strokeRect(x0,y0,size,size);
   }
+  // Every non-blank cell in the downsampled grid is a real input neuron with a real weighted
+  // connection to every hidden neuron -- this returns each one's actual pixel position (for
+  // drawing real per-connection lines) rather than treating the whole raster as a single bundled
+  // point the way the very first version of this animation did.
+  function activePixels(x, x0, y0, size){
+    var cell = size/GRID, out=[];
+    for (var i=0;i<GRIDN;i++){
+      if (x[i] > 0.05){
+        var r=Math.floor(i/GRID), c=i%GRID;
+        out.push({idx:i, x:x0+c*cell+cell/2, y:y0+r*cell+cell/2, v:x[i]});
+      }
+    }
+    return out;
+  }
   function drawDot(ctx, p, r, fill){ ctx.beginPath(); ctx.arc(p.x,p.y,r,0,7); ctx.fillStyle=fill; ctx.fill(); }
+  function drawStageLabels(ctx){
+    ctx.textAlign='center'; ctx.fillStyle=C_INKDIM; ctx.font='9px "JetBrains Mono", monospace';
+    ctx.fillText('100 pixels', INBOX.x0+INBOX.size/2, 24);
+    ctx.fillText('18 hidden neurons (tanh)', hiddenPos[0].x, 15);
+    ctx.fillText('— one hidden layer —', hiddenPos[0].x, 26);
+    var outCx = (outputPos[0].x+outputPos[outputPos.length-1].x)/2;
+    ctx.fillText('26 outputs (softmax, A–Z)', outCx, 15);
+    ctx.fillText('argmax picks the letter', outCx, 26);
+    ctx.textAlign='left';
+  }
+  // At rest there's no input, so there's no activation to color a neuron by -- but there IS a
+  // real, current bias, the same number the "look inside" tiles already use for each hidden
+  // tile's border. Coloring these idle dots the same way (instead of a flat, uninformative gray)
+  // means the training diagram always reflects the network's actual current weights/biases, not
+  // just a placeholder waiting for the first drawing.
   function idleStage(){
-    stageCtx.clearRect(0,0,760,260);
-    drawInputRaster(stageCtx, null, 16,50,160);
-    for (var h=0;h<HID;h++) drawDot(stageCtx, hiddenPos[h], 4, 'rgba(255,255,255,.08)');
-    for (var o=0;o<OUT;o++) drawDot(stageCtx, outputPos[o], 3, 'rgba(255,255,255,.06)');
+    stageCtx.clearRect(0,0,STAGE_W,STAGE_H);
+    drawInputRaster(stageCtx, null, INBOX.x0,INBOX.y0,INBOX.size);
+    var maxAbsB1=1e-6; for (var hb=0;hb<HID;hb++){ var ab=Math.abs(b1[hb]); if (ab>maxAbsB1) maxAbsB1=ab; }
+    for (var h=0;h<HID;h++) drawDot(stageCtx, hiddenPos[h], 4, divergingColor(b1[h], maxAbsB1, 0.55));
+    var maxAbsB2=1e-6; for (var ob=0;ob<OUT;ob++){ var ab2=Math.abs(b2[ob]); if (ab2>maxAbsB2) maxAbsB2=ab2; }
+    for (var o=0;o<OUT;o++) drawDot(stageCtx, outputPos[o], 3, divergingColor(b2[o], maxAbsB2, 0.45));
     stageCtx.fillStyle=C_INKDIM; stageCtx.font='9px "JetBrains Mono", monospace'; stageCtx.textAlign='center';
     for (var o2=0;o2<OUT;o2++){
       var p=outputPos[o2];
-      stageCtx.fillText(ALPHA[o2], p.x, p.y<130 ? p.y-8 : p.y+14);
+      stageCtx.fillText(ALPHA[o2], p.x, p.y<155 ? p.y-8 : p.y+14);
     }
-    stageCtx.textAlign='left'; stageCtx.fillText('drawing →', 20, 44);
+    drawStageLabels(stageCtx);
   }
   idleStage();
 
@@ -821,30 +1010,54 @@
     return new Promise(function(resolve){
       animating = true;
       var start = performance.now();
-      var TOTAL = 1700;
+      var TOTAL = 2000;
       var trueIdx = yIdx, predIdx = pre.predIdx;
+      var active = activePixels(x, INBOX.x0, INBOX.y0, INBOX.size);
+
+      // Real per-connection contributions, computed once (not per frame): x[k]*W1[h][k] for the
+      // forward pass, dz1[h]*W1[h][k] for backprop's actual gradient contribution to that pixel.
+      // These are the same numbers driving the network, not a stylized stand-in -- only the ones
+      // that pass the ink threshold above ever get a line at all, so a blank pixel (which
+      // contributes exactly zero to the weighted sum) correctly shows no connection.
+      var maxFwd=1e-6, fwdC=[];
+      active.forEach(function(px){
+        var row=[]; for (var h=0;h<HID;h++){ var c=px.v*W1[h][px.idx]; row.push(c); if (Math.abs(c)>maxFwd) maxFwd=Math.abs(c); }
+        fwdC.push(row);
+      });
+      var maxBwd=1e-6, bwdC=[];
+      active.forEach(function(px){
+        var row=[]; for (var h=0;h<HID;h++){ var g=pre.dz1[h]*W1[h][px.idx]; row.push(g); if (Math.abs(g)>maxBwd) maxBwd=Math.abs(g); }
+        bwdC.push(row);
+      });
+
       function frame(now){
         var el = now-start;
         var t = clamp(el/TOTAL, 0, 1);
-        stageCtx.clearRect(0,0,760,260);
-        drawInputRaster(stageCtx, x, 16,50,160);
+        stageCtx.clearRect(0,0,STAGE_W,STAGE_H);
+        drawInputRaster(stageCtx, x, INBOX.x0,INBOX.y0,INBOX.size);
 
-        var p2 = clamp((el-300)/500,0,1);
-        var p3 = clamp((el-750)/450,0,1);
-        var p4 = clamp((el-1150)/450,0,1);
+        var p1 = clamp((el-250)/550,0,1);   // pixels -> hidden
+        var p2 = clamp((el-800)/500,0,1);   // hidden -> output
+        var p3 = clamp((el-1300)/650,0,1);  // backward
 
-        // forward: input -> hidden
+        // forward: every active pixel -> every hidden neuron, real weighted contribution
+        active.forEach(function(px, pi){
+          for (var h=0;h<HID;h++){
+            var c = fwdC[pi][h];
+            var a = clamp(Math.abs(c)/maxFwd,0,1)*p1;
+            if (a<0.03) continue;
+            stageCtx.beginPath();
+            stageCtx.moveTo(px.x, px.y);
+            stageCtx.lineTo(hiddenPos[h].x, hiddenPos[h].y);
+            stageCtx.strokeStyle = c>=0 ? rgbStr(ACCENT_RGB, 0.04+0.3*a) : rgbStr(COOL_RGB, 0.04+0.3*a);
+            stageCtx.lineWidth = 0.4+0.9*a;
+            stageCtx.stroke();
+          }
+        });
         for (var h=0; h<HID; h++){
-          var a = pre.a1[h];
-          var lineA = 0.15+0.55*Math.abs(a)*p2;
-          stageCtx.beginPath();
-          stageCtx.moveTo(inputCenter.x+70, inputCenter.y);
-          stageCtx.lineTo(hiddenPos[h].x, hiddenPos[h].y);
-          stageCtx.strokeStyle = a>=0 ? rgbStr(ACCENT_RGB, lineA) : rgbStr(COOL_RGB, lineA);
-          stageCtx.lineWidth = 0.6+1.6*Math.abs(a)*p2;
-          stageCtx.stroke();
-          var rad = 4+5*Math.abs(a)*p2;
-          drawDot(stageCtx, hiddenPos[h], rad, divergingColor(a,1,0.35+0.55*p2));
+          var a0 = pre.a1[h];
+          var rad = 4+5*Math.abs(a0)*p1;
+          drawDot(stageCtx, hiddenPos[h], rad, divergingColor(a0,1,0.35+0.55*p1));
         }
 
         // forward: hidden -> {true, pred} output
@@ -859,7 +1072,7 @@
         targets.forEach(function(o, ti){
           for (var h3=0;h3<HID;h3++){
             var c = contribs[ti][h3];
-            var a2 = clamp(Math.abs(c)/maxContrib,0,1)*p3;
+            var a2 = clamp(Math.abs(c)/maxContrib,0,1)*p2;
             stageCtx.beginPath();
             stageCtx.moveTo(hiddenPos[h3].x, hiddenPos[h3].y);
             stageCtx.lineTo(outputPos[o].x, outputPos[o].y);
@@ -869,12 +1082,14 @@
           }
         });
 
-        // backward: output -> hidden -> input, colored by gradient
+        // backward: output -> hidden (real dz2 gradient), then hidden -> the same active pixels
+        // (real dz1[h]*W1[h][k] gradient) -- the correction retraces the exact path the forward
+        // pass just lit up, all the way back to the pixels that actually mattered.
         var maxDz2=1e-6; for (var o3=0;o3<OUT;o3++) if (Math.abs(pre.dz2[o3])>maxDz2) maxDz2=Math.abs(pre.dz2[o3]);
         targets.forEach(function(o){
           for (var h4=0;h4<HID;h4++){
             var g2 = pre.dz2[o];
-            var a3 = clamp(Math.abs(g2)/maxDz2,0,1)*p4;
+            var a3 = clamp(Math.abs(g2)/maxDz2,0,1)*p3;
             stageCtx.beginPath();
             stageCtx.setLineDash([5,4]);
             stageCtx.lineDashOffset = -el/12;
@@ -886,38 +1101,42 @@
             stageCtx.setLineDash([]);
           }
         });
-        var maxDz1=1e-6; for (var h5=0;h5<HID;h5++) if (Math.abs(pre.dz1[h5])>maxDz1) maxDz1=Math.abs(pre.dz1[h5]);
-        for (var h6=0;h6<HID;h6++){
-          var a4 = clamp(Math.abs(pre.dz1[h6])/maxDz1,0,1)*p4;
-          stageCtx.beginPath();
-          stageCtx.setLineDash([5,4]);
-          stageCtx.lineDashOffset = -el/12;
-          stageCtx.moveTo(hiddenPos[h6].x, hiddenPos[h6].y);
-          stageCtx.lineTo(inputCenter.x+70, inputCenter.y);
-          stageCtx.strokeStyle = rgbStr(hexToRgb(C_INK), 0.06+0.4*a4);
-          stageCtx.lineWidth = 0.5+1.1*a4;
-          stageCtx.stroke();
-          stageCtx.setLineDash([]);
-        }
+        active.forEach(function(px, pi){
+          for (var h=0;h<HID;h++){
+            var g = bwdC[pi][h];
+            var a4 = clamp(Math.abs(g)/maxBwd,0,1)*p3;
+            if (a4<0.03) continue;
+            stageCtx.beginPath();
+            stageCtx.setLineDash([5,4]);
+            stageCtx.lineDashOffset = -el/12;
+            stageCtx.moveTo(hiddenPos[h].x, hiddenPos[h].y);
+            stageCtx.lineTo(px.x, px.y);
+            stageCtx.strokeStyle = rgbStr(hexToRgb(C_INK), 0.05+0.35*a4);
+            stageCtx.lineWidth = 0.4+0.9*a4;
+            stageCtx.stroke();
+            stageCtx.setLineDash([]);
+          }
+        });
 
         // output dots
         for (var o4=0;o4<OUT;o4++){
           var isTarget = targets.indexOf(o4)>=0;
-          var rad2 = isTarget ? 4+4*p3 : 3;
-          var fill = isTarget ? (o4===trueIdx ? rgbStr(hexToRgb(C_GOOD),0.5+0.4*p3) : rgbStr(ACCENT_RGB,0.4+0.4*p3)) : 'rgba(255,255,255,.08)';
+          var rad2 = isTarget ? 4+4*p2 : 3;
+          var fill = isTarget ? (o4===trueIdx ? rgbStr(hexToRgb(C_GOOD),0.5+0.4*p2) : rgbStr(ACCENT_RGB,0.4+0.4*p2)) : 'rgba(255,255,255,.08)';
           drawDot(stageCtx, outputPos[o4], rad2, fill);
-          if (o4===trueIdx && p3>0.05){
+          if (o4===trueIdx && p2>0.05){
             stageCtx.beginPath(); stageCtx.arc(outputPos[o4].x,outputPos[o4].y,rad2+3,0,7);
             stageCtx.strokeStyle=rgbStr(hexToRgb(C_GOOD),0.7); stageCtx.lineWidth=1.2; stageCtx.stroke();
           }
         }
         stageCtx.fillStyle=C_INKDIM; stageCtx.font='9px "JetBrains Mono", monospace'; stageCtx.textAlign='center';
-        for (var o5=0;o5<OUT;o5++){ var p=outputPos[o5]; stageCtx.fillText(ALPHA[o5], p.x, p.y<130?p.y-8:p.y+14); }
+        for (var o5=0;o5<OUT;o5++){ var p=outputPos[o5]; stageCtx.fillText(ALPHA[o5], p.x, p.y<155?p.y-8:p.y+14); }
+        drawStageLabels(stageCtx);
 
-        var caption = 'reading your ink…';
-        if (el>350 && el<=750) caption = 'forward pass → hidden layer lighting up';
-        else if (el>750 && el<=1150) caption = 'forward pass → guessing "'+ALPHA[predIdx]+'"'+(predIdx===trueIdx?' — got it':' (you said "'+ALPHA[trueIdx]+'")');
-        else if (el>1150) caption = 'backprop → nudging weights toward "'+ALPHA[trueIdx]+'"';
+        var caption = 'sampling your drawing into 100 pixel values…';
+        if (el>250 && el<=800) caption = 'forward pass → each ink pixel feeds into all 18 hidden neurons';
+        else if (el>800 && el<=1300) caption = 'forward pass → 18 hidden neurons vote, argmax guesses "'+ALPHA[predIdx]+'"'+(predIdx===trueIdx?' — got it':' (you said "'+ALPHA[trueIdx]+'")');
+        else if (el>1300) caption = 'backprop → the correction flows back through the same connections, all the way to the pixels';
         $('stageCaption').textContent = caption;
 
         if (t<1){ requestAnimationFrame(frame); } else { resolve(); }
@@ -926,20 +1145,15 @@
     });
   }
 
-  // ---------------- train button ----------------
+  // ---------------- train: called from the wizard's Train button, once a letter is drawn and picked ----------------
   function setControlsEnabled(en){
-    $('trainBtn').disabled = !en;
-    $('clearPad').disabled = !en;
+    $('openTeachBtn').disabled = !en;
+    $('resetBtn').disabled = !en;
   }
-  var PAD_TIP = 'tap the pad to draw';
-  $('padHint').textContent = PAD_TIP;
-  $('trainBtn').addEventListener('click', function(){
+  function doTrain(letter){
     if (animating) return;
-    if (!currentLetter){ $('padHint').textContent='pick a letter first'; return; }
-    if (!pad.isDirty()){ $('padHint').textContent='draw something first'; return; }
-    $('padHint').textContent=PAD_TIP;
     var grid = pad.getGrid();
-    var yIdx = ALPHA.indexOf(currentLetter);
+    var yIdx = ALPHA.indexOf(letter);
     var pre = forwardAndGrad(grid, yIdx);
     dataset.push({x:grid, y:yIdx});
     counts[yIdx]++;
@@ -957,7 +1171,7 @@
       animating = false;
       $('trainStatus').innerHTML = '<b>'+dataset.length+'</b> examples taught across <b>'+counts.filter(function(c){return c>0;}).length+'</b> letters';
     });
-  });
+  }
   $('trainStatus').innerHTML = '<b>'+dataset.length+'</b> examples taught across <b>'+counts.filter(function(c){return c>0;}).length+'</b> letters';
 
   var resetArmed=false, resetTimer=null;
@@ -968,12 +1182,26 @@
       return;
     }
     clearTimeout(resetTimer); resetArmed=false; $('resetToast').classList.remove('show');
-    dataset=[]; counts=new Array(26).fill(0); initNet(); seedTrain(); refreshChipCounts(); refreshLookInside(); refreshLedger(); idleStage();
-    $('trainStatus').innerHTML = '<b>'+dataset.length+'</b> examples taught across <b>'+counts.filter(function(c){return c>0;}).length+'</b> letters';
+    // Genuinely blank: fresh random weights, no re-seeding. (Initial page load still calls
+    // seedTrain() once so a first-time visitor doesn't see an empty page -- see "why the page
+    // never opens blank" -- but the Reset button itself is not the same action as a page load;
+    // clicking it should undo everything the current session has taught, not quietly restore the
+    // same starting demo. Previously it called seedTrain() right after initNet(), which silently
+    // re-populated the six seed letters -- the counts and the look-inside tiles' shapes never
+    // actually went blank, even though a visitor pressing "Reset" every reason to expect they did.)
+    dataset=[]; counts=new Array(26).fill(0); initNet(); refreshChipCounts(); refreshLookInside(); refreshLedger(); idleStage();
+    $('trainStatus').innerHTML = '<b>0</b> examples taught across <b>0</b> letters';
+    var d = decodeWordPads(); renderDecoded(d); pushAttempt(d);
   });
 
-  // ---------------- export: quantization + ledger + qr ----------------
-  var quantBits = 4;
+  // ---------------- export: qr ----------------
+  // Quantization is always 4-bit -- an 8-bit toggle used to sit here, but at this network's size
+  // 8-bit doesn't reliably fit in a QR code (see QR_MAX_B64_CHARS below) while 4-bit always does
+  // with room to spare, so there's no real choice for a visitor to make. The byte-count/precision
+  // detail that used to live in an on-page ledger table now lives in "how this actually works"
+  // instead -- this section just shows the two things worth printing: the QR code and the
+  // network's shape.
+  var QUANT_BITS = 4;
   function flattenParams(){
     var arr=[];
     for (var h=0;h<HID;h++) for (var k=0;k<GRIDN;k++) arr.push(W1[h][k]);
@@ -1016,27 +1244,15 @@
   // handled before calling new QRCode(), not just hoped past.
   var QR_MAX_B64_CHARS = 2900;
   function refreshLedger(){
-    var params = flattenParams().length;
-    var raw32 = params*4;
-    var q8 = 8 + Math.ceil(params*1);
-    var q4 = 8 + Math.ceil(params/2);
-    var current = quantBits===8?q8:q4;
-    var currentB64Len = Math.ceil(current/3)*4;
-    var fits = currentB64Len <= QR_MAX_B64_CHARS;
-    $('ledger').innerHTML =
-      '<div class="k">parameters</div><div class="v tabular">'+params.toLocaleString()+'</div>'+
-      '<div class="k">full precision (float32)</div><div class="v tabular">'+raw32.toLocaleString()+' B</div>'+
-      '<div class="k">quantized · 8-bit</div><div class="v tabular">'+q8.toLocaleString()+' B</div>'+
-      '<div class="k">quantized · 4-bit</div><div class="v tabular">'+q4.toLocaleString()+' B</div>'+
-      '<div class="rule"></div>'+
-      '<div class="k">selected ('+quantBits+'-bit)</div><div class="v tabular '+(fits?'good':'')+'">'+current.toLocaleString()+' B '+(fits?'✓ fits a QR code':'— too dense for one QR code')+'</div>';
-
-    var payload = quantizePayload(quantBits);
+    var payload = quantizePayload(QUANT_BITS);
     var b64 = bytesToBase64(payload.bytes);
     var holder = $('qrHolder');
     holder.innerHTML='';
     if (b64.length > QR_MAX_B64_CHARS){
-      holder.innerHTML = '<div style="color:#333; font-family:monospace; font-size:.68rem; padding:8px; text-align:center;">Too large for one QR code at '+quantBits+'-bit — try 4-bit, or use the full-precision copy/paste export below instead.</div>';
+      // Not reachable at this network's current size (2,312 params at 4-bit is ~1,552 base64
+      // characters, well under the ~2,900 ceiling) -- kept as a real safety net, not dead code,
+      // in case GRID/HID/OUT ever grow enough to change that.
+      holder.innerHTML = '<div style="color:#333; font-family:monospace; font-size:.68rem; padding:8px; text-align:center;">Too large for one QR code — use the full-precision copy/paste export below instead.</div>';
       $('downloadQrBtn').disabled = true;
     } else if (window.QRCode){
       try {
@@ -1050,12 +1266,10 @@
         $('downloadQrBtn').disabled = true;
       }
     }
-    $('qrNote').innerHTML = 'Payload: <span class="mono">'+b64.length+'</span> base64 characters ('+payload.bytes.length+' bytes) encoding the shape (10×'+GRID+', '+HID+' hidden, '+OUT+' outputs) and every quantized weight and bias.';
+    $('qrNote').innerHTML = 'Payload: <span class="mono">'+b64.length+'</span> base64 characters ('+payload.bytes.length+' bytes) encoding the shape (10×'+GRID+', '+HID+' hidden, '+OUT+' outputs) and every 4-bit-quantized weight and bias.';
     cachedQrText = b64;
   }
   var cachedQrText = '';
-  $('q8').addEventListener('click', function(){ quantBits=8; $('q8').classList.add('on'); $('q4').classList.remove('on'); refreshLedger(); });
-  $('q4').addEventListener('click', function(){ quantBits=4; $('q4').classList.add('on'); $('q8').classList.remove('on'); refreshLedger(); });
   refreshLedger();
 
   $('downloadQrBtn').addEventListener('click', function(){
@@ -1065,6 +1279,80 @@
     var link = document.createElement('a');
     link.download = 'inkling-qr.png';
     link.href = src;
+    link.click();
+  });
+
+  // ---------------- network shape diagram: the other thing worth printing next to the QR ----------------
+  // Deliberately just three groups and two arrows -- the same "100 pixels -> 18 hidden (tanh) ->
+  // 26 outputs (softmax)" shape as the SVG in "how this actually works" below, ported to canvas so
+  // it can be rasterized and downloaded. Every position is derived from the real GRID/HID/OUT
+  // constants (not hand-tuned to "18 dots"), so if the network's shape ever changes this stays
+  // accurate automatically instead of silently drifting out of sync with the real architecture.
+  var archCanvas = $('archCanvas');
+  var archCtx = setupCanvas(archCanvas, 380, 260);
+  archCanvas.style.width = '100%';
+  archCanvas.style.maxWidth = '280px';
+  archCanvas.style.height = 'auto';
+  function drawArrow(ctx,x1,y1,x2,y2){
+    ctx.strokeStyle=C_INKDIM; ctx.lineWidth=1.4;
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    var ang=Math.atan2(y2-y1,x2-x1);
+    ctx.beginPath(); ctx.moveTo(x2,y2);
+    ctx.lineTo(x2-8*Math.cos(ang-0.4), y2-8*Math.sin(ang-0.4));
+    ctx.lineTo(x2-8*Math.cos(ang+0.4), y2-8*Math.sin(ang+0.4));
+    ctx.closePath(); ctx.fillStyle=C_INKDIM; ctx.fill();
+  }
+  function renderArchDiagram(){
+    var W=380,H=260;
+    archCtx.clearRect(0,0,W,H);
+    archCtx.fillStyle=C_BG; archCtx.fillRect(0,0,W,H);
+
+    archCtx.textAlign='left';
+    archCtx.fillStyle=C_INK; archCtx.font='600 16px Fraunces, serif';
+    archCtx.fillText('Inkling', 16, 26);
+    archCtx.fillStyle=C_INKDIM; archCtx.font='10px "JetBrains Mono", monospace';
+    archCtx.fillText("the network's actual shape", 16, 41);
+
+    var inBox={x0:24,y0:70,size:64};
+    var cell=inBox.size/GRID;
+    archCtx.fillStyle=C_PANEL2; archCtx.fillRect(inBox.x0,inBox.y0,inBox.size,inBox.size);
+    archCtx.strokeStyle='rgba(255,255,255,.08)'; archCtx.lineWidth=1;
+    for (var i=1;i<GRID;i++){
+      archCtx.beginPath(); archCtx.moveTo(inBox.x0+i*cell,inBox.y0); archCtx.lineTo(inBox.x0+i*cell,inBox.y0+inBox.size); archCtx.stroke();
+      archCtx.beginPath(); archCtx.moveTo(inBox.x0,inBox.y0+i*cell); archCtx.lineTo(inBox.x0+inBox.size,inBox.y0+i*cell); archCtx.stroke();
+    }
+    archCtx.strokeStyle=C_LINE; archCtx.strokeRect(inBox.x0,inBox.y0,inBox.size,inBox.size);
+
+    var hidCx=196, hidTop=64, hidBottom=182;
+    for (var h=0;h<HID;h++){
+      var hy = hidTop + h*((hidBottom-hidTop)/(HID-1));
+      archCtx.beginPath(); archCtx.arc(hidCx,hy,3,0,7); archCtx.fillStyle=C_NEUTRAL; archCtx.fill();
+    }
+    var outCx=340, outTop=56, outBottom=190;
+    for (var o=0;o<OUT;o++){
+      var oy = outTop + o*((outBottom-outTop)/(OUT-1));
+      archCtx.beginPath(); archCtx.arc(outCx,oy,2.2,0,7); archCtx.fillStyle=C_NEUTRAL; archCtx.fill();
+    }
+
+    drawArrow(archCtx, inBox.x0+inBox.size+6, inBox.y0+inBox.size/2, hidCx-9, (hidTop+hidBottom)/2);
+    drawArrow(archCtx, hidCx+7, (hidTop+hidBottom)/2, outCx-6, (outTop+outBottom)/2);
+
+    archCtx.textAlign='center'; archCtx.fillStyle=C_INKDIM; archCtx.font='9px "JetBrains Mono", monospace';
+    archCtx.fillText('100 pixels', inBox.x0+inBox.size/2, inBox.y0+inBox.size+18);
+    archCtx.fillText('18 hidden (tanh)', hidCx, hidBottom+18);
+    archCtx.fillText('one hidden layer', hidCx, hidBottom+30);
+    archCtx.fillText('26 outputs', outCx, outBottom+18);
+    archCtx.fillText('(softmax, A–Z)', outCx, outBottom+30);
+
+    archCtx.textAlign='left'; archCtx.fillStyle=C_INKDIM; archCtx.font='9px "JetBrains Mono", monospace';
+    archCtx.fillText(flattenParams().length.toLocaleString()+' real parameters, trained by backprop in your browser.', 16, H-14);
+  }
+  renderArchDiagram();
+
+  $('downloadArchBtn').addEventListener('click', function(){
+    var link = document.createElement('a');
+    link.download = 'inkling-network-diagram.png';
+    link.href = archCanvas.toDataURL('image/png');
     link.click();
   });
 
@@ -1102,7 +1390,8 @@
       var d=decodeWordPads(); renderDecoded(d); pushAttempt(d);
       var t=$('loadToast'); t.classList.add('show'); setTimeout(function(){t.classList.remove('show');},1500);
     }catch(e){
-      $('padHint').textContent = 'could not load: '+e.message;
+      var t2=$('loadToast'); t2.textContent='could not load: '+e.message; t2.classList.add('show');
+      setTimeout(function(){t2.classList.remove('show'); t2.textContent='loaded';},2600);
     }
   });
 
