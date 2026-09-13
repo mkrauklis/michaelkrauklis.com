@@ -54,6 +54,48 @@ uses (there via mulberry32 — a different algorithm, which is fine; there's no 
 one PRNG across tools, just to avoid true nondeterminism in initialization/shuffling). `initNet()`
 draws `W1`/`W2` from this PRNG at fixed scales (0.35 / 0.45) and small biases (0.05).
 
+## Why weight decay: a real training-instability bug, diagnosed against the real math, not guessed
+
+**Reported directly**: training letters in sequence could cause the decoded test word to
+"collapse" — training H, then A, then H again could turn every position of a three-letter word to
+whatever letter was just trained (e.g. "HHT" → train A → "AAT" → train H → "HHH"), rather than each
+click just correcting *its own* letter's classification. The user's own hypothesis was "the
+training step size is too high."
+
+**That hypothesis turned out to be backwards, verified empirically before changing anything.** A
+temporary debug harness (`window.__debugInkling`, removed before shipping — never leave this kind
+of hook in) drew realistic, position/size-jittered letter strokes directly onto the real teach pad
+and ran the exact real `forwardAndGrad`+`runEpochs` path (bypassing only the decorative
+`requestAnimationFrame` stage animation, which never resolves under headless/background automation
+— a documented gotcha elsewhere in this codebase — but has zero effect on the actual weights).
+Sweeping learning rate and epoch count independently against the same jittered training sequence
+showed **lower** LR/epochs producing *more* "every position becomes the same letter" collapses
+(e.g. LR 0.15/6 epochs: 4 of 7 steps degenerate), while the *existing* LR 0.45/16 epochs baseline
+already produced zero fully-degenerate collapses in that same test — reducing step size the way the
+report suggested would have made this measurably worse, not better.
+
+**The actual mechanism**: with a shared-weight softmax classifier, only a handful of examples, and
+*no regularization at all*, `applyGrad()`'s unconstrained SGD updates let the output layer's
+weights/biases grow large and overconfident. Once a class's weights are large enough, a single new
+training example's gradient can swing the softmax's argmax for *other*, already-correctly-
+classified inputs too — not just correct its own — because the hidden layer hasn't yet developed
+well-separated per-letter features this early, so different letters can still activate overlapping
+hidden units, and a large output weight there ends up "winning" for more than just the letter it
+was pushed toward. This is a real, well-known small-sample SGD failure mode (catastrophic
+interference from unregularized weight growth), not something specific to this one report.
+
+**The fix**: a small L2 weight-decay term, `WEIGHT_DECAY = 0.02`, applied inside `applyGrad()` to
+every `W1`/`W2` weight (not biases — see the code comment for why) before the gradient step:
+`row[k] = row[k]*(1 - lr*decay) - dv*g.x[k]`. This directly counters unbounded weight growth
+without changing `LR`/`EPOCHS` at all. Re-run against the same jittered test sequence that produced
+0-4 degenerate collapses across various LR/epoch combos, adding decay alone (keeping the original
+0.45/16) dropped it to **zero** degenerate collapses and reliable convergence to the fully correct
+decode, including from a genuinely blank post-Reset network (which reproduced the reported "HHH"-
+style collapse on its very first training step, then recovered and stayed stable from the fourth
+step onward) and in a longer, more varied 10-step, 6-letter sequence. If this ever needs revisiting,
+re-run the same kind of jittered-sequence sweep before changing `LR`/`EPOCHS`/`WEIGHT_DECAY` by
+feel — the naive "lower LR must be more stable" intuition is specifically the one this bug disproved.
+
 ## The seed dataset (`SEED`, `seedTrain`) — why the page never opens blank
 
 Six letters (H, I, A, B, C, T) are hand-authored as literal 10×10 ASCII-art patterns, each trained

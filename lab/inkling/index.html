@@ -437,7 +437,7 @@
 
   var ALPHA = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   var GRID = 10, GRIDN = 100, HID = 18, OUT = 26;
-  var LR = 0.45, EPOCHS = 16;
+  var LR = 0.45, EPOCHS = 16, WEIGHT_DECAY = 0.02;
   var C_BG='#10131a', C_PANEL2='#1d2230', C_LINE='#2a3040', C_INK='#e9e7de',
       C_INKDIM='#9aa0ae', C_ACCENT='#c81d4f', C_COOL='#2f6fe0',
       C_NEUTRAL='#545a66', C_GOOD='#5fd88a', C_PAPER='#efe7d6', C_STROKE='#7a1030';
@@ -510,15 +510,23 @@
     return {a1:a1, probs:probs, predIdx:f.predIdx, dz1:dz1, dz2:dz2, x:x};
   }
 
-  function applyGrad(g, lr){
+  // A small L2 weight-decay term rides along with every step (decayFactor, applied to every
+  // weight and bias before the gradient step) -- see "Why weight decay" in CLAUDE.md for the real
+  // instability this fixes: with only a handful of examples and no regularization at all, the
+  // shared output layer could grow large, overconfident weights/biases that let one new example's
+  // gradient swing the decoded guess for *other*, already-correctly-classified letters too, not
+  // just its own. Biases are excluded from decay (biases don't cause the shared-representation
+  // interference decay is meant to prevent, and decaying them fights the *point* of a bias).
+  function applyGrad(g, lr, decay){
+    var decayFactor = 1 - lr*(decay||0);
     for (var h=0;h<HID;h++){
       var row=W1[h], dv=g.dz1[h]*lr;
-      for (var k=0;k<GRIDN;k++) row[k]-=dv*g.x[k];
+      for (var k=0;k<GRIDN;k++) row[k]=row[k]*decayFactor-dv*g.x[k];
       b1[h]-=dv;
     }
     for (var o=0;o<OUT;o++){
       var row2=W2[o], dv2=g.dz2[o]*lr;
-      for (var h2=0;h2<HID;h2++) row2[h2]-=dv2*g.a1[h2];
+      for (var h2=0;h2<HID;h2++) row2[h2]=row2[h2]*decayFactor-dv2*g.a1[h2];
       b2[o]-=dv2;
     }
   }
@@ -531,7 +539,7 @@
       for (var k=0;k<idxs.length;k++){
         var s = dataset[idxs[k]];
         var g = forwardAndGrad(s.x, s.y);
-        applyGrad(g, lr);
+        applyGrad(g, lr, WEIGHT_DECAY);
       }
     }
   }
@@ -1167,7 +1175,7 @@
     counts[yIdx]++;
     refreshChipCounts();
     setControlsEnabled(false);
-    animateSequence(pre, grid, yIdx).then(function(){
+    return animateSequence(pre, grid, yIdx).then(function(){
       runEpochs(EPOCHS, LR);
       refreshLookInside();
       refreshLedger();
