@@ -25,23 +25,21 @@
   .tool{
     border:1px solid var(--line); border-radius:8px; overflow:hidden;
     background:#171b24;
-    display:flex; align-items:flex-start;
+    display:flex; align-items:center;
   }
   /* order (not HTML reshuffling) puts the thumbnail after the body visually -- the <a> is already
      tabindex="-1" aria-hidden="true" since it's decorative, so its DOM position never mattered for
-     a11y. Pure CSS can't do "image height = sibling's content height, width follows from aspect
-     ratio" here: a flex item's own auto width can't be derived from aspect-ratio times a
-     stretch-resolved cross size within the same layout pass (a genuine circular dependency, not
-     just a missing declaration -- confirmed directly against this engine before reaching for JS),
-     so a plain in-flow image always either lets its intrinsic pixel size leak into the row's own
-     height, or collapses to zero width. The syncThumbHeights() script below sets each
-     `.tool-thumb-link`'s height explicitly, in px, to match its sibling `.tool-body`'s rendered
-     height -- once that height is a real explicit value rather than one waiting on stretch to
-     resolve, the image's own `height:100%` and `width:auto` (below) size correctly with no
-     circularity left. */
-  .tool-thumb-link{ display:block; flex:0 0 auto; order:2; overflow:hidden; max-width:45%; }
+     a11y. This is a fixed-size icon, not a strip scaled to match the card's own (variable) text
+     height -- that earlier version read as an oddly-cropped, differently-sized image bolted onto
+     each card rather than a deliberate icon, and needed a whole measure-and-apply script to work
+     around flexbox not being able to derive a stretched item's width from its aspect ratio in one
+     pass. A fixed square sidesteps that class of problem entirely: every card's icon is the same
+     size, centered vertically in the row by .tool's own align-items:center, and each source image
+     is already cropped tight to its real content (no padding baked in) so object-fit:cover here
+     never letterboxes. */
+  .tool-thumb-link{ display:block; flex:0 0 auto; order:2; margin: 0 20px; }
   .tool-thumb{
-    display:block; height:100%; width:auto; max-width:100%; object-fit:cover;
+    display:block; width:96px; height:96px; object-fit:cover; border-radius:6px;
     background:var(--bg-panel-2);
   }
   .tool-body{ padding:20px 22px; flex:1 1 auto; min-width:0; order:1; }
@@ -111,33 +109,5 @@
       </div>
     </div>
   </div>
-<script>
-  (function(){
-    "use strict";
-    // Naively measuring .tool-body then applying that straight to the thumbnail's height is
-    // unstable: a wide-aspect thumbnail sized to a tall reading of that height claims enough row
-    // width to squeeze the text column, which wraps harder and grows *taller*, which (on the next
-    // resize/fonts-ready sync) makes the thumbnail taller still. Zeroing every thumbnail's height
-    // before measuring means .tool-body is always measured at its true, unsqueezed width first.
-    function syncThumbHeights(){
-      var tools = document.querySelectorAll('.tool');
-      tools.forEach(function(tool){
-        var link = tool.querySelector('.tool-thumb-link');
-        if (link) link.style.height = '0px';
-      });
-      var heights = Array.prototype.map.call(tools, function(tool){
-        var body = tool.querySelector('.tool-body');
-        return body ? body.offsetHeight : 0;
-      });
-      tools.forEach(function(tool, i){
-        var link = tool.querySelector('.tool-thumb-link');
-        if (link) link.style.height = heights[i] + 'px';
-      });
-    }
-    syncThumbHeights();
-    window.addEventListener('resize', syncThumbHeights);
-    if (document.fonts && document.fonts.ready) document.fonts.ready.then(syncThumbHeights);
-  })();
-</script>
 </body>
 </html>
