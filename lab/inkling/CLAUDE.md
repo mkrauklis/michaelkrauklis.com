@@ -248,6 +248,28 @@ reserving a whole second column. `.draw-trigger` itself also shrank again (icon 
 that row rather than a dominant full-width block above them. The chip grid's own label moved below
 `.teach-header`, directly above the chips, since it no longer needs to share a row with anything.
 
+**A third round, on further direct feedback, removed content rather than just tightening spacing.**
+The chip-grid label ("examples taught so far — tap a letter to teach it directly") was deleted
+outright — `trainStatus` in `.teach-header` already states the count, and the chips' own click
+behavior speaks for itself. The idle-state stage caption ("Draw a letter to watch it learn.") was
+also removed — `#stageCaption` now starts empty in the HTML and `resetBtn`'s handler explicitly
+clears it back to `''` too (it previously only ever got a real value from `animateSequence()`'s own
+captions, so without that explicit reset it would otherwise keep showing whatever the *last*
+animation's caption said, e.g. "backprop → ..." well after a Reset — a real, if minor, staleness
+bug this cleanup also happened to catch). `.chips`' own chip width shrank again (27px→24px) and its
+`margin-top` tightened (`.7rem`→`.5rem`) now that there's no label above it to space away from —
+at the page's own `.wrap` max-width (900px), all 26 chips now fit on a single row instead of
+wrapping to two. The word-decode readout and the colorblind-friendly toggle were merged onto one
+line (`display:flex; justify-content:space-between`) instead of two separate stacked lines, on
+direct request to place the toggle "to the right of 'reads today's word'".
+
+**The stage canvas's own bottom margin was also trimmed** (`STAGE_H` 200→160, with
+`INBOX`/`hiddenPos`/`outputPos`/`OUTPUT_LABEL_SPLIT_Y` all rescaled together) — the diagram's own
+drawn content bottomed out around y≈132 inside a 200px-tall canvas, leaving a real ~50-68px band of
+unused dark space below it that read as "padding at the bottom of the neural network card." The new
+geometry keeps the lowest content (the second output row's letter labels) within about 30px of
+`STAGE_H`, rather than leaving a visibly empty region between the diagram and the card's own border.
+
 ## Page order: the word comes first, teaching comes second
 
 Sections were reordered from teach→word to word→teach (now "01 — the goal / Give it a word" then
@@ -517,3 +539,12 @@ then paste the copied JSON back into "Load weights" and confirm the look-inside 
 the earlier state (a real round-trip, not just "no error thrown") → render a portrait, confirm the
 download button only appears after rendering (not before), and confirm the downloaded PNG actually
 contains the tiles/heatmap/word, not a blank canvas.
+
+Also: at the page's own `.wrap` max-width (900px), confirm all 26 chips sit on a single row rather
+than wrapping to two → confirm the stage diagram at idle shows no caption text at all (not even a
+placeholder sentence), and that Reset clears any caption text left over from a previous Train's
+animation rather than leaving it stuck showing something like "backprop → ..." → confirm the
+word-decode readout and the colorblind toggle sit on the same line at full width (they may wrap to
+two lines on narrow viewports, which is expected) → confirm there's no large empty band of unused
+canvas below the diagram's lowest content (the bottom output row's letter labels) before the card's
+own border.

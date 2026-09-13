@@ -74,9 +74,9 @@
   /* Sized down from an earlier 34px/.4rem-gap version specifically to help the whole teach panel
      (trigger + this grid + the training diagram) fit on one screen -- this 4-row, 26-chip grid was
      the single largest contributor to that panel's height. */
-  .chips{ display:flex; flex-wrap:wrap; gap:.3rem; margin-top:.7rem; }
+  .chips{ display:flex; flex-wrap:wrap; gap:.3rem; margin-top:.5rem; }
   .chip{
-    position:relative; width:27px; height:27px; border-radius:7px; border:1px solid var(--line);
+    position:relative; width:24px; height:27px; border-radius:7px; border:1px solid var(--line);
     background:var(--bg-panel-2); color:var(--ink-dim); font-family:'Fraunces',serif; font-size:.86rem;
     display:flex; align-items:center; justify-content:center; cursor:pointer; user-select:none;
     transition:all .12s ease;
@@ -240,20 +240,21 @@
         <span class="toast" id="resetToast">click again to confirm</span>
       </div>
 
-      <div class="status-mono" style="margin-top:.9rem;">examples taught so far — tap a letter to teach it directly:</div>
       <div class="chips" id="letterChips"></div>
       <div class="tip-box" id="trainingTip" hidden></div>
 
       <div class="stage-wrap">
-        <canvas id="stage" width="760" height="200"></canvas>
-        <div class="stage-caption" id="stageCaption">Draw a letter to watch it learn.</div>
+        <canvas id="stage" width="760" height="160"></canvas>
+        <div class="stage-caption" id="stageCaption"></div>
         <div class="legend">
           <span><i class="legend-swatch" id="legendAccentSwatch" style="background:var(--accent);"></i>excites (+ weight / + activation)</span>
           <span><i class="legend-swatch" id="legendCoolSwatch" style="background:var(--cool);"></i>inhibits (− weight / − activation)</span>
           <span><i class="legend-swatch" style="background:var(--ink);"></i>backprop signal, flowing right→left</span>
         </div>
-        <label class="cb-toggle"><input type="checkbox" id="colorblindToggle"> Colorblind-friendly colors (orange / blue)</label>
-        <div class="status-mono" style="margin-top:1rem;">reads today's word (step 01, above) as: <b id="stageWordReadout">—</b></div>
+        <div class="status-mono" style="margin-top:.8rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:.6rem;">
+          <span>reads today's word (step 01, above) as: <b id="stageWordReadout">—</b></span>
+          <label class="cb-toggle" style="margin-top:0;"><input type="checkbox" id="colorblindToggle"> Colorblind-friendly colors (orange / blue)</label>
+        </div>
       </div>
     </div>
   </section>
@@ -1025,23 +1026,26 @@
   computeTrainingTip();
 
   // ---------------- stage animation: 100 pixels -> 18 hidden neurons -> 26 outputs, and back ----------------
-  // Kept short (STAGE_H=200, was 300) so the whole teach panel -- trigger, chip overview, and this
-  // diagram -- fits on one screen together with the word-decode readout right below it, on both
-  // desktop and mobile (the canvas is already responsive via width:100%, so a shorter fixed aspect
-  // ratio directly means a shorter rendered height at every screen size, not just desktop).
-  var STAGE_W=760, STAGE_H=200;
+  // Kept short (STAGE_H=160, was 300 then 200) so the whole teach panel -- trigger, chip overview,
+  // and this diagram -- fits on one screen together with the word-decode readout right below it,
+  // on both desktop and mobile (the canvas is already responsive via width:100%, so a shorter fixed
+  // aspect ratio directly means a shorter rendered height at every screen size, not just desktop).
+  // Geometry below is sized so the lowest drawn content (the bottom output row's letter labels,
+  // ~y132) sits close to STAGE_H rather than leaving a band of unused canvas below it -- direct
+  // feedback that an earlier version had real empty space at the bottom of this card.
+  var STAGE_W=760, STAGE_H=160;
   var stageCanvas = $('stage');
   var stageCtx = setupCanvas(stageCanvas, STAGE_W, STAGE_H);
   stageCanvas.style.width = '100%';
   stageCanvas.style.maxWidth = STAGE_W+'px';
   stageCanvas.style.height = 'auto';
-  var INBOX = {x0:16, y0:32, size:110};
-  var hiddenPos = []; for (var hp=0; hp<HID; hp++) hiddenPos.push({x:300, y:30+hp*(120/(HID-1))});
+  var INBOX = {x0:16, y0:28, size:100};
+  var hiddenPos = []; for (var hp=0; hp<HID; hp++) hiddenPos.push({x:300, y:26+hp*(104/(HID-1))});
   var outputPos = []; for (var op=0; op<OUT; op++){
     var row = op<13?0:1, col = op%13;
-    outputPos.push({x:420+col*24, y: row===0?44:136});
+    outputPos.push({x:420+col*24, y: row===0?38:118});
   }
-  var OUTPUT_LABEL_SPLIT_Y = 90;
+  var OUTPUT_LABEL_SPLIT_Y = 78;
 
   function drawInputRaster(ctx, x, x0,y0,size){
     var cell=size/GRID;
@@ -1305,7 +1309,7 @@
     // target. An earlier version called seedTrain() here, silently restoring a six-letter demo
     // instead of actually blanking the network -- direct feedback caught this as Reset appearing
     // to do nothing.
-    dataset=[]; counts=new Array(26).fill(0); initNet(); refreshChipCounts(); refreshLookInside(); renderArchDiagram(); computeTrainingTip(); refreshLedger(); idleStage();
+    dataset=[]; counts=new Array(26).fill(0); initNet(); refreshChipCounts(); refreshLookInside(); renderArchDiagram(); computeTrainingTip(); refreshLedger(); idleStage(); $('stageCaption').textContent='';
     $('trainStatus').innerHTML = '<b>0</b> examples taught across <b>0</b> letters';
     var d = decodeWordPads(); renderDecoded(d); pushAttempt(d);
   });
