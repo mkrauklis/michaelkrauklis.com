@@ -321,16 +321,33 @@ single largest-magnitude parameter, derives one shared linear scale (`maxAbs/lev
 `[float32 scale][bits, GRID, HID, OUT][packed weights, two nibbles per byte]`. The byte-count detail
 that used to live in the on-page ledger now lives as prose in "how this actually works" instead.
 
-**The network-shape diagram (`renderArchDiagram`, `#archCanvas`, `#downloadArchBtn`) sits right
+**The network-weights diagram (`renderArchDiagram`, `#archCanvas`, `#downloadArchBtn`) sits right
 next to the QR code**, added on direct request: "I want the thing that someone might print on a
 mug: the QR code and the actual network architecture... isn't that something we should be able to
-download?" It's a canvas port of the same "100 pixels → 18 hidden (tanh) → 26 outputs (softmax)"
-diagram already in "how this actually works" as an SVG — three groups (an input-grid icon, a column
-of `HID` dots, a column of `OUT` dots) and two arrows, every position derived from the real
-`GRID`/`HID`/`OUT` constants rather than hand-tuned to "18 dots" — so if the network's shape ever
-changes this stays accurate automatically. Rendered once at load (the shape never changes, only the
-weights do), downloadable via `archCanvas.toDataURL('image/png')` the same direct way every other
-canvas export on this page works.
+download?" Its first version was a generic three-box-and-two-arrows schematic (a canvas port of the
+same static SVG already in "how this actually works") — a real, follow-up request pushed past that:
+*"I want this to show the actual weights... seems like we could draw all that here, couldn't we? At
+least a cool visual."* The current version draws every real connection this network has, not an
+illustration of the shape: for each of the 100 input pixels, a line to each of the 18 hidden dots
+colored by the sign of that exact `W1[h][k]` weight (rose positive, blue negative) and opacity by
+its magnitude relative to the network's own largest weight; the same again from each hidden dot to
+each of the 26 lettered output dots via `W2`. Hidden and output dots are filled by that neuron's
+real bias via `divergingColor()`, the identical convention `refreshLookInside()`'s tiles already
+use — this is a second, denser view of the *same* live `W1`/`b1`/`W2`/`b2` arrays, not a separate
+approximation of them. The input grid itself has no single "the weight" for a pixel (it has 18, one
+per hidden neuron), so it's filled by `impact[k] = mean_h(|W1[h][k]|)`, the one honest single-number
+summary of that pixel's overall influence — this is what makes a trained network's diagram visibly
+different from a fresh/random one (a trained "H" produces a visible receptive-field-shaped blob in
+that grid; a freshly-reset network shows uniform noise). Connections below `|w|/maxAbs < 0.12` are
+skipped entirely rather than drawn at near-zero opacity, both for legibility (≤100×18 + 18×26 ≈
+2,268 possible lines is already dense) and because a genuinely negligible weight isn't meaningfully
+"a real connection" worth ink. Every position is still derived from the real `GRID`/`HID`/`OUT`
+constants, not hand-tuned to "18 dots," so the layout stays correct if the network's shape ever
+changes. Unlike the original schematic (rendered once at load, since the *shape* never changes),
+this version is re-rendered every time the weights actually do — wired into the same call sites as
+`refreshLookInside()` (after Train, after Reset, after a successful weight Load) — so it's always a
+live picture of the current network, exactly like the tiles and heatmap are. Downloadable via
+`archCanvas.toDataURL('image/png')`, same as every other canvas export on this page.
 
 **QR download** (`#downloadQrBtn`): qrcodejs renders a hidden `<canvas>` plus a visible `<img>`
 whose `src` it already set to that canvas's own `toDataURL('image/png')` — same confirmed behavior
@@ -414,10 +431,13 @@ Train-enabled in the letter-picker step → in section 01, change one word-pad l
 re-decodes and logs a new attempt with no separate button click needed, then click "Clear all" and
 confirm every pad clears and it re-decodes to blanks in one action → click "Reset network" twice
 (first click only arms the confirmation toast) and confirm chip counts and `trainStatus` both go to
-exactly 0, the look-inside tiles snap to random noise (not the seed letters' shapes), and the word
-decode updates to reflect the now-random network, not a stale pre-reset value → confirm the QR code
-and the network-shape diagram both render in step 04 with no quantization toggle or ledger table
-visible, and both "Download QR as PNG" and "Download diagram as PNG" save real, non-empty PNGs →
+exactly 0, the look-inside tiles snap to random noise (not the seed letters' shapes), the word
+decode updates to reflect the now-random network (not a stale pre-reset value), and the network-
+weights diagram's input grid visibly loses whatever letter-shaped pattern it had and shows uniform
+noise instead → confirm the QR code and the network-weights diagram both render in step 04 with no
+quantization toggle or ledger table visible, and both "Download QR as PNG" and "Download diagram as
+PNG" save real, non-empty PNGs → train one more letter and confirm the diagram's connections/dot
+colors visibly change afterward (it re-renders on every Train, not just at page load) →
 open "how this actually works" and confirm the full-precision copy/load weights UI is there (not in
 step 04) → copy the full-precision weights, clear/retrain a little, then paste the
 copied JSON back into "Load weights" and confirm the look-inside tiles snap back to the earlier

@@ -287,11 +287,13 @@
       </div>
 
       <div class="qr-block" style="margin-top:1.6rem;">
-        <canvas id="archCanvas" width="380" height="260"></canvas>
+        <canvas id="archCanvas" width="460" height="320"></canvas>
         <div>
-          <p class="qr-note">The network's actual shape, not a stylized icon: 100 pixels in, one
-          hidden layer of 18 neurons, 26 possible letters out. Print this next to the QR code so
-          the shape and the trained weights travel together.</p>
+          <p class="qr-note">Every real connection this network has, drawn directly — not a
+          stylized icon: each pixel's actual weight into each of the 18 hidden neurons, each
+          neuron's own bias, and its weight into each of the 26 possible letters. Updates live as
+          you train. Print this next to the QR code so the shape and the trained weights travel
+          together.</p>
           <button type="button" class="secondary" style="margin-top:.6rem;" id="downloadArchBtn">Download diagram as PNG</button>
         </div>
       </div>
@@ -1178,6 +1180,7 @@
     return animateSequence(pre, grid, yIdx).then(function(){
       runEpochs(EPOCHS, LR);
       refreshLookInside();
+      renderArchDiagram();
       refreshLedger();
       var d = decodeWordPads();
       renderDecoded(d);
@@ -1205,7 +1208,7 @@
     // same starting demo. Previously it called seedTrain() right after initNet(), which silently
     // re-populated the six seed letters -- the counts and the look-inside tiles' shapes never
     // actually went blank, even though a visitor pressing "Reset" every reason to expect they did.)
-    dataset=[]; counts=new Array(26).fill(0); initNet(); refreshChipCounts(); refreshLookInside(); refreshLedger(); idleStage();
+    dataset=[]; counts=new Array(26).fill(0); initNet(); refreshChipCounts(); refreshLookInside(); renderArchDiagram(); refreshLedger(); idleStage();
     $('trainStatus').innerHTML = '<b>0</b> examples taught across <b>0</b> letters';
     var d = decodeWordPads(); renderDecoded(d); pushAttempt(d);
   });
@@ -1298,70 +1301,111 @@
     link.click();
   });
 
-  // ---------------- network shape diagram: the other thing worth printing next to the QR ----------------
-  // Deliberately just three groups and two arrows -- the same "100 pixels -> 18 hidden (tanh) ->
-  // 26 outputs (softmax)" shape as the SVG in "how this actually works" below, ported to canvas so
-  // it can be rasterized and downloaded. Every position is derived from the real GRID/HID/OUT
-  // constants (not hand-tuned to "18 dots"), so if the network's shape ever changes this stays
-  // accurate automatically instead of silently drifting out of sync with the real architecture.
+  // ---------------- network shape diagram: the real weights, not a stylized icon ----------------
+  // Direct request: since every pixel really does have its own weighted connection to every
+  // hidden neuron (plus that neuron's own bias and tanh), and every hidden neuron really does
+  // connect on to every output letter, draw exactly that -- not a generic three-box schematic.
+  // Every position is still derived from the real GRID/HID/OUT constants (not hand-tuned to
+  // "18 dots"), so this stays accurate automatically if the network's shape ever changes; the
+  // colors/opacities now additionally come straight from the live W1/b1/W2/b2 arrays, the same
+  // "look inside" tiles/heatmap read, so this is a second, denser view of the identical real
+  // numbers rather than a separate approximation of them.
+  var ARCH_W=460, ARCH_H=320;
   var archCanvas = $('archCanvas');
-  var archCtx = setupCanvas(archCanvas, 380, 260);
+  var archCtx = setupCanvas(archCanvas, ARCH_W, ARCH_H);
   archCanvas.style.width = '100%';
-  archCanvas.style.maxWidth = '280px';
+  archCanvas.style.maxWidth = '340px';
   archCanvas.style.height = 'auto';
-  function drawArrow(ctx,x1,y1,x2,y2){
-    ctx.strokeStyle=C_INKDIM; ctx.lineWidth=1.4;
-    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
-    var ang=Math.atan2(y2-y1,x2-x1);
-    ctx.beginPath(); ctx.moveTo(x2,y2);
-    ctx.lineTo(x2-8*Math.cos(ang-0.4), y2-8*Math.sin(ang-0.4));
-    ctx.lineTo(x2-8*Math.cos(ang+0.4), y2-8*Math.sin(ang+0.4));
-    ctx.closePath(); ctx.fillStyle=C_INKDIM; ctx.fill();
+  var ARCH_IN = {x0:20, y0:58, size:90};
+  var ARCH_HID_X=220, ARCH_HID_TOP=54, ARCH_HID_BOTTOM=246;
+  var ARCH_OUT_X=380, ARCH_OUT_TOP=50, ARCH_OUT_BOTTOM=270;
+  function archHiddenPos(h){ return {x:ARCH_HID_X, y:ARCH_HID_TOP+h*((ARCH_HID_BOTTOM-ARCH_HID_TOP)/(HID-1))}; }
+  function archOutputPos(o){ return {x:ARCH_OUT_X, y:ARCH_OUT_TOP+o*((ARCH_OUT_BOTTOM-ARCH_OUT_TOP)/(OUT-1))}; }
+  function archPixelPos(k){
+    var cell=ARCH_IN.size/GRID, r=Math.floor(k/GRID), c=k%GRID;
+    return {x:ARCH_IN.x0+c*cell+cell/2, y:ARCH_IN.y0+r*cell+cell/2};
   }
   function renderArchDiagram(){
-    var W=380,H=260;
+    var W=ARCH_W, H=ARCH_H;
     archCtx.clearRect(0,0,W,H);
     archCtx.fillStyle=C_BG; archCtx.fillRect(0,0,W,H);
 
     archCtx.textAlign='left';
     archCtx.fillStyle=C_INK; archCtx.font='600 16px Fraunces, serif';
-    archCtx.fillText('Inkling', 16, 26);
+    archCtx.fillText('Inkling', 16, 24);
     archCtx.fillStyle=C_INKDIM; archCtx.font='10px "JetBrains Mono", monospace';
-    archCtx.fillText("the network's actual shape", 16, 41);
+    archCtx.fillText("this network's real trained weights", 16, 39);
 
-    var inBox={x0:24,y0:70,size:64};
-    var cell=inBox.size/GRID;
-    archCtx.fillStyle=C_PANEL2; archCtx.fillRect(inBox.x0,inBox.y0,inBox.size,inBox.size);
-    archCtx.strokeStyle='rgba(255,255,255,.08)'; archCtx.lineWidth=1;
-    for (var i=1;i<GRID;i++){
-      archCtx.beginPath(); archCtx.moveTo(inBox.x0+i*cell,inBox.y0); archCtx.lineTo(inBox.x0+i*cell,inBox.y0+inBox.size); archCtx.stroke();
-      archCtx.beginPath(); archCtx.moveTo(inBox.x0,inBox.y0+i*cell); archCtx.lineTo(inBox.x0+inBox.size,inBox.y0+i*cell); archCtx.stroke();
-    }
-    archCtx.strokeStyle=C_LINE; archCtx.strokeRect(inBox.x0,inBox.y0,inBox.size,inBox.size);
+    // Real per-connection magnitudes, found once so every line/fill below is a fraction of an
+    // actual network-wide maximum, the same normalization convention refreshLookInside() uses.
+    var maxAbsW1=1e-6; for (var h0=0;h0<HID;h0++){ var row=W1[h0]; for (var k0=0;k0<GRIDN;k0++){ var av=Math.abs(row[k0]); if (av>maxAbsW1) maxAbsW1=av; } }
+    var maxAbsW2=1e-6; for (var o0=0;o0<OUT;o0++){ var row2=W2[o0]; for (var h1=0;h1<HID;h1++){ var av2=Math.abs(row2[h1]); if (av2>maxAbsW2) maxAbsW2=av2; } }
+    var maxAbsB1=1e-6; for (var h2=0;h2<HID;h2++){ var ab=Math.abs(b1[h2]); if (ab>maxAbsB1) maxAbsB1=ab; }
+    var maxAbsB2=1e-6; for (var o2=0;o2<OUT;o2++){ var ab2=Math.abs(b2[o2]); if (ab2>maxAbsB2) maxAbsB2=ab2; }
+    // Each pixel's aggregate real influence (mean |W1| across all 18 hidden neurons) -- there's no
+    // single "the" weight for a pixel (it has 18, one per hidden neuron), so this is the one
+    // honest single-number summary, same idea as a tile's own reshaped-weight coloring.
+    var impact=new Float32Array(GRIDN), maxImpact=1e-6;
+    for (var k1=0;k1<GRIDN;k1++){ var s=0; for (var h3=0;h3<HID;h3++) s+=Math.abs(W1[h3][k1]); s/=HID; impact[k1]=s; if (s>maxImpact) maxImpact=s; }
 
-    var hidCx=196, hidTop=64, hidBottom=182;
-    for (var h=0;h<HID;h++){
-      var hy = hidTop + h*((hidBottom-hidTop)/(HID-1));
-      archCtx.beginPath(); archCtx.arc(hidCx,hy,3,0,7); archCtx.fillStyle=C_NEUTRAL; archCtx.fill();
+    // input -> hidden, every real connection
+    for (var h4=0;h4<HID;h4++){
+      var hp=archHiddenPos(h4), row3=W1[h4];
+      for (var k2=0;k2<GRIDN;k2++){
+        var w=row3[k2], a=Math.abs(w)/maxAbsW1;
+        if (a<0.12) continue;
+        var pp=archPixelPos(k2);
+        archCtx.beginPath(); archCtx.moveTo(pp.x,pp.y); archCtx.lineTo(hp.x,hp.y);
+        archCtx.strokeStyle = w>=0 ? rgbStr(ACCENT_RGB, 0.03+0.22*a) : rgbStr(COOL_RGB, 0.03+0.22*a);
+        archCtx.lineWidth = 0.4;
+        archCtx.stroke();
+      }
     }
-    var outCx=340, outTop=56, outBottom=190;
-    for (var o=0;o<OUT;o++){
-      var oy = outTop + o*((outBottom-outTop)/(OUT-1));
-      archCtx.beginPath(); archCtx.arc(outCx,oy,2.2,0,7); archCtx.fillStyle=C_NEUTRAL; archCtx.fill();
+    // hidden -> output, every real connection
+    for (var o3=0;o3<OUT;o3++){
+      var op=archOutputPos(o3), row4=W2[o3];
+      for (var h5=0;h5<HID;h5++){
+        var w2=row4[h5], a2=Math.abs(w2)/maxAbsW2;
+        if (a2<0.12) continue;
+        var hp2=archHiddenPos(h5);
+        archCtx.beginPath(); archCtx.moveTo(hp2.x,hp2.y); archCtx.lineTo(op.x,op.y);
+        archCtx.strokeStyle = w2>=0 ? rgbStr(ACCENT_RGB, 0.04+0.28*a2) : rgbStr(COOL_RGB, 0.04+0.28*a2);
+        archCtx.lineWidth = 0.4;
+        archCtx.stroke();
+      }
     }
 
-    drawArrow(archCtx, inBox.x0+inBox.size+6, inBox.y0+inBox.size/2, hidCx-9, (hidTop+hidBottom)/2);
-    drawArrow(archCtx, hidCx+7, (hidTop+hidBottom)/2, outCx-6, (outTop+outBottom)/2);
+    // input pixels, colored by real aggregate influence
+    var cell=ARCH_IN.size/GRID;
+    for (var r=0;r<GRID;r++) for (var c=0;c<GRID;c++){
+      var idx=r*GRID+c;
+      archCtx.fillStyle = rgbStr(ACCENT_RGB, 0.06+0.7*(impact[idx]/maxImpact));
+      archCtx.fillRect(ARCH_IN.x0+c*cell, ARCH_IN.y0+r*cell, cell-0.5, cell-0.5);
+    }
+    archCtx.strokeStyle=C_LINE; archCtx.strokeRect(ARCH_IN.x0,ARCH_IN.y0,ARCH_IN.size,ARCH_IN.size);
+
+    // hidden dots, colored by real bias
+    for (var h6=0;h6<HID;h6++){
+      var hp3=archHiddenPos(h6);
+      archCtx.beginPath(); archCtx.arc(hp3.x,hp3.y,4,0,7); archCtx.fillStyle=divergingColor(b1[h6],maxAbsB1,1); archCtx.fill();
+    }
+    // output dots, colored by real bias, each labeled with its letter
+    archCtx.font='9px "JetBrains Mono", monospace'; archCtx.textAlign='left';
+    for (var o4=0;o4<OUT;o4++){
+      var op2=archOutputPos(o4);
+      archCtx.beginPath(); archCtx.arc(op2.x,op2.y,3,0,7); archCtx.fillStyle=divergingColor(b2[o4],maxAbsB2,1); archCtx.fill();
+      archCtx.fillStyle=C_INKDIM; archCtx.fillText(ALPHA[o4], op2.x+7, op2.y+3);
+    }
 
     archCtx.textAlign='center'; archCtx.fillStyle=C_INKDIM; archCtx.font='9px "JetBrains Mono", monospace';
-    archCtx.fillText('100 pixels', inBox.x0+inBox.size/2, inBox.y0+inBox.size+18);
-    archCtx.fillText('18 hidden (tanh)', hidCx, hidBottom+18);
-    archCtx.fillText('one hidden layer', hidCx, hidBottom+30);
-    archCtx.fillText('26 outputs', outCx, outBottom+18);
-    archCtx.fillText('(softmax, A–Z)', outCx, outBottom+30);
+    archCtx.fillText('100 pixels', ARCH_IN.x0+ARCH_IN.size/2, ARCH_IN.y0+ARCH_IN.size+18);
+    archCtx.fillText('18 hidden (tanh)', ARCH_HID_X, ARCH_HID_BOTTOM+18);
+    archCtx.fillText('one hidden layer', ARCH_HID_X, ARCH_HID_BOTTOM+30);
+    archCtx.fillText('26 outputs', ARCH_OUT_X, ARCH_OUT_BOTTOM+18);
+    archCtx.fillText('(softmax, A–Z)', ARCH_OUT_X, ARCH_OUT_BOTTOM+30);
 
     archCtx.textAlign='left'; archCtx.fillStyle=C_INKDIM; archCtx.font='9px "JetBrains Mono", monospace';
-    archCtx.fillText(flattenParams().length.toLocaleString()+' real parameters, trained by backprop in your browser.', 16, H-14);
+    archCtx.fillText(flattenParams().length.toLocaleString()+' real weights and biases, trained by backprop in your browser.', 16, H-12);
   }
   renderArchDiagram();
 
@@ -1402,7 +1446,7 @@
       b1 = Float32Array.from(obj.b1);
       W2 = obj.W2.map(function(r){ return Float32Array.from(r); });
       b2 = Float32Array.from(obj.b2);
-      refreshLookInside(); refreshLedger(); refreshWeightsOut();
+      refreshLookInside(); renderArchDiagram(); refreshLedger(); refreshWeightsOut();
       var d=decodeWordPads(); renderDecoded(d); pushAttempt(d);
       var t=$('loadToast'); t.classList.add('show'); setTimeout(function(){t.classList.remove('show');},1500);
     }catch(e){
