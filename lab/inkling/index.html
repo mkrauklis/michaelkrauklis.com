@@ -101,6 +101,10 @@
   }
   .tip-box b{ color:var(--ink); }
 
+  /* ---------- word thumbnails in the "translates ... to ..." readout ---------- */
+  .word-thumbs{ display:inline-flex; gap:2px; vertical-align:middle; }
+  .word-thumb{ width:22px; height:22px; border-radius:4px; display:block; background:var(--paper); }
+
   /* ---------- stage (forward/back animation) ---------- */
   .stage-wrap{ margin-top:1.1rem; }
   canvas#stage{ width:100%; max-width:760px; height:auto; display:block; background:var(--bg-panel-2); border-radius:10px; border:1px solid var(--line); }
@@ -252,7 +256,7 @@
           <span><i class="legend-swatch" style="background:var(--ink);"></i>backprop signal, flowing right→left</span>
         </div>
         <div class="status-mono" style="margin-top:.8rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:.6rem;">
-          <span>reads today's word (step 01, above) as: <b id="stageWordReadout">—</b></span>
+          <span style="display:inline-flex; align-items:center; gap:.35rem; flex-wrap:wrap;">Your network translates <span class="word-thumbs" id="stageWordThumbs"></span> to <b id="stageWordReadout">—</b></span>
           <label class="cb-toggle" style="margin-top:0;"><input type="checkbox" id="colorblindToggle"> Colorblind-friendly colors (orange / blue)</label>
         </div>
       </div>
@@ -915,9 +919,27 @@
     });
     return out.replace(/\s+$/,'');
   }
+  // Renders each currently-drawn word pad's real ink into a small, uniformly-sized canvas next to
+  // the compact "Your network translates ... to ..." readout -- a literal copy of what's actually
+  // drawn (via drawImage straight from that pad's own canvas), not a placeholder glyph, so the
+  // reader sees the exact same handwriting the network is decoding, right next to the result.
+  function syncStageWordThumbs(){
+    var box = $('stageWordThumbs');
+    if (!box) return;
+    box.innerHTML = '';
+    wordPads.forEach(function(sp){
+      if (!sp.isDirty()) return;
+      var c = document.createElement('canvas');
+      c.className = 'word-thumb';
+      c.width = 44; c.height = 44; // 2x the CSS display size (22px) for a crisp downscale
+      c.getContext('2d').drawImage(sp.canvasEl, 0, 0, 44, 44);
+      box.appendChild(c);
+    });
+  }
   function renderDecoded(str){
     var el = $('wordOutput');
     var compact = $('stageWordReadout');
+    syncStageWordThumbs();
     if (!str) {
       el.innerHTML = '<span class="gap">— draw a word above —</span>';
       if (compact) compact.textContent = '—';

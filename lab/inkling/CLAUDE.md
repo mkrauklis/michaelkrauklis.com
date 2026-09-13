@@ -270,6 +270,28 @@ unused dark space below it that read as "padding at the bottom of the neural net
 geometry keeps the lowest content (the second output row's letter labels) within about 30px of
 `STAGE_H`, rather than leaving a visibly empty region between the diagram and the card's own border.
 
+## The compact readout shows the actual handwriting, not just the decoded letters
+
+Direct follow-up: *"update this so it shows the handwritten... values (repeated)... 'Your network
+translates [][][] to XXX'... it should show the handwriting and what it gets translated to with
+the current network."* The compact "reads today's word" line under the training diagram used to be
+text-only (`stageWordReadout` alone). `syncStageWordThumbs()` now renders each currently-drawn word
+pad's *real* ink into a small, uniformly-sized `.word-thumb` canvas (22px CSS size, backed by a
+44×44 bitmap for a crisp downscale) via `drawImage(sp.canvasEl, 0, 0, 44, 44)` — a literal copy of
+that exact pad's current pixels, not a re-rendering or a placeholder glyph — and inserts one per
+non-blank pad into `#stageWordThumbs`, read left-to-right in the same order as the word pads
+themselves. The line now reads "Your network translates [H][A][T] to CDD" with real handwriting
+thumbnails standing in for `[H][A][T]`.
+
+**Wired into `renderDecoded()` itself, not a separate call site.** `renderDecoded(str)` was already
+the single function both `#wordOutput` (the full step-01 display) and `#stageWordReadout` (the
+compact text) read from, specifically so they can never desync — `syncStageWordThumbs()` was added
+as its first line for the same reason: every trigger that already calls `renderDecoded()` (a word
+pad being drawn on or cleared, "Clear all", every Train, Reset, and weight Load) automatically keeps
+the thumbnails current too, with no new call sites to remember to wire up. If a future change adds
+another way to alter the word pads, make sure it still routes through `renderDecoded()` rather than
+updating `#wordOutput`/`#stageWordReadout` directly, or the thumbnails will silently stop tracking.
+
 ## Page order: the word comes first, teaching comes second
 
 Sections were reordered from teach→word to word→teach (now "01 — the goal / Give it a word" then
