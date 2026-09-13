@@ -158,6 +158,37 @@ placeholder until the first drawing. Once an example is drawn, the animated hidd
 coloring by that example's real activation (`pre.a1[h]`, unchanged from the original design) —
 that's an even more specific real number than bias alone, so it isn't touched by this change.
 
+## Keeping the teach panel on one screen (`STAGE_H`, chip sizing)
+
+Direct request: "the training should all be able to fit on one screen along with the validation
+section below." "Validation" here is the `#stageWordReadout` line already sitting directly under
+the diagram (see below) — the ask was to shrink the whole teach panel (trigger, chip overview,
+diagram, legend, readout) enough that it reads as one continuous view rather than something you
+scroll through mid-interaction. Two changes did almost all of the work:
+
+- **`STAGE_H` dropped from 300 to 200** (`STAGE_W` unchanged at 760), with `INBOX`/`hiddenPos`/
+  `outputPos`/`drawStageLabels()`'s label y-coordinates all rescaled to fit the shorter canvas.
+  Because the canvas is responsive (`width:100%; max-width:760px; height:auto`), this aspect-ratio
+  change directly shrinks the *rendered* height at every screen size, not just on wide viewports —
+  confirmed on both desktop and a 375px mobile width. `OUTPUT_LABEL_SPLIT_Y` (the y-threshold
+  deciding whether an output letter's label draws above or below its dot) is a named constant now,
+  not a hardcoded `155`, specifically so it stays in sync if this geometry changes again.
+- **The `.chips` grid shrank from 34px to 27px chips** (with proportionally smaller gap and count
+  badge) — this 26-chip, multi-row grid was the single largest contributor to the panel's height
+  after the diagram itself. `.draw-trigger`'s padding and icon size were trimmed slightly too.
+  27px is smaller than the ~44px touch target guidelines usually recommend; accepted deliberately
+  since this on-page grid is a secondary shortcut to a letter (mistapping just opens the wizard
+  pre-aimed at the wrong letter, correctable in step 2), not the primary teaching path — the
+  wizard's own in-modal letter picker is unaffected and stays at full chip size.
+
+Verified directly, not just eyeballed: the teach panel (trigger through the readout line, excluding
+the section's own heading/intro prose) went from roughly 694px to 585px tall on desktop, and its
+overall section height dropped from ~869px to ~760px — under a typical viewport height. On a 375px
+mobile width the panel alone is ~715px (still under an 812px mobile viewport), though the full
+section including the heading and wrapped intro paragraph runs a bit taller there — accepted, since
+shortening the explanatory copy wasn't part of the request and the interactive panel is the part
+that actually needed to read as one view.
+
 ## Page order: the word comes first, teaching comes second
 
 Sections were reordered from teach→word to word→teach (now "01 — the goal / Give it a word" then

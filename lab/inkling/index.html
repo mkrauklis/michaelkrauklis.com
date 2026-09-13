@@ -56,29 +56,32 @@
   .draw-trigger{
     display:flex; align-items:center; gap:.9rem; width:100%; text-align:left;
     background:var(--bg-panel-2); border:1px dashed var(--line); border-radius:10px;
-    padding:1rem 1.2rem; color:var(--ink); font-family:'Fraunces',serif; font-size:1.08rem;
+    padding:.7rem 1.1rem; color:var(--ink); font-family:'Fraunces',serif; font-size:1.05rem;
     cursor:pointer; transition:border-color .15s ease, background .15s ease;
   }
   .draw-trigger:hover{ border-color:var(--accent); background:color-mix(in srgb, var(--accent) 8%, var(--bg-panel-2)); }
   .draw-trigger-icon{
-    display:flex; align-items:center; justify-content:center; width:42px; height:42px;
-    border-radius:8px; background:var(--paper); color:var(--stroke); font-size:1.3rem; flex:0 0 auto;
+    display:flex; align-items:center; justify-content:center; width:36px; height:36px;
+    border-radius:8px; background:var(--paper); color:var(--stroke); font-size:1.15rem; flex:0 0 auto;
   }
 
   /* ---------- letter chips ---------- */
-  .chips{ display:flex; flex-wrap:wrap; gap:.4rem; margin-top:1rem; }
+  /* Sized down from an earlier 34px/.4rem-gap version specifically to help the whole teach panel
+     (trigger + this grid + the training diagram) fit on one screen -- this 4-row, 26-chip grid was
+     the single largest contributor to that panel's height. */
+  .chips{ display:flex; flex-wrap:wrap; gap:.3rem; margin-top:.7rem; }
   .chip{
-    position:relative; width:34px; height:34px; border-radius:8px; border:1px solid var(--line);
-    background:var(--bg-panel-2); color:var(--ink-dim); font-family:'Fraunces',serif; font-size:1.02rem;
+    position:relative; width:27px; height:27px; border-radius:7px; border:1px solid var(--line);
+    background:var(--bg-panel-2); color:var(--ink-dim); font-family:'Fraunces',serif; font-size:.86rem;
     display:flex; align-items:center; justify-content:center; cursor:pointer; user-select:none;
     transition:all .12s ease;
   }
   .chip[data-taught="1"]{ border-color:var(--accent-dim); color:var(--ink); background:color-mix(in srgb, var(--accent) 16%, transparent); }
   .chip.active{ background:var(--accent); border-color:var(--accent); color:#fff; }
   .chip .n{
-    position:absolute; bottom:-6px; right:-6px; background:var(--bg); border:1px solid var(--line);
-    color:var(--ink-dim); font-family:var(--mono); font-size:.58rem; border-radius:6px;
-    padding:0 3px; line-height:1.3;
+    position:absolute; bottom:-5px; right:-5px; background:var(--bg); border:1px solid var(--line);
+    color:var(--ink-dim); font-family:var(--mono); font-size:.52rem; border-radius:5px;
+    padding:0 2px; line-height:1.25;
   }
   .chip.active .n{ color:var(--ink); border-color:rgba(255,255,255,.4); }
 
@@ -86,10 +89,10 @@
   .status-mono b{ color:var(--ink); }
 
   /* ---------- stage (forward/back animation) ---------- */
-  .stage-wrap{ margin-top:1.6rem; }
+  .stage-wrap{ margin-top:1.1rem; }
   canvas#stage{ width:100%; max-width:760px; height:auto; display:block; background:var(--bg-panel-2); border-radius:10px; border:1px solid var(--line); }
-  .stage-caption{ font-family:var(--mono); font-size:.78rem; color:var(--ink-dim); margin-top:.7rem; min-height:1.4em; }
-  .legend{ display:flex; gap:1.2rem; flex-wrap:wrap; margin-top:.6rem; }
+  .stage-caption{ font-family:var(--mono); font-size:.78rem; color:var(--ink-dim); margin-top:.5rem; min-height:1.4em; }
+  .legend{ display:flex; gap:1rem; flex-wrap:wrap; margin-top:.4rem; }
   .legend span{ font-family:var(--mono); font-size:.72rem; color:var(--ink-dim); display:flex; align-items:center; gap:.4em; }
   .legend-swatch{ width:10px; height:10px; border-radius:3px; display:inline-block; }
 
@@ -214,7 +217,7 @@
         <span>Tap to draw a letter and teach it</span>
       </button>
 
-      <div class="row" style="margin-top:1.3rem; align-items:flex-start;">
+      <div class="row" style="margin-top:.9rem; align-items:flex-start;">
         <div class="col" style="min-width:280px;">
           <div class="status-mono" style="margin-top:0;">examples taught so far — tap a letter to teach it directly:</div>
           <div class="chips" id="letterChips"></div>
@@ -229,7 +232,7 @@
       </div>
 
       <div class="stage-wrap">
-        <canvas id="stage" width="760" height="300"></canvas>
+        <canvas id="stage" width="760" height="200"></canvas>
         <div class="stage-caption" id="stageCaption">Draw a letter to watch it learn.</div>
         <div class="legend">
           <span><i class="legend-swatch" style="background:var(--accent);"></i>excites (+ weight / + activation)</span>
@@ -936,18 +939,23 @@
   refreshLookInside();
 
   // ---------------- stage animation: 100 pixels -> 18 hidden neurons -> 26 outputs, and back ----------------
-  var STAGE_W=760, STAGE_H=300;
+  // Kept short (STAGE_H=200, was 300) so the whole teach panel -- trigger, chip overview, and this
+  // diagram -- fits on one screen together with the word-decode readout right below it, on both
+  // desktop and mobile (the canvas is already responsive via width:100%, so a shorter fixed aspect
+  // ratio directly means a shorter rendered height at every screen size, not just desktop).
+  var STAGE_W=760, STAGE_H=200;
   var stageCanvas = $('stage');
   var stageCtx = setupCanvas(stageCanvas, STAGE_W, STAGE_H);
   stageCanvas.style.width = '100%';
   stageCanvas.style.maxWidth = STAGE_W+'px';
   stageCanvas.style.height = 'auto';
-  var INBOX = {x0:16, y0:60, size:150};
-  var hiddenPos = []; for (var hp=0; hp<HID; hp++) hiddenPos.push({x:330, y:38+hp*(232/(HID-1))});
+  var INBOX = {x0:16, y0:32, size:110};
+  var hiddenPos = []; for (var hp=0; hp<HID; hp++) hiddenPos.push({x:300, y:30+hp*(120/(HID-1))});
   var outputPos = []; for (var op=0; op<OUT; op++){
     var row = op<13?0:1, col = op%13;
-    outputPos.push({x:452+col*23, y: row===0?86:224});
+    outputPos.push({x:420+col*24, y: row===0?44:136});
   }
+  var OUTPUT_LABEL_SPLIT_Y = 90;
 
   function drawInputRaster(ctx, x, x0,y0,size){
     var cell=size/GRID;
@@ -976,12 +984,12 @@
   function drawDot(ctx, p, r, fill){ ctx.beginPath(); ctx.arc(p.x,p.y,r,0,7); ctx.fillStyle=fill; ctx.fill(); }
   function drawStageLabels(ctx){
     ctx.textAlign='center'; ctx.fillStyle=C_INKDIM; ctx.font='9px "JetBrains Mono", monospace';
-    ctx.fillText('100 pixels', INBOX.x0+INBOX.size/2, 24);
-    ctx.fillText('18 hidden neurons (tanh)', hiddenPos[0].x, 15);
-    ctx.fillText('— one hidden layer —', hiddenPos[0].x, 26);
+    ctx.fillText('100 pixels', INBOX.x0+INBOX.size/2, 18);
+    ctx.fillText('18 hidden neurons (tanh)', hiddenPos[0].x, 10);
+    ctx.fillText('— one hidden layer —', hiddenPos[0].x, 21);
     var outCx = (outputPos[0].x+outputPos[outputPos.length-1].x)/2;
-    ctx.fillText('26 outputs (softmax, A–Z)', outCx, 15);
-    ctx.fillText('argmax picks the letter', outCx, 26);
+    ctx.fillText('26 outputs (softmax, A–Z)', outCx, 10);
+    ctx.fillText('argmax picks the letter', outCx, 21);
     ctx.textAlign='left';
   }
   // At rest there's no input, so there's no activation to color a neuron by -- but there IS a
@@ -999,7 +1007,7 @@
     stageCtx.fillStyle=C_INKDIM; stageCtx.font='9px "JetBrains Mono", monospace'; stageCtx.textAlign='center';
     for (var o2=0;o2<OUT;o2++){
       var p=outputPos[o2];
-      stageCtx.fillText(ALPHA[o2], p.x, p.y<155 ? p.y-8 : p.y+14);
+      stageCtx.fillText(ALPHA[o2], p.x, p.y<OUTPUT_LABEL_SPLIT_Y ? p.y-8 : p.y+14);
     }
     drawStageLabels(stageCtx);
   }
@@ -1130,7 +1138,7 @@
           }
         }
         stageCtx.fillStyle=C_INKDIM; stageCtx.font='9px "JetBrains Mono", monospace'; stageCtx.textAlign='center';
-        for (var o5=0;o5<OUT;o5++){ var p=outputPos[o5]; stageCtx.fillText(ALPHA[o5], p.x, p.y<155?p.y-8:p.y+14); }
+        for (var o5=0;o5<OUT;o5++){ var p=outputPos[o5]; stageCtx.fillText(ALPHA[o5], p.x, p.y<OUTPUT_LABEL_SPLIT_Y?p.y-8:p.y+14); }
         drawStageLabels(stageCtx);
 
         var caption = 'sampling your drawing into 100 pixel values…';
