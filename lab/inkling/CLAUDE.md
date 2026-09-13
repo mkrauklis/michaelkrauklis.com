@@ -96,23 +96,23 @@ step onward) and in a longer, more varied 10-step, 6-letter sequence. If this ev
 re-run the same kind of jittered-sequence sweep before changing `LR`/`EPOCHS`/`WEIGHT_DECAY` by
 feel — the naive "lower LR must be more stable" intuition is specifically the one this bug disproved.
 
-## The seed dataset (`SEED`, `seedTrain`) — why the page never opens blank
+## The page opens genuinely blank — no seed training, at load or on Reset
 
-Six letters (H, I, A, B, C, T) are hand-authored as literal 10×10 ASCII-art patterns, each trained
-in two horizontal-shift variants (`patternToGrid(rows, dx)`, `dx` 0 or 1) — 12 examples total, run
-through 60 epochs at a higher learning rate (0.5) than live training uses (0.45), *before* the
-page shows anything to a visitor. This means: the letter chips already show non-zero counts and
-the "look inside" tiles already show real (not random-noise) receptive fields on first paint. All
-of this is a genuine consequence of the same training code a visitor's own Train clicks run — not
-a separately hardcoded "looks trained" state.
+`SEED` (six letters, H/I/A/B/C/T, hand-authored as literal 10×10 ASCII-art patterns) and
+`patternToGrid()` still exist, but **nothing calls `seedTrain()` anymore, including at page load.**
+An earlier version pre-trained those six letters (12 examples, 60 epochs) before a visitor ever saw
+the page, specifically so the letter chips and "look inside" tiles never looked empty on first
+paint. That was reversed on direct feedback: *"let's start with a random network, no training. It's
+not intuitive that someone needs to go back and reset to get their own network."* A first-time
+visitor's very first "look inside" or word decode is now genuinely *their* network, from a random
+`initNet()`, not a demo they'd have to clear first. `SEED`/`patternToGrid` are only still used as
+the fallback path in `seedWord()`, for rendering the pre-loaded "HAT" word pads on letters without a
+hand-authored `HANDWRITTEN_STROKES` entry.
 
-**`Reset network` does *not* call `seedTrain()`** — it only calls `initNet()`, genuinely returning
-to fresh random weights, zeroed `dataset`/`counts`, and a re-run `decodeWordPads()` so the word
-display reflects the new (garbage) guesses immediately. This was a real, reported bug: the first
-shipped version called `initNet(); seedTrain();` on Reset, so a visitor who clicked Reset expecting
-a blank slate still saw the six seed letters' counts and their already-shaped "look inside" tiles
-— Reset silently did nothing observable to the trained state, only to whatever the visitor had
-personally added on top of the seed. Only the very first page load seeds; Reset is a genuine wipe.
+**`Reset network` and page load now do the exact same thing** (`initNet()` alone, nothing else) —
+this also fixed a real, separately-reported bug where Reset used to call `initNet(); seedTrain();`,
+silently restoring the same six-letter demo instead of genuinely blanking the network. There's now
+only one "blank" state in the whole tool, not two different ones depending on how you got there.
 
 ## Drawing: one real canvas, opened as a two-step teach wizard (`makeScratchpad`, `openExpander`/`closeExpander`)
 
@@ -145,14 +145,19 @@ letter-step's Back/Train) render on top of each other. Fixed with an explicit
 `.expand-actions[hidden]{ display:none; }` override. If you add another element that's toggled via
 `.hidden` inside `.expand-card` and it has its own `display` rule, it needs the same override.
 
-**Clicking a chip on the main page also opens this wizard, pre-aimed at that letter**
-(`openExpander(pad, 'Draw the letter "'+letter+'"', {wizard:true, presetLetter:letter})`) — the
-modal's own header names the letter, and `wizardLetter`/the modal chip grid's active state are
-pre-set from `opts.presetLetter` in `openExpander()`, so Train is already enabled the moment
-drawing finishes; the visitor can still pick a different letter in step 2 if they clicked the wrong
-chip. This was a direct, explicit request ("if you click on a letter it should open the modal but
-should tell you that you should be drawing the letter on which you clicked") — before this, the
-main-page chip grid was purely a read-only overview with no click behavior at all.
+**Clicking a chip on the main page also opens this wizard, pre-aimed at that letter, and now skips
+the letter-picker step entirely** (`openExpander(pad, 'Draw the letter "'+letter+'"',
+{wizard:true, presetLetter:letter})`). The modal's header names the letter, and — direct follow-up
+feedback after the preset-chip flow first shipped still showing a redundant confirmation screen:
+*"they shouldn't have to confirm it... it should go right to train instead of confirming the
+letter"* — `expandPreset` (`true` whenever `opts.presetLetter` was given) makes the draw step's own
+action button read "Train ↳" instead of "Next →", and clicking it commits the ink and calls
+`doTrain(wizardLetter)` directly, closing the modal without ever showing `#letterStepBody` at all.
+The generic "tap to draw a letter and teach it" trigger (no letter known ahead of time) still goes
+through the original two-step Next → pick-a-letter → Train flow, since there's a real choice to
+make there that a chip click has already made. `$('expandFoot')`'s instructional text also branches
+on `expandPreset` ("draw the letter above, then Train" vs. the generic "draw, then Next") so the
+modal's own copy matches which flow is actually active.
 
 **`getGrid()`'s downsample is a real resample, not a fake one**: it draws the full-resolution
 canvas into a 10×10 offscreen canvas via `drawImage` (letting the browser's own image scaling do
@@ -231,6 +236,18 @@ section including the heading and wrapped intro paragraph runs a bit taller ther
 shortening the explanatory copy wasn't part of the request and the interactive panel is the part
 that actually needed to read as one view.
 
+**A second round went further, on direct follow-up feedback**: *"there's still tons of empty
+space... the tap to draw is huge, reset network could be on the same line."* The trigger button, the
+`trainStatus` count, and Reset used to sit in a two-column `.row` (chips-and-label on the left,
+status-and-Reset stacked on the right) — since the right column was much shorter than the chip grid
+on the left, the row's height was set by the taller column, leaving the shorter one surrounded by
+dead space. Replaced with `.teach-header`, one flex row holding the trigger (`flex:1 1 240px`),
+`trainStatus`, and the Reset button/toast together, wrapping naturally on narrow screens instead of
+reserving a whole second column. `.draw-trigger` itself also shrank again (icon 36px→28px, padding
+`.7rem 1.1rem`→`.5rem .9rem`, font `1.05rem`→`.95rem`) so it reads as one control among several in
+that row rather than a dominant full-width block above them. The chip grid's own label moved below
+`.teach-header`, directly above the chips, since it no longer needs to share a row with anything.
+
 ## Page order: the word comes first, teaching comes second
 
 Sections were reordered from teach→word to word→teach (now "01 — the goal / Give it a word" then
@@ -271,18 +288,67 @@ grid squares. `seedWord()` falls back to the old block-fill rendering for any le
 hand-authored stroke path, so this degrades gracefully rather than silently drawing nothing if the
 seeded word ever changes to include a letter outside H/A/T.
 
-**This is a display-only change — `SEED`/`patternToGrid`/`seedTrain()` are untouched**, and that's
-a deliberate, accepted tradeoff, not an oversight: `decodeWordPads()` re-samples whatever is
+**This is a display-only change — `SEED`/`patternToGrid` are untouched**, and that's a deliberate,
+accepted tradeoff, not an oversight: `decodeWordPads()` re-samples whatever is
 *currently drawn* on a word pad's canvas, independent of whatever data trained the network, so
 there's no requirement that the two match pixel-for-pixel. The practical effect is that the
-initial "HAT" decode is no longer reliably close to correct on first paint the way it used to be
-(the hand-stroke shapes differ enough from the ASCII-block shapes the seed-trained network actually
-learned that the very first decode can come out wrong, e.g. "QII" instead of "HAT" in one observed
-run) — but this now reads as *consistent* with section 01's own copy ("the network hasn't learned
-much yet, so it may well misread it"), rather than as a regression. If a pixel-perfect initial
-decode ever matters again, the real fix is regenerating `seedTrain()`'s training examples from the
-same `HANDWRITTEN_STROKES` paths (rasterized the same way `getGrid()` already resamples real ink)
-for all six seed letters, not reverting this rendering change.
+initial "HAT" decode used to be reliably close to correct on first paint back when the page seed-
+trained on load — moot now that it doesn't (see "The page opens genuinely blank," above): a fresh
+random network has no learned associations to match or mismatch against these strokes either way,
+so the word simply decodes to whatever a random network decodes anything to until you actually
+teach it something.
+
+## The training tip (`computeTrainingTip`) — a real self-consistency check, not a guess at intent
+
+Direct request: analyze the output and suggest which letter would benefit most from another
+example — "if someone's test input is HTT and they have the output HHH ... they should probably
+train more T's." **That exact framing isn't something the tool can honestly compute**: a word pad
+is just a drawing, with no separate "this position is supposed to be a T" label ever attached to
+it, so there's no ground truth to compare a decode against and no way to know a decode is "wrong"
+the way a person reading it can — the tool would have to guess at what the visitor intended to
+spell, and guessing wrong would be worse than saying nothing.
+
+What it *can* honestly compute, using only real, already-available data: for every letter that's
+been taught at least once, replay every one of *that letter's own* training examples back through
+the current network (`forward(x).probs[y]`, the real softmax probability the network assigns to
+the correct class) and average them. A letter sitting at low self-confidence is either under-taught
+(often because it only has one example) or genuinely being confused with something else already
+taught — either way, teaching it one more example is the best next move, and this is computable
+without ever needing to know what a test word was "supposed" to say. `#trainingTip` shows the
+single worst-scoring taught letter by name with its real average confidence and example count
+(`computeTrainingTip()`), or a "looking solid" message when every taught letter already averages
+above 80% self-confidence — hidden entirely (`hidden` attribute) whenever `dataset` is empty, since
+there's nothing yet to compute a real suggestion from. Recomputed at the same points
+`refreshLookInside()`/`renderArchDiagram()` already are (after Train, Reset, and a successful
+weight Load), so it's never stale relative to the current weights.
+
+## Colorblind-friendly palette (`ACCENT_RGB`/`COOL_RGB`, `#colorblindToggle`)
+
+Direct request: offer better colors for colorblindness, or at least an option. The rose/blue pair
+(`C_ACCENT`/`C_COOL`) is this page's default excites/inhibits diverging scale, used everywhere a
+real signed value gets drawn: `divergingColor()` (tiles, hidden/output bias dots), the heatmap, the
+stage animation's forward/backward lines, and the network-weights diagram's connection lines. All
+of those read from two mutable module-level variables, `ACCENT_RGB`/`COOL_RGB`, rather than the
+frozen `hexToRgb(C_ACCENT)`/`hexToRgb(C_COOL)` constants they used to be — flipping those two
+variables and re-rendering is enough to update every one of those visualizations consistently from
+one place, with nothing left pointing at the old colors. The colorblind-safe alternative is
+orange `#E69F00` / blue `#0072B2` (the Okabe-Ito palette, a standard, widely-recommended
+colorblind-safe diverging pair — chosen over inventing a new pair by feel), toggled by
+`#colorblindToggle` and persisted across visits via `localStorage['inklingColorblind']` (read once,
+synchronously, at the top of the script — before `ACCENT_RGB`/`COOL_RGB` are even initialized —
+wrapped in try/catch since `localStorage` can throw in a locked-down browsing context and this
+should never be what breaks the page).
+
+**The legend's two color swatches are kept in sync explicitly, not left pointing at CSS.** They
+used to be plain inline `style="background:var(--accent)"`/`var(--cool)"`, tied to the page's CSS
+custom properties rather than the JS color variables — toggling colorblind mode would have updated
+every canvas but left the legend showing the old rose/blue, directly contradicting what the
+diagrams actually then looked like. `syncLegendSwatches()` sets `#legendAccentSwatch`/
+`#legendCoolSwatch`'s `background` directly from the live `ACCENT_RGB`/`COOL_RGB`, called once at
+load and again inside the toggle's `change` handler, so the legend can never drift out of sync with
+what's actually drawn. Deliberately scoped to just these data-encoding colors — the toggle does not
+touch the site's own `--accent`/`--cool` CSS custom properties or any button/branding color, since
+those don't encode signed data and aren't part of what colorblind accessibility here is about.
 
 ## Look inside: tiles and heatmap (`refreshLookInside`)
 
@@ -418,29 +484,36 @@ in the meantime.
 No test suite — static page. Verify via a local static server (root-relative `/nav.js` and
 `/theme.css` mean `file://` won't pick them up). Golden path: confirm the page opens with section
 01 ("Give it a word") showing the hand-drawn-looking "HAT" first, section 02 ("Teach it a letter")
-below it, and the seed letters already taught (chip counts non-zero for H/I/A/B/C/T) → click "Tap
-to draw a letter and teach it", confirm the wizard opens to the draw step, draw something, click
-"Next →", confirm it switches to the letter-picker step with Train disabled until a letter is
-picked, pick one, click Train, confirm the modal closes and the stage animation plays real
-per-active-pixel fan-out lines from the input raster into the hidden column (not a single bundled
-line), then hidden→output, then dashed backward lines all the way back to the same input pixels →
-confirm the compact "reads today's word... as: X" line under the diagram updates in sync with
-section 01's own decoded word → back on the page, click a specific letter chip (not the generic
-trigger), confirm the wizard opens with that letter named in the header and already pre-selected/
-Train-enabled in the letter-picker step → in section 01, change one word-pad letter and confirm it
+below it, `trainStatus` reading exactly 0 examples across 0 letters, every chip's count at 0, and
+`#trainingTip` hidden (nothing to suggest yet from an empty dataset) → click the generic "Tap to
+draw a letter and teach it" trigger, confirm the wizard opens to the draw step with a plain "Draw
+the letter" header, draw something, click "Next →", confirm it switches to the letter-picker step
+with Train disabled until a letter is picked, pick one, click Train, confirm the modal closes and
+the stage animation plays real per-active-pixel fan-out lines from the input raster into the hidden
+column (not a single bundled line), then hidden→output, then dashed backward lines all the way back
+to the same input pixels → confirm the compact "reads today's word... as: X" line under the diagram
+updates in sync with section 01's own decoded word, and `#trainingTip` now shows a real message
+(likely "Looking solid" right after a single fresh example) → back on the page, click a *specific*
+letter chip (not the generic trigger), confirm the wizard opens with that letter named directly in
+the header ('Draw the letter "X"'), the draw step's own button already reads "Train ↳" (not "Next
+→"), and clicking it after drawing commits and trains immediately — the letter-picker step should
+never appear at all for this path → in section 01, change one word-pad letter and confirm it
 re-decodes and logs a new attempt with no separate button click needed, then click "Clear all" and
 confirm every pad clears and it re-decodes to blanks in one action → click "Reset network" twice
 (first click only arms the confirmation toast) and confirm chip counts and `trainStatus` both go to
-exactly 0, the look-inside tiles snap to random noise (not the seed letters' shapes), the word
-decode updates to reflect the now-random network (not a stale pre-reset value), and the network-
-weights diagram's input grid visibly loses whatever letter-shaped pattern it had and shows uniform
-noise instead → confirm the QR code and the network-weights diagram both render in step 04 with no
-quantization toggle or ledger table visible, and both "Download QR as PNG" and "Download diagram as
-PNG" save real, non-empty PNGs → train one more letter and confirm the diagram's connections/dot
-colors visibly change afterward (it re-renders on every Train, not just at page load) →
-open "how this actually works" and confirm the full-precision copy/load weights UI is there (not in
-step 04) → copy the full-precision weights, clear/retrain a little, then paste the
-copied JSON back into "Load weights" and confirm the look-inside tiles snap back to the earlier
-state (a real round-trip, not just "no error thrown") → render a portrait, confirm the download
-button only appears after rendering (not before), and confirm the downloaded PNG actually contains
-the tiles/heatmap/word, not a blank canvas.
+exactly 0, `#trainingTip` hides again, the look-inside tiles snap to random noise, the word decode
+updates to reflect the now-random network, and the network-weights diagram's input grid visibly
+loses whatever letter-shaped pattern it had and shows uniform noise instead → check the
+"Colorblind-friendly colors" checkbox and confirm the legend swatches, the look-inside tiles, the
+heatmap, the stage diagram, and the network-weights diagram all switch from rose/blue to
+orange/blue together, with nothing left showing the old colors; reload the page and confirm the
+checkbox and the colors both persisted → confirm the QR code and the network-weights diagram both
+render in step 04 with no quantization toggle or ledger table visible, and both "Download QR as
+PNG" and "Download diagram as PNG" save real, non-empty PNGs → train one more letter and confirm
+the diagram's connections/dot colors visibly change afterward (it re-renders on every Train, not
+just at page load) → open "how this actually works" and confirm the full-precision copy/load
+weights UI is there (not in step 04) → copy the full-precision weights, clear/retrain a little,
+then paste the copied JSON back into "Load weights" and confirm the look-inside tiles snap back to
+the earlier state (a real round-trip, not just "no error thrown") → render a portrait, confirm the
+download button only appears after rendering (not before), and confirm the downloaded PNG actually
+contains the tiles/heatmap/word, not a blank canvas.

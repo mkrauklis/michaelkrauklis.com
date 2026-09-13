@@ -53,16 +53,21 @@
   .pad-actions{ display:flex; gap:.6rem; align-items:center; }
 
   /* ---------- draw trigger (opens the teach wizard) ---------- */
+  /* Sits in a single row with the trained-count status and Reset (.teach-header) rather than as
+     its own full-width block above them -- direct feedback that the old stacked layout ("the tap
+     to draw is huge, reset network could be on the same line") left a lot of unused vertical
+     space for what these controls actually need. */
+  .teach-header{ display:flex; align-items:center; gap:.7rem; flex-wrap:wrap; }
   .draw-trigger{
-    display:flex; align-items:center; gap:.9rem; width:100%; text-align:left;
+    display:flex; align-items:center; gap:.6rem; flex:1 1 240px; text-align:left;
     background:var(--bg-panel-2); border:1px dashed var(--line); border-radius:10px;
-    padding:.7rem 1.1rem; color:var(--ink); font-family:'Fraunces',serif; font-size:1.05rem;
+    padding:.5rem .9rem; color:var(--ink); font-family:'Fraunces',serif; font-size:.95rem;
     cursor:pointer; transition:border-color .15s ease, background .15s ease;
   }
   .draw-trigger:hover{ border-color:var(--accent); background:color-mix(in srgb, var(--accent) 8%, var(--bg-panel-2)); }
   .draw-trigger-icon{
-    display:flex; align-items:center; justify-content:center; width:36px; height:36px;
-    border-radius:8px; background:var(--paper); color:var(--stroke); font-size:1.15rem; flex:0 0 auto;
+    display:flex; align-items:center; justify-content:center; width:28px; height:28px;
+    border-radius:7px; background:var(--paper); color:var(--stroke); font-size:1rem; flex:0 0 auto;
   }
 
   /* ---------- letter chips ---------- */
@@ -88,6 +93,14 @@
   .status-mono{ font-family:var(--mono); font-size:.78rem; color:var(--ink-dim); margin-top:.9rem; }
   .status-mono b{ color:var(--ink); }
 
+  /* ---------- training tip: a real, computed suggestion, not canned copy ---------- */
+  .tip-box{
+    margin-top:.8rem; padding:.6rem .9rem; border-radius:8px; border-left:3px solid var(--accent);
+    background:var(--bg-panel-2); font-family:var(--mono); font-size:.8rem; color:var(--ink-dim);
+    line-height:1.5;
+  }
+  .tip-box b{ color:var(--ink); }
+
   /* ---------- stage (forward/back animation) ---------- */
   .stage-wrap{ margin-top:1.1rem; }
   canvas#stage{ width:100%; max-width:760px; height:auto; display:block; background:var(--bg-panel-2); border-radius:10px; border:1px solid var(--line); }
@@ -95,6 +108,11 @@
   .legend{ display:flex; gap:1rem; flex-wrap:wrap; margin-top:.4rem; }
   .legend span{ font-family:var(--mono); font-size:.72rem; color:var(--ink-dim); display:flex; align-items:center; gap:.4em; }
   .legend-swatch{ width:10px; height:10px; border-radius:3px; display:inline-block; }
+  .cb-toggle{
+    display:inline-flex; align-items:center; gap:.45em; margin-top:.6rem;
+    font-family:var(--mono); font-size:.72rem; color:var(--ink-dim); cursor:pointer;
+  }
+  .cb-toggle input{ accent-color:var(--accent); cursor:pointer; }
 
   /* ---------- test word ---------- */
   .word-row{ display:flex; flex-wrap:wrap; gap:.7rem; margin-top:1.2rem; }
@@ -212,33 +230,29 @@
     followed by a full backward pass, every time.</p>
 
     <div class="panel">
-      <button type="button" class="draw-trigger" id="openTeachBtn">
-        <span class="draw-trigger-icon">✎</span>
-        <span>Tap to draw a letter and teach it</span>
-      </button>
-
-      <div class="row" style="margin-top:.9rem; align-items:flex-start;">
-        <div class="col" style="min-width:280px;">
-          <div class="status-mono" style="margin-top:0;">examples taught so far — tap a letter to teach it directly:</div>
-          <div class="chips" id="letterChips"></div>
-        </div>
-        <div class="col" style="min-width:200px;">
-          <div class="status-mono" id="trainStatus" style="margin-top:0;"></div>
-          <div class="actions">
-            <button type="button" class="secondary" id="resetBtn">Reset network</button>
-            <span class="toast" id="resetToast">click again to confirm</span>
-          </div>
-        </div>
+      <div class="teach-header">
+        <button type="button" class="draw-trigger" id="openTeachBtn">
+          <span class="draw-trigger-icon">✎</span>
+          <span>Tap to draw a letter and teach it</span>
+        </button>
+        <span class="status-mono" id="trainStatus" style="margin:0;"></span>
+        <button type="button" class="secondary" id="resetBtn">Reset network</button>
+        <span class="toast" id="resetToast">click again to confirm</span>
       </div>
+
+      <div class="status-mono" style="margin-top:.9rem;">examples taught so far — tap a letter to teach it directly:</div>
+      <div class="chips" id="letterChips"></div>
+      <div class="tip-box" id="trainingTip" hidden></div>
 
       <div class="stage-wrap">
         <canvas id="stage" width="760" height="200"></canvas>
         <div class="stage-caption" id="stageCaption">Draw a letter to watch it learn.</div>
         <div class="legend">
-          <span><i class="legend-swatch" style="background:var(--accent);"></i>excites (+ weight / + activation)</span>
-          <span><i class="legend-swatch" style="background:var(--cool);"></i>inhibits (− weight / − activation)</span>
+          <span><i class="legend-swatch" id="legendAccentSwatch" style="background:var(--accent);"></i>excites (+ weight / + activation)</span>
+          <span><i class="legend-swatch" id="legendCoolSwatch" style="background:var(--cool);"></i>inhibits (− weight / − activation)</span>
           <span><i class="legend-swatch" style="background:var(--ink);"></i>backprop signal, flowing right→left</span>
         </div>
+        <label class="cb-toggle"><input type="checkbox" id="colorblindToggle"> Colorblind-friendly colors (orange / blue)</label>
         <div class="status-mono" style="margin-top:1rem;">reads today's word (step 01, above) as: <b id="stageWordReadout">—</b></div>
       </div>
     </div>
@@ -449,7 +463,18 @@
   function lerp(a,b,t){ return a+(b-a)*t; }
   function hexToRgb(h){ h=h.replace('#',''); return [parseInt(h.substr(0,2),16),parseInt(h.substr(2,2),16),parseInt(h.substr(4,2),16)]; }
   function rgbStr(rgb,a){ return 'rgba('+rgb[0]+','+rgb[1]+','+rgb[2]+','+(a==null?1:a)+')'; }
-  var NEUTRAL_RGB=hexToRgb(C_NEUTRAL), ACCENT_RGB=hexToRgb(C_ACCENT), COOL_RGB=hexToRgb(C_COOL);
+  var NEUTRAL_RGB=hexToRgb(C_NEUTRAL);
+  // Rose/blue (the site's own accent pair) is the default excites/inhibits scale used everywhere
+  // real signed values get drawn: tiles, the heatmap, the stage animation, the network-weights
+  // diagram. Orange/blue (Okabe-Ito, a standard colorblind-safe diverging pair) is offered as a
+  // real alternative, not just a cosmetic option -- ACCENT_RGB/COOL_RGB are the single pair every
+  // one of those draws from, so flipping them and re-rendering is enough to update all of them
+  // consistently in one place.
+  var ACCENT_RGB_NORMAL=hexToRgb(C_ACCENT), COOL_RGB_NORMAL=hexToRgb(C_COOL);
+  var ACCENT_RGB_CB=hexToRgb('#E69F00'), COOL_RGB_CB=hexToRgb('#0072B2');
+  var colorblindMode = (function(){ try{ return localStorage.getItem('inklingColorblind')==='1'; }catch(e){ return false; } })();
+  var ACCENT_RGB = colorblindMode ? ACCENT_RGB_CB : ACCENT_RGB_NORMAL;
+  var COOL_RGB = colorblindMode ? COOL_RGB_CB : COOL_RGB_NORMAL;
   function divergingColor(v, maxAbs, alpha){
     if (maxAbs<1e-6) maxAbs=1e-6;
     var t = clamp(v/maxAbs,-1,1);
@@ -568,18 +593,13 @@
     }
     return g;
   }
-  function seedTrain(){
-    Object.keys(SEED).forEach(function(letter){
-      var yIdx = ALPHA.indexOf(letter);
-      [0,1].forEach(function(variant){
-        var grid = patternToGrid(SEED[letter], variant===0?0:1);
-        dataset.push({x:grid, y:yIdx});
-        counts[yIdx]++;
-      });
-    });
-    runEpochs(60, 0.5);
-  }
-  seedTrain();
+  // The page deliberately opens on a genuinely fresh, untrained random network -- no seedTrain()
+  // call here. An earlier version pre-trained six letters at load so the page "never opened
+  // blank," but that meant a first-time visitor's very first look at "look inside" or the word
+  // decode wasn't showing *their* network at all, and they had to click Reset to get one -- direct
+  // feedback: "it's not intuitive that someone needs to go back and reset to get their own
+  // network." SEED/patternToGrid are still used below, just for the seeded word pads' handwritten-
+  // stroke-fallback rendering, not for training anything at load anymore.
 
   // ---------------- letter chips: an overview on the page that also opens the wizard ----------------
   // Clicking one of these opens the same teach wizard as the "tap to draw" trigger, but pre-aimed
@@ -714,6 +734,12 @@
   // sequence; word-pad mode (unchanged) keeps the original single "Done" commit. Both share the
   // same overlay and canvas -- only the action row and which body panel is visible differ.
   var expandWizard = false;
+  // A chip click already knows which letter it means, so there's nothing left to confirm --
+  // direct feedback: "they shouldn't have to confirm it... it should go right to train instead of
+  // confirming the letter." When a specific letter was already picked before the modal opened,
+  // the draw step's own action button trains directly and the letter-picker step never appears at
+  // all; the generic "tap to draw" trigger (no letter known yet) still goes through both steps.
+  var expandPreset = false;
   function showDrawStep(){
     $('drawStepBody').hidden = false;
     $('letterStepBody').hidden = true;
@@ -721,6 +747,7 @@
     $('letterStepActions').hidden = true;
     $('expandDone').hidden = expandWizard;
     $('expandNext').hidden = !expandWizard;
+    $('expandNext').textContent = expandPreset ? 'Train ↳' : 'Next →';
   }
   function showLetterStep(){
     $('drawStepBody').hidden = true;
@@ -736,6 +763,7 @@
     // teach Q without a redundant re-pick, while still letting a visitor change their mind there.
     var preset = opts && opts.presetLetter;
     wizardLetter = preset || null;
+    expandPreset = !!preset;
     if (expandWizard) Object.keys(modalChipRefs).forEach(function(l){ modalChipRefs[l].classList.toggle('active', l===preset); });
     $('expandTrain').disabled = !preset;
     $('expandLabel').textContent = label;
@@ -743,9 +771,11 @@
     // carry over whatever's already on the thumbnail, scaled up, so re-opening never loses work
     if (padApi.isDirty()) expandCtx.drawImage(padApi.canvasEl, 0, 0, EXPAND_SIZE, EXPAND_SIZE);
     expandDirty = padApi.isDirty();
-    $('expandFoot').textContent = expandWizard
-      ? 'draw, then Next — click outside or press Esc to cancel'
-      : 'draw, then Done — or click outside, or press Esc';
+    $('expandFoot').textContent = !expandWizard
+      ? 'draw, then Done — or click outside, or press Esc'
+      : expandPreset
+        ? 'draw the letter above, then Train — click outside or press Esc to cancel'
+        : 'draw, then Next — click outside or press Esc to cancel';
     showDrawStep();
     expandOverlay.hidden = false;
   }
@@ -771,7 +801,14 @@
   $('expandDone').addEventListener('click', function(){ closeExpander(true); });
   $('expandNext').addEventListener('click', function(){
     if (!expandDirty){ $('expandFoot').textContent='draw something first'; return; }
-    showLetterStep();
+    if (expandPreset){
+      commitExpanderInk();
+      expandOverlay.hidden = true;
+      expandTarget = null;
+      doTrain(wizardLetter);
+    } else {
+      showLetterStep();
+    }
   });
   $('expandBack').addEventListener('click', function(){ showDrawStep(); });
   $('expandTrain').addEventListener('click', function(){
@@ -818,9 +855,9 @@
   // Hand-authored pen paths (grid-cell coordinates, 0-9) for the three letters in the seeded word
   // -- filling SEED's ASCII-art squares directly (the old approach) rendered as solid grid blocks,
   // which reads as pixel-art bricks rather than something a hand actually wrote. These are only
-  // used for the seeded word's *display*; SEED/patternToGrid (rasterized blocks) are unrelated and
-  // still exactly what seedTrain() trains on -- decoding a word pad just re-samples whatever is
-  // currently drawn on its canvas, so the word pads' look is free to differ from the training data.
+  // used for the seeded word's *display*; decoding a word pad just re-samples whatever is
+  // currently drawn on its canvas, so the word pads' look is free to differ from SEED/patternToGrid
+  // (which nothing trains on anymore -- the page opens on a genuinely random, untaught network).
   var HANDWRITTEN_STROKES = {
     H: [ [[2,1],[2,8.5]], [[7,1],[7,8.5]], [[2,4.6],[7,4.4]] ],
     A: [ [[1.5,8.5],[4.5,1],[7.5,8.5]], [[3,5.8],[6.5,5.6]] ],
@@ -948,6 +985,45 @@
   }
   refreshLookInside();
 
+  // ---------------- training tip: which letter would benefit most from another example ----------------
+  // A real, computed answer, not a guess at what the visitor "meant" to spell -- the tool has no
+  // ground truth for what a test word is supposed to say (a word pad is just a drawing, with no
+  // separate "this should be X" label attached), so it can't know a decode is "wrong" the way a
+  // person reading it can. What it *can* honestly compute: for every letter that's been taught,
+  // run every one of that letter's own training examples back through the current network and
+  // average how much probability mass lands on its own correct class. A letter sitting at low
+  // self-confidence is either under-taught (often just one example) or genuinely confusable with
+  // something else already taught -- either way, teaching it another example is the best next move.
+  function computeTrainingTip(){
+    var tipEl = $('trainingTip');
+    if (!dataset.length){ tipEl.hidden = true; return; }
+    var sums = {}, ns = {};
+    dataset.forEach(function(ex){
+      var letter = ALPHA[ex.y];
+      var conf = forward(ex.x).probs[ex.y];
+      sums[letter] = (sums[letter]||0) + conf;
+      ns[letter] = (ns[letter]||0) + 1;
+    });
+    var worst = null;
+    Object.keys(sums).forEach(function(letter){
+      var avg = sums[letter]/ns[letter];
+      if (!worst || avg < worst.avg) worst = {letter:letter, avg:avg, n:ns[letter]};
+    });
+    tipEl.hidden = false;
+    if (worst.avg > 0.8){
+      tipEl.innerHTML = '<b>Looking solid.</b> Every letter you\'ve taught is recognizing its own examples with high confidence — teach a brand new letter next, or keep testing the word above.';
+    } else {
+      var pct = Math.round(worst.avg*100);
+      var countNote = worst.n===1
+        ? 'it only has one example so far, which is almost always why'
+        : 'even with '+worst.n+' examples, it\'s still the shakiest one you\'ve taught';
+      tipEl.innerHTML = 'Most bang for the buck right now: <b>'+worst.letter+'</b>. The network only '+
+        'recognizes its own '+worst.letter+' examples correctly '+pct+'% of the time on average — '+
+        countNote+'. Drawing another '+worst.letter+' would help more than any other letter.';
+    }
+  }
+  computeTrainingTip();
+
   // ---------------- stage animation: 100 pixels -> 18 hidden neurons -> 26 outputs, and back ----------------
   // Kept short (STAGE_H=200, was 300) so the whole teach panel -- trigger, chip overview, and this
   // diagram -- fits on one screen together with the word-decode readout right below it, on both
@@ -1022,6 +1098,27 @@
     drawStageLabels(stageCtx);
   }
   idleStage();
+
+  // ---------------- colorblind-friendly palette toggle ----------------
+  // ACCENT_RGB/COOL_RGB are the one shared pair every real-data visualization on this page reads
+  // from (tiles, heatmap, this stage animation, the network-weights diagram) -- swapping them and
+  // re-rendering each is enough to update all of them together, with nothing to fall out of sync.
+  function syncLegendSwatches(){
+    $('legendAccentSwatch').style.background = rgbStr(ACCENT_RGB,1);
+    $('legendCoolSwatch').style.background = rgbStr(COOL_RGB,1);
+  }
+  syncLegendSwatches();
+  $('colorblindToggle').checked = colorblindMode;
+  $('colorblindToggle').addEventListener('change', function(e){
+    colorblindMode = e.target.checked;
+    try{ localStorage.setItem('inklingColorblind', colorblindMode?'1':'0'); }catch(err){}
+    ACCENT_RGB = colorblindMode ? ACCENT_RGB_CB : ACCENT_RGB_NORMAL;
+    COOL_RGB = colorblindMode ? COOL_RGB_CB : COOL_RGB_NORMAL;
+    syncLegendSwatches();
+    refreshLookInside();
+    renderArchDiagram();
+    idleStage();
+  });
 
   var animating = false;
   function animateSequence(pre, x, yIdx){
@@ -1181,6 +1278,7 @@
       runEpochs(EPOCHS, LR);
       refreshLookInside();
       renderArchDiagram();
+      computeTrainingTip();
       refreshLedger();
       var d = decodeWordPads();
       renderDecoded(d);
@@ -1201,14 +1299,13 @@
       return;
     }
     clearTimeout(resetTimer); resetArmed=false; $('resetToast').classList.remove('show');
-    // Genuinely blank: fresh random weights, no re-seeding. (Initial page load still calls
-    // seedTrain() once so a first-time visitor doesn't see an empty page -- see "why the page
-    // never opens blank" -- but the Reset button itself is not the same action as a page load;
-    // clicking it should undo everything the current session has taught, not quietly restore the
-    // same starting demo. Previously it called seedTrain() right after initNet(), which silently
-    // re-populated the six seed letters -- the counts and the look-inside tiles' shapes never
-    // actually went blank, even though a visitor pressing "Reset" every reason to expect they did.)
-    dataset=[]; counts=new Array(26).fill(0); initNet(); refreshChipCounts(); refreshLookInside(); renderArchDiagram(); refreshLedger(); idleStage();
+    // Genuinely blank: fresh random weights, matching exactly what the page itself opens with at
+    // load (see the comment above initNet()'s call site near the top of this script) -- there is
+    // only one "blank" state in this tool, not a page-load demo and a separate, different Reset
+    // target. An earlier version called seedTrain() here, silently restoring a six-letter demo
+    // instead of actually blanking the network -- direct feedback caught this as Reset appearing
+    // to do nothing.
+    dataset=[]; counts=new Array(26).fill(0); initNet(); refreshChipCounts(); refreshLookInside(); renderArchDiagram(); computeTrainingTip(); refreshLedger(); idleStage();
     $('trainStatus').innerHTML = '<b>0</b> examples taught across <b>0</b> letters';
     var d = decodeWordPads(); renderDecoded(d); pushAttempt(d);
   });
@@ -1446,7 +1543,7 @@
       b1 = Float32Array.from(obj.b1);
       W2 = obj.W2.map(function(r){ return Float32Array.from(r); });
       b2 = Float32Array.from(obj.b2);
-      refreshLookInside(); renderArchDiagram(); refreshLedger(); refreshWeightsOut();
+      refreshLookInside(); renderArchDiagram(); computeTrainingTip(); refreshLedger(); refreshWeightsOut();
       var d=decodeWordPads(); renderDecoded(d); pushAttempt(d);
       var t=$('loadToast'); t.classList.add('show'); setTimeout(function(){t.classList.remove('show');},1500);
     }catch(e){
