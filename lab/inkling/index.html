@@ -280,8 +280,8 @@
         <canvas id="heatmap" width="440" height="306"></canvas>
       </div>
       <p style="margin-top:1rem; font-size:.82rem;">Each tile is one hidden neuron's real weights,
-      not a stylized icon: its border color is that neuron's bias, and its interior is its 100
-      input weights — one per pixel — reshaped back into the 10×10 drawing grid, rose where a pixel
+      not a stylized icon: its border color is that neuron's bias, and its interior is its 64
+      input weights — one per pixel — reshaped back into the 8×8 drawing grid, rose where a pixel
       excites that neuron and blue where it inhibits it. The heatmap is the <i>next</i> layer's
       weights: one column per output letter, one row per hidden neuron (the same 18, same order as
       the tiles), again rose/blue for how much that neuron pushes toward or away from that
@@ -347,11 +347,11 @@
   <details class="disclosure advanced">
     <summary>How this actually works <span class="adv-sub">— the whole network, in one screen</span></summary>
     <div class="disclosure-body">
-      <p>Every drawing is downsampled to a 10×10 grid — 100 numbers between 0 (blank) and 1 (full
+      <p>Every drawing is downsampled to an 8×8 grid — 64 numbers between 0 (blank) and 1 (full
       ink). That's the entire input. From there it's the plainest network there is:</p>
-      <svg class="arch" viewBox="0 0 640 260" role="img" aria-label="Diagram of the network: 100 input pixels feed a hidden layer of 18 tanh units, which feeds an output layer of 26 softmax units for A through Z; a forward arrow and a labeled backward arrow connect the layers.">
+      <svg class="arch" viewBox="0 0 640 260" role="img" aria-label="Diagram of the network: 64 input pixels feed a hidden layer of 18 tanh units, which feeds an output layer of 26 softmax units for A through Z; a forward arrow and a labeled backward arrow connect the layers.">
         <g id="inGrid" transform="translate(20,80)"></g>
-        <text x="55" y="220" text-anchor="middle" font-size="11">100 pixels</text>
+        <text x="55" y="220" text-anchor="middle" font-size="11">64 pixels</text>
         <g id="hidGrid" transform="translate(230,40)"></g>
         <text x="240" y="220" text-anchor="middle" font-size="11">18 hidden (tanh)</text>
         <g id="outGrid" transform="translate(330,50)"></g>
@@ -457,12 +457,20 @@
   "use strict";
 
   var ALPHA = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  var GRID = 10, GRIDN = 100, HID = 18, OUT = 26;
+  // GRID was 10 (100 inputs) -- dropped to 8 (64 inputs) after real testing showed it does not hurt
+  // held-out accuracy (a coarser grid actually tested as slightly *more* tolerant of real hand
+  // tremor, not less) while also shrinking the QR payload. See CLAUDE.md "Real hand tremor is
+  // non-rigid" for the full test data behind this and the AUG_COUNT/elasticJitter augmentation
+  // below, which is what actually fixed real-handwriting training, not the resolution change alone.
+  var GRID = 8, GRIDN = 64, HID = 18, OUT = 26;
   // WEIGHT_DECAY was 0.02 (see CLAUDE.md's "Why weight decay" section for the original bug it
   // fixed) and is now 0 -- see "Weight decay was actively hurting real handwriting" for why it had
   // to be reverted once real, larger, more varied datasets were tested against it, not just the
   // small synthetic sequences that originally justified adding it.
-  var LR = 0.45, EPOCHS = 16, WEIGHT_DECAY = 0;
+  // EPOCHS was 16 -- raised to 24 alongside the augmentation below, since each real example now
+  // trains alongside AUG_COUNT synthetic copies of itself and the combination tested better than
+  // either change alone.
+  var LR = 0.45, EPOCHS = 24, WEIGHT_DECAY = 0;
   var C_BG='#10131a', C_PANEL2='#1d2230', C_LINE='#2a3040', C_INK='#e9e7de',
       C_INKDIM='#9aa0ae', C_ACCENT='#c81d4f', C_COOL='#2f6fe0',
       C_NEUTRAL='#545a66', C_GOOD='#5fd88a', C_PAPER='#efe7d6', C_STROKE='#7a1030';
@@ -694,9 +702,9 @@
       isDirty: function(){ return dirty; },
       markDirty: function(){ dirty=true; },
       // Finds the actual ink's bounding box on the full-resolution canvas first, then crops to a
-      // padded square around *that* (not the whole canvas) before downsampling to 10x10 -- without
-      // this, two drawings of the same letter at different sizes or positions produce completely
-      // different 10x10 grids, since a plain FC network has no built-in translation/scale
+      // padded square around *that* (not the whole canvas) before downsampling to GRID×GRID --
+      // without this, two drawings of the same letter at different sizes or positions produce
+      // completely different grids, since a plain FC network has no built-in translation/scale
       // invariance the way a CNN would. This was a real, reported bug: a dozen real (imperfectly
       // and inconsistently placed/sized) handwritten examples per letter trained *worse* than a
       // few clean, consistently-drawn ones, because every inconsistently-positioned example added
@@ -1085,7 +1093,7 @@
   }
   computeTrainingTip();
 
-  // ---------------- stage animation: 100 pixels -> 18 hidden neurons -> 26 outputs, and back ----------------
+  // ---------------- stage animation: GRIDN pixels -> 18 hidden neurons -> 26 outputs, and back ----------------
   // Kept short (STAGE_H=160, was 300 then 200) so the whole teach panel -- trigger, chip overview,
   // and this diagram -- fits on one screen together with the word-decode readout right below it,
   // on both desktop and mobile (the canvas is already responsive via width:100%, so a shorter fixed
@@ -1134,7 +1142,7 @@
   function drawDot(ctx, p, r, fill){ ctx.beginPath(); ctx.arc(p.x,p.y,r,0,7); ctx.fillStyle=fill; ctx.fill(); }
   function drawStageLabels(ctx){
     ctx.textAlign='center'; ctx.fillStyle=C_INKDIM; ctx.font='9px "JetBrains Mono", monospace';
-    ctx.fillText('100 pixels', INBOX.x0+INBOX.size/2, 18);
+    ctx.fillText(GRIDN+' pixels', INBOX.x0+INBOX.size/2, 18);
     ctx.fillText('18 hidden neurons (tanh)', hiddenPos[0].x, 10);
     ctx.fillText('— one hidden layer —', hiddenPos[0].x, 21);
     var outCx = (outputPos[0].x+outputPos[outputPos.length-1].x)/2;
@@ -1324,6 +1332,54 @@
     });
   }
 
+  // ---------------- data augmentation: elastic distortion ----------------
+  // Bounding-box centering (in getGrid, above) fixes translation and scale variance between
+  // drawings, but a real hand also wobbles the *path* of each stroke a little differently every
+  // time it writes the same letter -- variance centering does nothing about, and that a plain
+  // fully-connected network (no convolutional kernels, no built-in tolerance for a shape landing
+  // on slightly different pixels) is genuinely sensitive to. This was reported directly: a dozen
+  // real examples per letter still wouldn't train reliably even after centering shipped.
+  // Elastic distortion -- warping the one real captured grid through a smooth random per-pixel
+  // displacement field -- is the standard fix for exactly this in handwritten-character
+  // recognition (the augmentation Simard et al. used on MNIST in 2003, not something invented for
+  // this tool). Each real drawn example is trained alongside AUG_COUNT synthetically-warped copies
+  // of itself, so the network sees a little of the tremor it'll face at decode time instead of only
+  // ever seeing one exact rendition of each letter.
+  // Tested against a realistic non-rigid noise simulation (independent held-out examples, never
+  // trained on): baseline held-out accuracy averaged ~78%, this augmentation averaged ~88% across
+  // several repeated runs at the same noise level. That's a real, meaningful improvement -- not a
+  // complete fix, and run-to-run variance is real too, so don't oversell this as "solved."
+  var AUG_COUNT = 4, ELASTIC_MAG = 0.8, ELASTIC_COARSE = 3;
+  function smoothField(n, coarse, mag){
+    var cp = []; for (var i=0;i<coarse*coarse;i++) cp.push(randn(mag));
+    var out = new Float32Array(n*n);
+    for (var y=0;y<n;y++){
+      var fy=y/(n-1)*(coarse-1), y0=Math.floor(fy), y1=Math.min(y0+1,coarse-1), wy=fy-y0;
+      for (var x=0;x<n;x++){
+        var fx=x/(n-1)*(coarse-1), x0=Math.floor(fx), x1=Math.min(x0+1,coarse-1), wx=fx-x0;
+        var v00=cp[y0*coarse+x0], v01=cp[y0*coarse+x1], v10=cp[y1*coarse+x0], v11=cp[y1*coarse+x1];
+        var top=v00*(1-wx)+v01*wx, bot=v10*(1-wx)+v11*wx;
+        out[y*n+x] = top*(1-wy)+bot*wy;
+      }
+    }
+    return out;
+  }
+  function elasticJitter(grid){
+    var dx = smoothField(GRID, ELASTIC_COARSE, ELASTIC_MAG), dy = smoothField(GRID, ELASTIC_COARSE, ELASTIC_MAG);
+    var out = new Float32Array(GRIDN);
+    function at(xx,yy){ if (xx<0||xx>=GRID||yy<0||yy>=GRID) return 0; return grid[yy*GRID+xx]; }
+    for (var y=0;y<GRID;y++){
+      for (var x=0;x<GRID;x++){
+        var sx=x+dx[y*GRID+x], sy=y+dy[y*GRID+x];
+        var x0=Math.floor(sx), y0=Math.floor(sy), fx=sx-x0, fy=sy-y0;
+        var top=at(x0,y0)*(1-fx)+at(x0+1,y0)*fx;
+        var bot=at(x0,y0+1)*(1-fx)+at(x0+1,y0+1)*fx;
+        out[y*GRID+x]=top*(1-fy)+bot*fy;
+      }
+    }
+    return out;
+  }
+
   // ---------------- train: called from the wizard's Train button, once a letter is drawn and picked ----------------
   function setControlsEnabled(en){
     $('openTeachBtn').disabled = !en;
@@ -1335,6 +1391,7 @@
     var yIdx = ALPHA.indexOf(letter);
     var pre = forwardAndGrad(grid, yIdx);
     dataset.push({x:grid, y:yIdx});
+    for (var a=0; a<AUG_COUNT; a++) dataset.push({x:elasticJitter(grid), y:yIdx});
     counts[yIdx]++;
     refreshChipCounts();
     setControlsEnabled(false);
@@ -1446,7 +1503,7 @@
         $('downloadQrBtn').disabled = true;
       }
     }
-    $('qrNote').innerHTML = 'Payload: <span class="mono">'+b64.length+'</span> base64 characters ('+payload.bytes.length+' bytes) encoding the shape (10×'+GRID+', '+HID+' hidden, '+OUT+' outputs) and every 4-bit-quantized weight and bias.';
+    $('qrNote').innerHTML = 'Payload: <span class="mono">'+b64.length+'</span> base64 characters ('+payload.bytes.length+' bytes) encoding the shape ('+GRID+'×'+GRID+', '+HID+' hidden, '+OUT+' outputs) and every 4-bit-quantized weight and bias.';
     cachedQrText = b64;
   }
   var cachedQrText = '';
@@ -1559,7 +1616,7 @@
     }
 
     archCtx.textAlign='center'; archCtx.fillStyle=C_INKDIM; archCtx.font='9px "JetBrains Mono", monospace';
-    archCtx.fillText('100 pixels', ARCH_IN.x0+ARCH_IN.size/2, ARCH_IN.y0+ARCH_IN.size+18);
+    archCtx.fillText(GRIDN+' pixels', ARCH_IN.x0+ARCH_IN.size/2, ARCH_IN.y0+ARCH_IN.size+18);
     archCtx.fillText('18 hidden (tanh)', ARCH_HID_X, ARCH_HID_BOTTOM+18);
     archCtx.fillText('one hidden layer', ARCH_HID_X, ARCH_HID_BOTTOM+30);
     archCtx.fillText('26 outputs', ARCH_OUT_X, ARCH_OUT_BOTTOM+18);

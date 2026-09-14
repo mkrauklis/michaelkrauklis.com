@@ -1,6 +1,6 @@
 # Inkling
 
-A real 100→18→26 neural network — plain feedforward, trained by real backpropagation, no library,
+A real 64→18→26 neural network — plain feedforward, trained by real backpropagation, no library,
 no pretrained weights — that you teach by hand: draw a letter, say what it is, click Train, and
 watch the actual forward pass and gradient step happen on screen. Then spell a word with it and
 watch the decoded guess sharpen as you teach it more letters. Originated as a prototype reviewed
@@ -31,7 +31,7 @@ type system rather than flattening it into the site's two-typeface default.
 ## The network (`forward`, `forwardAndGrad`, `applyGrad`, `runEpochs`)
 
 Deliberately the plainest possible architecture, stated directly in the "How this actually works"
-copy: `100 pixels → 18 hidden (tanh) → 26 output (softmax, A–Z)`. Forward pass:
+copy: `64 pixels → 18 hidden (tanh) → 26 output (softmax, A–Z)`. Forward pass:
 `a1 = tanh(W1x + b1)`, `ŷ = softmax(W2·a1 + b2)`. Loss is cross-entropy against whatever letter
 you picked. Backward pass is the textbook chain rule: `δ2 = ŷ − y` (softmax+cross-entropy's
 famously simple combined gradient), `δ1 = (W2ᵀδ2) ⊙ (1 − a1²)` (undoing tanh), then every `W`/`b`
@@ -42,11 +42,14 @@ applies a moment later.
 
 Pressing Train does two distinct things, not one: `forwardAndGrad()` + the stage animation runs
 once, immediately, on your new example specifically (so the animation always shows *this*
-drawing's real forward/backward pass) — then, after the animation finishes, `runEpochs(16, 0.45)`
+drawing's real forward/backward pass) — then, after the animation finishes, `runEpochs(24, 0.45)`
 re-shuffles and re-trains on **the entire accumulated dataset**, not just the new example. This is
 why earlier letters don't get forgotten as new ones arrive: every Train click is a fresh, full
 mini-training run over everything taught so far, not an incremental single-example update layered
-on top of the last. `dataset` and `counts` grow monotonically until Reset.
+on top of the last. `dataset` and `counts` grow monotonically until Reset. Each real example also
+adds `AUG_COUNT` (4) elastically-jittered synthetic copies of itself to `dataset` at the same time
+(see "Real hand tremor is non-rigid" below) — `counts` only reflects real taught examples, but
+`dataset.length` (and therefore every epoch's real workload) is 5x that.
 
 **Seeded, not random-random**: `rngState`/`rnd()` is a hand-rolled xorshift32 PRNG (deterministic
 given its fixed seed `88675123`), the same "seeded, not `Math.random()`" discipline Echo State
@@ -151,6 +154,82 @@ again, re-validate with genuinely varied (not just clean, consistently-placed) s
 a real held-out generalization check — training-set self-confidence alone hid this exact bug for
 as long as it went undetected.
 
+## Real hand tremor is non-rigid — centering wasn't the whole fix (`elasticJitter`, `AUG_COUNT`, `GRID=8`)
+
+**Reported again after the centering fix above shipped**: still not working, on a fresh attempt to
+teach a whole word from real handwriting. The user's own diagnosis was correct and is worth quoting
+because it's the actual mechanism: *"when I'm actually writing I'm less consistent than you're
+expecting... that's a big part of the problem the kernels in CNNs solve."*
+
+**Why centering wasn't enough**: bounding-box centering (previous section) corrects *rigid*
+variance — a letter drawn bigger, smaller, or off to one side. It does nothing for *non-rigid*
+variance — the same hand drawing the same letter twice with the stroke's exact path wobbling a
+little differently each time, pixel by pixel. A plain fully-connected network has no built-in
+tolerance for a shape landing on slightly different pixels (that's exactly the local-shift
+tolerance a CNN's convolutional kernels provide and this network doesn't have). My own prior
+validation of the centering fix missed this: the synthetic test strokes used *rigid* jitter only
+(translate/scale/rotate the same fixed path), which centering directly corrects — so that test
+could never have caught a non-rigid problem in the first place. Caught here by building a second,
+more realistic synthetic test that jitters each stroke *segment* independently (simulating real
+tremor along the path, not just moving the whole letter), which reproduced real, meaningful
+accuracy loss even with centering already in place.
+
+**What was tried and measured** (self-contained parallel test network, same math as the real app,
+genuine held-out generalization checks — never training on the exact examples being tested for
+accuracy):
+- Lower resolution alone (8×8, 6×6): 8×8 gave a small real improvement; 6×6 did not help (too
+  coarse, loses shape detail).
+- Blurring the input before downsampling: a small real improvement, roughly comparable to 8×8 alone.
+- **Data augmentation** — training each real drawn example alongside several synthetically-perturbed
+  copies of itself — was the clearly largest lever. The first pass at this measured augmentation by
+  having the test's synthetic letter *generator* redraw fresh independent examples, which isn't a
+  technique available in the shipped app (there's no "true" generator for a real visitor's drawing,
+  only the one grid actually captured) — an important distinction, since that version of the result
+  would have been fake progress if shipped as-is.
+- Re-tested with the only mechanism actually available in production: **elastic distortion** —
+  warping the one real captured grid through a smooth random per-pixel displacement field (the same
+  augmentation technique Simard et al. used for MNIST in 2003; not invented for this tool). This is
+  what's shipped (`elasticJitter`/`smoothField`, defined just above `doTrain`).
+
+**Honest numbers, not a "solved" claim**: under the realistic non-rigid noise simulation, baseline
+(no augmentation) held-out accuracy averaged ~78% across repeated runs; with elastic-distortion
+augmentation (`AUG_COUNT=4` copies per real example, `ELASTIC_MAG=0.8`, `ELASTIC_COARSE=3`) it
+averaged ~88% across repeated runs at the same noise level. A single lucky run hit a perfect score
+first — repeating it 4 more times immediately (35, 31, 36, 37 out of 40, not 40/40 again) showed
+real run-to-run variance and that the perfect run was not the reliable expected outcome. That
+discipline — never trust one run, especially a suspiciously good one — should carry forward to any
+future tuning here. ~88% is a real, meaningful improvement over ~78%, not a complete fix; a
+visitor's actual handwriting may still occasionally need a couple of retrained examples of a
+letter that keeps getting misread, same as it did before.
+
+**`GRID` dropped from 10 to 8 (`GRIDN` 100 → 64) in the same change**, directly answering the
+user's resolution question: tested and found to not hurt (a coarser grid tested as good or
+slightly *better* than 10×10 once combined with augmentation, likely because there's less exact-
+pixel detail for tremor to disagree about) while also shrinking the QR payload (~1552 → ~1120
+base64 characters at this dataset size) as a real secondary benefit, not just a hoped-for one.
+`EPOCHS` raised 16 → 24 alongside augmentation, since the combination tested better than either
+change alone (each real example now trains alongside 4 synthetic copies, so more epochs over that
+larger effective dataset kept helping instead of plateauing early).
+
+**If `GRID` ever changes again**: check for stale hardcoded references to the old size — this pass
+found and fixed three (`drawStageLabels`'s and the network-diagram canvas's `'100 pixels'` labels,
+now `GRIDN+' pixels'`; the QR ledger note, which had hardcoded the literal string `'10×'` instead of
+deriving both dimensions from `GRID`) plus static prose in "how this actually works" and the
+look-inside tiles paragraph that had to be hand-updated since they're not JS-driven. None of these
+threw errors or looked broken at a glance — they just quietly said "100 pixels" and "10×10" next to
+a network that was actually 64 pixels and 8×8, which is exactly the kind of drift that's easy to
+ship unnoticed. Grep the file for `GRID`, `GRIDN`, and any literal `10` or `100` near them before
+trusting a future resolution change is fully applied.
+
+**Verified end-to-end in the real UI**, not just in the synthetic test harness: drew real K, H, and
+A strokes by hand via mouse drags (deliberately imperfect, not identical repeats), trained each
+through the actual wizard, and confirmed `dataset.length` grew by 5 per Train click (1 real + 4
+augmented, matching `AUG_COUNT`), the stage animation and look-inside views rendered correctly at
+the new 8×8 resolution with no console errors, and the word decode picked up each newly-taught
+letter correctly while leaving untaught letters to fall back to whatever letter's shape they're
+nearest to — the same behavior as before, just now backed by a genuinely more tremor-tolerant
+network.
+
 ## The page opens genuinely blank — no seed training, at load or on Reset
 
 `SEED` (six letters, H/I/A/B/C/T, hand-authored as literal 10×10 ASCII-art patterns) and
@@ -162,7 +241,11 @@ not intuitive that someone needs to go back and reset to get their own network."
 visitor's very first "look inside" or word decode is now genuinely *their* network, from a random
 `initNet()`, not a demo they'd have to clear first. `SEED`/`patternToGrid` are only still used as
 the fallback path in `seedWord()`, for rendering the pre-loaded "HAT" word pads on letters without a
-hand-authored `HANDWRITTEN_STROKES` entry.
+hand-authored `HANDWRITTEN_STROKES` entry. Never actually exercised today — H/A/T all have
+`HANDWRITTEN_STROKES` entries — but if a future word ever needs this fallback for a `SEED` letter,
+note `patternToGrid()` loops `r<GRID, c<GRID` (now 8) against `SEED`'s still-10-wide/10-tall
+strings, so it'd silently render only the pattern's top-left 8×8 corner. Fine for display-only use,
+but worth knowing before assuming the fallback draws the whole authored shape.
 
 **`Reset network` and page load now do the exact same thing** (`initNet()` alone, nothing else) —
 this also fixed a real, separately-reported bug where Reset used to call `initNet(); seedTrain();`,
@@ -215,7 +298,7 @@ on `expandPreset` ("draw the letter above, then Train" vs. the generic "draw, th
 modal's own copy matches which flow is actually active.
 
 **`getGrid()`'s downsample is a real resample, not a fake one**: it draws the full-resolution
-canvas into a 10×10 offscreen canvas via `drawImage` (letting the browser's own image scaling do
+canvas into an 8×8 offscreen canvas via `drawImage` (letting the browser's own image scaling do
 the area-averaging), then reads back `getImageData` and converts luminance to ink density
 (`1 − luminance`, clamped). This is genuine pixel data feeding the network, not a synthetic
 stand-in — the same "verify against the real thing" discipline as every other tool here.
@@ -233,7 +316,7 @@ the forward pass, `dz1[h]*W1[h][k]` (the real per-connection contribution to tha
 for backprop — once per `animateSequence()` call, not per frame. A blank pixel contributes exactly
 zero to the weighted sum, so it correctly gets no line at all; this isn't a simplification, it's
 what the math already says. Typical hand-drawn letters have 15-40 active cells, so this is at most
-a few hundred lines per hidden neuron pass, not the 100×18 worst case a fully-inked square would
+a few hundred lines per hidden neuron pass, not the 64×18 worst case a fully-inked square would
 produce — verified to stay smooth in testing, not just assumed cheap.
 
 **Three explicit named phases** replace the old four overlapping opacity ramps: `p1` (250-800ms,
@@ -246,8 +329,10 @@ boundaries the phases use — if you retune the timing, update both together or 
 from what's on screen, the same trap the original version already had to watch for.
 
 **Persistent column labels** (`drawStageLabels()`, called from both `idleStage()` and every
-animation frame) directly state the architecture on the diagram itself: "100 pixels", "18 hidden
-neurons (tanh) — one hidden layer —", "26 outputs (softmax, A–Z) / argmax picks the letter" — added
+animation frame) directly state the architecture on the diagram itself: "`GRIDN` pixels" (64 today,
+derived live rather than hardcoded — see "Real hand tremor is non-rigid" above for why that matters),
+"18 hidden neurons (tanh) — one hidden layer —", "26 outputs (softmax, A–Z) / argmax picks the
+letter" — added
 after direct feedback that a visitor had no way to tell from the diagram alone that there's only
 one hidden layer, or how a letter gets chosen from the output layer.
 
@@ -454,14 +539,14 @@ those don't encode signed data and aren't part of what colorblind accessibility 
 **The section's intro copy states the architecture up front, in plain language, before describing
 what the tiles/heatmap show** — added on direct feedback ("without understanding the network
 architecture I don't even truly know what the 'look inside' is showing me"). It now opens with "the
-whole network is only three layers: your drawing becomes 100 pixel values... 18 hidden neurons...
+whole network is only three layers: your drawing becomes 64 pixel values... 18 hidden neurons...
 26 output neurons" before the receptive-field explanation, and the tile/heatmap caption below was
-rewritten to say plainly that a tile *is* one hidden neuron's real 100 weights reshaped to the
+rewritten to say plainly that a tile *is* one hidden neuron's real 64 weights reshaped to the
 drawing grid, and the heatmap is the *next* layer's weights, one row per hidden neuron in the same
 order as the tiles — spelling out the connection between the two visuals explicitly rather than
 assuming a reader already holds the architecture in their head.
 
-Each of the 18 hidden-unit tiles reshapes that unit's 100 real `W1` weights back into a 10×10 grid
+Each of the 18 hidden-unit tiles reshapes that unit's 64 real `W1` weights back into an 8×8 grid
 and colors every cell with `divergingColor` (rose = excitatory/positive, blue =
 inhibitory/negative, magnitude = saturation toward that hue) — this is a literal receptive field,
 not an approximation or a stylized stand-in, the same "draw the real weights" principle Echo
@@ -493,7 +578,7 @@ download?" Its first version was a generic three-box-and-two-arrows schematic (a
 same static SVG already in "how this actually works") — a real, follow-up request pushed past that:
 *"I want this to show the actual weights... seems like we could draw all that here, couldn't we? At
 least a cool visual."* The current version draws every real connection this network has, not an
-illustration of the shape: for each of the 100 input pixels, a line to each of the 18 hidden dots
+illustration of the shape: for each of the 64 input pixels, a line to each of the 18 hidden dots
 colored by the sign of that exact `W1[h][k]` weight (rose positive, blue negative) and opacity by
 its magnitude relative to the network's own largest weight; the same again from each hidden dot to
 each of the 26 lettered output dots via `W2`. Hidden and output dots are filled by that neuron's
@@ -504,8 +589,8 @@ per hidden neuron), so it's filled by `impact[k] = mean_h(|W1[h][k]|)`, the one 
 summary of that pixel's overall influence — this is what makes a trained network's diagram visibly
 different from a fresh/random one (a trained "H" produces a visible receptive-field-shaped blob in
 that grid; a freshly-reset network shows uniform noise). Connections below `|w|/maxAbs < 0.12` are
-skipped entirely rather than drawn at near-zero opacity, both for legibility (≤100×18 + 18×26 ≈
-2,268 possible lines is already dense) and because a genuinely negligible weight isn't meaningfully
+skipped entirely rather than drawn at near-zero opacity, both for legibility (≤64×18 + 18×26 ≈
+1,620 possible lines is already dense) and because a genuinely negligible weight isn't meaningfully
 "a real connection" worth ink. Every position is still derived from the real `GRID`/`HID`/`OUT`
 constants, not hand-tuned to "18 dots," so the layout stays correct if the network's shape ever
 changes. Unlike the original schematic (rendered once at load, since the *shape* never changes),
@@ -633,4 +718,8 @@ repeated), training each as the same letter. Then draw a *fresh* example of that
 sized/positioned again, into a word pad and confirm it decodes correctly — and confirm accuracy on
 that fresh example gets *better*, not worse, as you go from one training example to three or four.
 If it gets worse with more (real, varied) examples, `getGrid()`'s centering/cropping is broken —
-check it before suspecting anything else.
+check it before suspecting anything else. Vary more than just size and position, too: draw the
+letter with genuinely different stroke tremor each time (not the same careful path traced
+repeatedly), not just at different sizes/positions — see "Real hand tremor is non-rigid" above for
+why a test that only varies size/position can pass while the harder, more realistic case still
+fails.
