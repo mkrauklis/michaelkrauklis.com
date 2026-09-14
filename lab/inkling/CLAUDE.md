@@ -506,6 +506,82 @@ there's nothing yet to compute a real suggestion from. Recomputed at the same po
 `refreshLookInside()`/`renderArchDiagram()` already are (after Train, Reset, and a successful
 weight Load), so it's never stale relative to the current weights.
 
+## The "Looking solid" tip was measuring the wrong thing (`MIN_REAL_FOR_CONFIDENCE`, `real` flag on `dataset` entries)
+
+**Reported directly, with a screenshot**: taught M/I/K/E (one real example each) to spell "MIKE,"
+the tip said *"Looking solid... recognizing its own examples with high confidence,"* and the word
+still decoded wrong. Not a vague complaint — a specific, reproducible claim that the tool's own
+"things look good" signal was lying.
+
+**First, a real methodology mistake of my own, caught before blaming the app**: verifying this
+requires driving the actual teach wizard and reading a real decode back, not just asserting JS
+state. Scripting that hit two real snags, both worth recording so a future verification pass
+doesn't repeat them:
+1. `document.visibilityState` reports `"hidden"` for this tab throughout this automation
+   environment, always, regardless of `tabs_select`/fronting — and `animateSequence()`'s
+   `requestAnimationFrame` loop *never fires at all* while hidden (not throttled — zero callbacks).
+   Since `doTrain()`'s real work (`runEpochs`, `refreshLookInside`, `refreshLedger`, re-enabling
+   `openTeachBtn`/`resetBtn`) all lives inside `animateSequence(...).then(...)`, a script that clicks
+   Train and moves on leaves training genuinely stuck mid-flight — `dataset.push` happened, the real
+   weight update did not, and the UI is left with `openTeachBtn` permanently disabled. The
+   workaround: a `computer` tool screenshot call between steps forces one real compositor frame,
+   which is enough for one rAF tick to fire — and since `animateSequence`'s `frame()` checks real
+   elapsed `Date.now()` time rather than counting frames, by the time that one tick fires (after the
+   round-trip latency of the intervening tool calls) enough wall-clock time has already passed that
+   it resolves the whole animation immediately. Any future scripted test of the teach flow needs a
+   forced-paint step between clicking Train and checking the result, or it will silently test a
+   stuck page.
+2. **The first "clean" retest after the fix above shipped was itself contaminated**, and produced
+   exactly the kind of scary, wrong-looking result that could have led to reverting a real fix for
+   a bug that didn't exist in it. Word pads 0/1/2 start pre-loaded with the seeded "HAT" ink; a word
+   pad's own click handler opens the *shared* `#expandCanvas` pre-loaded with whatever's already on
+   that pad (so you can keep editing a drawing, not just replace it), and drawing new ink into it
+   without clicking Clear first draws on top of, not over, the old letter. A fresh "K" drawn into
+   pad 2 without clearing decoded as a blend of the drawn K and the original hand-authored T
+   underneath it — confirmed directly by re-implementing `getGrid()`'s exact crop/downsample math
+   against that pad's raw canvas pixels and rendering it as ASCII art, which showed T's literal top
+   crossbar plus K's diagonals in the same grid. This alone was producing decodes like "MEEK" and
+   "MKII" that looked like the augmentation fix had failed outright. Clicking `#expandClear` before
+   drawing into any pre-seeded pad fixed it immediately. Any test that reuses word pads 0-2 without
+   clearing first is not testing what it thinks it's testing.
+
+**Once actually clean, the real signal was much smaller and much more informative than either the
+scary contaminated result or a simple "still broken":**
+- **1 real example per letter** (M, I, K, E, exactly matching the reported scenario): a fresh
+  drawing of "MIKE" decoded 2/4 correct.
+- **3 real examples per letter** (same four letters, same test): a fresh "MIKE" decoded 3/4 correct.
+
+This is the expected, honest shape of the augmentation fix, not evidence it doesn't work:
+`elasticJitter` (see "Real hand tremor is non-rigid" above) warps the *one* real drawing you gave
+it — it regularizes around that example, it cannot manufacture the genuine shape-diversity that
+only comes from a person actually drawing the letter more than once. One real example of a
+26-way class is a genuinely hard one-shot problem for any method, augmented or not; the fix's
+tested ~88% held-out accuracy (vs. ~78% baseline) was always measured at a realistic multi-example
+regime, never at n=1, and n=1 was never going to be "solved" by better regularization alone.
+
+**The actual, fixable bug this exposed**: `computeTrainingTip()`'s confidence check ran against
+`dataset`, which now contains each real example *plus* `AUG_COUNT` synthetic near-duplicates of it
+— trivially easy for the network to fit even off one real drawing, since all five are minor warps
+of the exact same ink. High self-confidence at n=1 was therefore not a lie about the math (the
+network genuinely was confident on those five near-identical inputs) but was a real, misleading
+signal about generalization, stated to the visitor as unqualified reassurance right when the tool
+should have been the most honest. Fixed by tagging each `dataset` entry `real:true`/`real:false`
+(the pushed-in-`doTrain` original vs. its `elasticJitter` copies) and adding
+`MIN_REAL_FOR_CONFIDENCE = 3` (the number the test above actually supports): "Looking solid" now
+requires *both* every letter averaging >80% self-confidence *and* every letter having at least 3
+real drawings behind it. Below that real-count threshold but still confident, a new message says so
+plainly — *"that's partly the network matching its own practice copies of what you drew, not proof
+it'll read a genuinely fresh attempt"* — and names whichever letter has the fewest real examples,
+same pattern as the existing low-confidence branch. Verified in the real UI: taught the same letter
+once (message correctly hedges, names it, says "1 real drawing"), twice more (still hedges, "2 real
+drawings"), a third time (switches to "Looking solid" only once real count and confidence both
+clear the bar).
+
+**If `AUG_COUNT` or the augmentation mechanism ever changes**, re-check this tip's honesty
+specifically — it's the one place in the tool that makes a confidence claim to the visitor, and it's
+exactly the kind of thing that silently drifts back to "measuring the training set" if a future
+change adds more synthetic data without re-deriving what "real" means for that data.
+
 ## Colorblind-friendly palette (`ACCENT_RGB`/`COOL_RGB`, `#colorblindToggle`)
 
 Direct request: offer better colors for colorblindness, or at least an option. The rose/blue pair

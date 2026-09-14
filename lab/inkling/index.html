@@ -1066,21 +1066,37 @@
   function computeTrainingTip(){
     var tipEl = $('trainingTip');
     if (!dataset.length){ tipEl.hidden = true; return; }
-    var sums = {}, ns = {};
+    var sums = {}, ns = {}, realNs = {};
     dataset.forEach(function(ex){
       var letter = ALPHA[ex.y];
       var conf = forward(ex.x).probs[ex.y];
       sums[letter] = (sums[letter]||0) + conf;
       ns[letter] = (ns[letter]||0) + 1;
+      if (ex.real) realNs[letter] = (realNs[letter]||0) + 1;
     });
     var worst = null;
     Object.keys(sums).forEach(function(letter){
       var avg = sums[letter]/ns[letter];
       if (!worst || avg < worst.avg) worst = {letter:letter, avg:avg, n:ns[letter]};
     });
+    // Confidence here is measured against `dataset`, which includes elasticJitter's own synthetic
+    // copies alongside each real drawing -- easy for the network to fit even off a single real
+    // example, since they're all small warps of the same exact ink. That's not proof it would
+    // recognize a genuinely fresh attempt at the letter, so "solid" is only claimed once every
+    // taught letter has at least MIN_REAL_FOR_CONFIDENCE *real* drawings behind it, not just high
+    // self-confidence. See the comment on MIN_REAL_FOR_CONFIDENCE above for the real test this came
+    // from -- reported directly as still not working with one real example per letter.
+    var thinnest = null;
+    Object.keys(realNs).forEach(function(letter){
+      if (!thinnest || realNs[letter] < thinnest.n) thinnest = {letter:letter, n:realNs[letter]};
+    });
     tipEl.hidden = false;
-    if (worst.avg > 0.8){
+    if (worst.avg > 0.8 && thinnest.n >= MIN_REAL_FOR_CONFIDENCE){
       tipEl.innerHTML = '<b>Looking solid.</b> Every letter you\'ve taught is recognizing its own examples with high confidence — teach a brand new letter next, or keep testing the word above.';
+    } else if (worst.avg > 0.8){
+      tipEl.innerHTML = 'Confidence looks high already, but that\'s partly the network matching its own practice copies of what you drew, not proof it\'ll read a genuinely fresh attempt. <b>'+
+        thinnest.letter+'</b> only has '+thinnest.n+' real drawing'+(thinnest.n===1?'':'s')+' behind it — draw it '+
+        (thinnest.n===1?'a couple more times':'once or twice more')+', deliberately a little differently each time, before trusting this one.';
     } else {
       var pct = Math.round(worst.avg*100);
       var countNote = worst.n===1
@@ -1350,6 +1366,12 @@
   // several repeated runs at the same noise level. That's a real, meaningful improvement -- not a
   // complete fix, and run-to-run variance is real too, so don't oversell this as "solved."
   var AUG_COUNT = 4, ELASTIC_MAG = 0.8, ELASTIC_COARSE = 3;
+  // How many *real* drawings of a letter it takes before self-confidence is trustworthy enough to
+  // call "solid" -- see computeTrainingTip below and CLAUDE.md "The 'Looking solid' tip was
+  // measuring the wrong thing" for the real test behind this number: with 1 real example per
+  // letter, a fresh drawing of the same word scored 2/4 correct; with 3, it scored 3/4. Confidence
+  // against the augmented copies alone couldn't tell those two situations apart.
+  var MIN_REAL_FOR_CONFIDENCE = 3;
   function smoothField(n, coarse, mag){
     var cp = []; for (var i=0;i<coarse*coarse;i++) cp.push(randn(mag));
     var out = new Float32Array(n*n);
@@ -1390,8 +1412,8 @@
     var grid = pad.getGrid();
     var yIdx = ALPHA.indexOf(letter);
     var pre = forwardAndGrad(grid, yIdx);
-    dataset.push({x:grid, y:yIdx});
-    for (var a=0; a<AUG_COUNT; a++) dataset.push({x:elasticJitter(grid), y:yIdx});
+    dataset.push({x:grid, y:yIdx, real:true});
+    for (var a=0; a<AUG_COUNT; a++) dataset.push({x:elasticJitter(grid), y:yIdx, real:false});
     counts[yIdx]++;
     refreshChipCounts();
     setControlsEnabled(false);
