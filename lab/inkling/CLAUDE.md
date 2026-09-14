@@ -96,6 +96,61 @@ step onward) and in a longer, more varied 10-step, 6-letter sequence. If this ev
 re-run the same kind of jittered-sequence sweep before changing `LR`/`EPOCHS`/`WEIGHT_DECAY` by
 feel — the naive "lower LR must be more stable" intuition is specifically the one this bug disproved.
 
+## The real fix for real handwriting: input centering, not more hyperparameter tuning
+
+**Reported directly, later, and much more seriously**: real human handwriting — "a dozen examples
+of each letter," trying to teach the word MIKE — simply wouldn't train reliably. Worse: *"if
+anything it seems to get worse with more examples."* That symptom is the opposite of ordinary
+underfitting (more data should never make a healthy classifier worse) and pointed at something
+structurally wrong, not just an undertuned hyperparameter.
+
+**Root cause, found by reading `getGrid()` again, not by tuning**: it squashed the *entire* source
+canvas down to the 10×10 grid — `drawImage(canvas, 0, 0, dW, dH)` with no source rectangle — with
+no cropping, no centering, no scale normalization. Two drawings of the same letter at a different
+size or position on the pad produced two completely different 10×10 grids, because a plain fully-
+connected network (no convolution, nothing translation- or scale-invariant) has no way to recognize
+"the same shape, somewhere else." Every additional real, inconsistently-placed example of a letter
+therefore added *contradictory* raw-pixel signal for the network to reconcile, not confirming
+signal — which is exactly why more examples made things worse, not better. The clean, consistently-
+centered strokes used to validate the weight-decay fix above never exposed this, because they were
+always drawn at the same size and position on purpose.
+
+**The fix**: `getGrid()` now finds the ink's actual bounding box on the *full-resolution* source
+canvas first (a real per-pixel luminance scan, threshold `0.12`), then crops a padded square (40%
+margin) centered on that bounding box — not the whole canvas — before downsampling to 10×10,
+falling back to the whole canvas only if nothing was drawn at all. This is the same idea MNIST-style
+datasets bake in by construction (digits pre-centered and normalized before a classifier ever sees
+them); a plain FC network here needs the same treatment done live, since nothing normalizes a
+visitor's raw drawing for it otherwise. Because `getGrid()` lives inside the one shared
+`makeScratchpad()` used by both the teach pad and every word pad, this applies uniformly to training
+data and decode-time input alike — no separate code path to keep in sync.
+
+**Weight decay (see the section above) then had to be reverted — `WEIGHT_DECAY = 0` now, not
+`0.02`.** Verified directly, not assumed: a temporary debug harness (same pattern as before, removed
+before shipping) trained synthetic M/I/K/E strokes with realistic position/scale jitter (a stand-in
+for real handwriting's natural inconsistency) and tested genuine held-out generalization — fresh
+jittered examples never seen during training, not just re-scoring the training set. With centering
+alone, `0.02` decay generalized fine for two letters but confidently misclassified others (K read as
+E with ~0% true confidence in one run); dropping decay to `0` and re-running the identical sequence
+fixed it completely — every letter, high confidence, repeatably. Decay had been tuned against tiny
+(7-10 example) synthetic sequences and genuinely fixed the narrower bug it targeted, but it was
+never validated against a larger, more realistic dataset, and it turned out to be actively capping
+the weight magnitudes a real, harder multi-letter classification task needs to converge well. The
+original catastrophic-collapse scenario was re-tested with decay at `0` and centering in place, and
+did **not** reoccur beyond the one, unavoidable state any classifier is in after its very first
+training example (everything reads as that one letter, which recovers within the next couple of
+Train clicks) — meaning centering was the real fix for *both* bugs, and decay was papering over a
+symptom of the same underlying problem rather than addressing it.
+
+**Confirmed end-to-end in the real UI, not just synthetically**: drew genuine, imperfectly
+positioned/sized letters (M, I, K, E) by hand via real mouse drags, at deliberately different sizes
+and screen positions each time — a fresh, differently-drawn "M" was misclassified after 1-2 trained
+examples, then correctly recognized after a 3rd real example was added, the expected direction of
+improvement finally working as it should. If you touch `getGrid()`'s cropping math or `WEIGHT_DECAY`
+again, re-validate with genuinely varied (not just clean, consistently-placed) synthetic strokes and
+a real held-out generalization check — training-set self-confidence alone hid this exact bug for
+as long as it went undetected.
+
 ## The page opens genuinely blank — no seed training, at load or on Reset
 
 `SEED` (six letters, H/I/A/B/C/T, hand-authored as literal 10×10 ASCII-art patterns) and
@@ -570,3 +625,12 @@ word-decode readout and the colorblind toggle sit on the same line at full width
 two lines on narrow viewports, which is expected) → confirm there's no large empty band of unused
 canvas below the diagram's lowest content (the bottom output row's letter labels) before the card's
 own border.
+
+**Real handwriting generalization** (the thing that actually matters most — a synthetic golden path
+passing doesn't guarantee this): draw the *same* letter three or four times, deliberately at
+different sizes and different positions on the pad each time (not the same careful stroke
+repeated), training each as the same letter. Then draw a *fresh* example of that letter, differently
+sized/positioned again, into a word pad and confirm it decodes correctly — and confirm accuracy on
+that fresh example gets *better*, not worse, as you go from one training example to three or four.
+If it gets worse with more (real, varied) examples, `getGrid()`'s centering/cropping is broken —
+check it before suspecting anything else.
