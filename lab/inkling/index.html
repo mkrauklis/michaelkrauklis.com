@@ -716,12 +716,20 @@
         var w = canvas.width, h = canvas.height; // actual backing-store pixels (post-DPR)
         var full = canvas.getContext('2d').getImageData(0,0,w,h).data;
         var minX=w, minY=h, maxX=-1, maxY=-1;
+        // Threshold is 0.28, not the ink color's own near-full 0.6-0.8 -- but it has to clear the
+        // faint decorative background grid paintPaper() draws on this exact canvas (rgba(30,20,10,
+        // .08) over C_PAPER measures ~0.13 here), which used to sit right under the old 0.12
+        // threshold. That was a real, confirmed bug, not a hypothetical: for a sparse letter like
+        // "I", the grid lines are the *only* thing spanning close to every edge of the canvas, so
+        // they silently won the bounding-box computation outright -- min/max ended up at the
+        // canvas's own edges instead of around the actual ink, and the real letter got cropped down
+        // to a sliver of a much-too-large square before ever reaching the 8x8 downsample.
         for (var y=0;y<h;y++){
           var rowBase=y*w;
           for (var x=0;x<w;x++){
             var i=(rowBase+x)*4;
             var lum=(0.299*full[i]+0.587*full[i+1]+0.114*full[i+2])/255;
-            if (1-lum > 0.12){
+            if (1-lum > 0.28){
               if (x<minX) minX=x; if (x>maxX) maxX=x;
               if (y<minY) minY=y; if (y>maxY) maxY=y;
             }
@@ -737,6 +745,18 @@
         }
         var off = document.createElement('canvas'); off.width=GRID; off.height=GRID;
         var octx = off.getContext('2d');
+        // A thin stroke (a single vertical "I", a K's diagonal) can be only 1-2 physical pixels
+        // wide by the time it's cropped down to a padded square this large -- the browser's
+        // *default* image-smoothing quality ("low" in Chromium) drops content that thin entirely
+        // during a single large-ratio drawImage minification, confirmed directly by comparing raw
+        // extracted pixel values: every cell came back as exactly the flat paper value, zero trace
+        // of the ink, versus a clearly readable letter-shaped gradient once quality is forced to
+        // "high". This was the dominant real cause of thin letters (I, K, E) training and decoding
+        // far worse than thick ones (M) regardless of how many examples were taught -- see
+        // CLAUDE.md "Thin strokes were being erased by low-quality downsampling" for the full
+        // investigation and the held-out accuracy numbers before/after this fix.
+        octx.imageSmoothingEnabled = true;
+        octx.imageSmoothingQuality = 'high';
         octx.fillStyle = C_PAPER; octx.fillRect(0,0,GRID,GRID); // covers any crop area past the source's own edges
         octx.drawImage(canvas, sx, sy, side, side, 0, 0, GRID, GRID);
         var data = octx.getImageData(0,0,GRID,GRID).data;

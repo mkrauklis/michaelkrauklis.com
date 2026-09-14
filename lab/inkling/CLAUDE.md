@@ -119,8 +119,9 @@ centered strokes used to validate the weight-decay fix above never exposed this,
 always drawn at the same size and position on purpose.
 
 **The fix**: `getGrid()` now finds the ink's actual bounding box on the *full-resolution* source
-canvas first (a real per-pixel luminance scan, threshold `0.12`), then crops a padded square (40%
-margin) centered on that bounding box — not the whole canvas — before downsampling to 10×10,
+canvas first (a real per-pixel luminance scan, threshold `0.12` at the time — raised to `0.28` later;
+see "Thin strokes were being erased by low-quality downsampling" further down for why), then crops a
+padded square (40% margin) centered on that bounding box — not the whole canvas — before downsampling to 10×10,
 falling back to the whole canvas only if nothing was drawn at all. This is the same idea MNIST-style
 datasets bake in by construction (digits pre-centered and normalized before a classifier ever sees
 them); a plain FC network here needs the same treatment done live, since nothing normalizes a
@@ -153,6 +154,72 @@ improvement finally working as it should. If you touch `getGrid()`'s cropping ma
 again, re-validate with genuinely varied (not just clean, consistently-placed) synthetic strokes and
 a real held-out generalization check — training-set self-confidence alone hid this exact bug for
 as long as it went undetected.
+
+## Thin strokes were being erased by low-quality downsampling — the actual dominant bug (`imageSmoothingQuality`, ink threshold 0.12→0.28)
+
+**Reported again after the augmentation fix above, with real numbers**: taught M/I/K/E with 5-6 real
+examples *each* (well past anything the augmentation testing above required), and a fresh "MIKE"
+still decoded wrong (M correct, I/K/E confused with each other). That result flatly contradicted
+the augmentation fix's own validation, which predicted good results by 3 real examples per letter.
+The user's own guess at the cause — *"would anti-aliasing possibly help?"* — pointed straight at it
+and turned out to be the real, dominant bug this whole investigation had been missing.
+
+**Root cause, found by extracting the exact grid `getGrid()` produces for a real drawn "I" and
+looking at the actual numbers, not by reasoning about the code**: two compounding bugs in the same
+function, both invisible unless you inspect raw pixel output.
+
+1. **The bounding-box scan's ink threshold (`1-lum > 0.12`) was too close to the pad's own
+   decorative background.** `paintPaper()` draws faint gridlines (`rgba(30,20,10,.08)` over
+   `C_PAPER`) on every scratchpad, including every word pad — measured directly, that blend comes
+   out to `1-lum ≈ 0.131`, just *above* the old 0.12 threshold. For a letter with substantial ink
+   coverage this noise is negligible next to the real bounding box. For a sparse letter like "I" (a
+   single thin stroke), the gridlines were the *only* thing touching all four edges of the canvas,
+   so they won the bounding-box computation outright: `minX`/`maxX`/`minY`/`maxY` landed at the
+   canvas's own edges (confirmed directly: bbox `[0,0,74,74]` on a 75×75 canvas for a letter whose
+   real ink occupied a ~2px-wide strip) instead of tightly around the actual ink.
+2. **Even with a correct bounding box, `drawImage`'s default resize quality drops thin content
+   entirely.** Chromium's default `imageSmoothingQuality` is `"low"`; minifying a ~100px-wide crop
+   down to 8px in one `drawImage` call at that quality can lose a stroke only 1-2 physical pixels
+   wide completely. Confirmed directly, not assumed: extracting the grid twice from the identical
+   canvas, once with default smoothing and once with `imageSmoothingQuality:'high'` forced —
+   default came back as *exactly* the flat paper value in all 64 cells (zero trace of the ink
+   whatsoever); high-quality came back with a clearly readable vertical-stroke gradient in the
+   correct two columns.
+
+Both bugs hit thin/sparse letters (I, K's diagonals, E's strokes) far harder than dense ones (M,
+whose four overlapping strokes gave it enough raw ink mass to survive both problems reasonably
+intact) — which is exactly the failure pattern reported (M fine, I/K/E confused with each other)
+and exactly why throwing more real examples or more augmentation at it never fully fixed it: those
+levers can't recover information the pixel-extraction step had already destroyed before training
+ever saw it. Every letter's *training* examples were degrading through this same broken pipeline
+too, not just decode-time input, so the network was matching one degraded, noise-like signature
+against another rather than learning real shape differences for these letters.
+
+**The fix**: raised the ink-detection threshold from `0.12` to `0.28` (clears the ~0.131 gridline
+noise with a wide margin, still far below any real ink's 0.6+ values) and explicitly set
+`octx.imageSmoothingEnabled = true; octx.imageSmoothingQuality = 'high';` before the final
+`drawImage` downsample. Both lines live in the one shared `getGrid()`, so the fix applies uniformly
+to the teach pad and all 8 word pads, training and decode-time input alike, same as every other fix
+to this function.
+
+**Verified with real numbers, not just "looks fixed"**: re-ran the exact same test that exposed the
+bug — M/I/K/E, 3 real examples each (the same count the augmentation fix's own validation used) —
+and got a fresh "MIKE" fully correct, twice in a row. Re-ran at the harder 1-real-example-per-letter
+case too (this tool's hardest realistic scenario) and got 3/4 correct (only E missed), a real jump
+over the 2/4 this same case scored before this fix. This is very likely the fix that should have
+been found first — the augmentation and resolution work above are still real, valid improvements
+(non-rigid tremor is still a real, separate source of variance this doesn't address), but they were
+fighting a much smaller problem than this one while this pixel-destroying bug sat underneath both
+of them the entire time.
+
+**If `getGrid()`'s crop/threshold/downsample logic is touched again**: extract and print the actual
+grid values for a deliberately thin/sparse test letter (not just a thick one like M or H) before
+trusting a change — this bug was invisible to every prior round of testing in this file specifically
+because every prior synthetic test happened to use letters with enough ink mass to survive it. A
+diagnostic worth keeping in your back pocket: render the grid as ASCII art (`#`/`+`/`.`/` ` by value
+threshold) directly from the real `getGrid()` output (not a reimplementation — this investigation's
+first attempt at a "clean" reimplementation quietly diverged from the real function and gave a false
+signal) to eyeball whether a shape is actually surviving the pipeline.
 
 ## Real hand tremor is non-rigid — centering wasn't the whole fix (`elasticJitter`, `AUG_COUNT`, `GRID=8`)
 
