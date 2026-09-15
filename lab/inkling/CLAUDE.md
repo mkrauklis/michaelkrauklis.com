@@ -28,6 +28,39 @@ already provides (Fraunces + Inter) — used for every numeric/label/mono-styled
 counts, ledger, letter labels in the diagrams, stage captions), matching the prototype's own
 type system rather than flattening it into the site's two-typeface default.
 
+## The hero canvas (`drawHeroInkling`) — a decorative illustration, not a live computation
+
+Direct request, matching the pattern other tools already use: *"create a visual in the top right
+when you actually open Inkling that shows a hand-drawn letter going into our neural architecture
+and creating the identified letter."* Converted the hero from a single `<div class="wrap">` to
+the shared `<div class="wrap hero-grid">` layout (`#heroCanvas`, sized and styled entirely by
+`theme.css`'s shared rule — nothing page-specific needed there), matching Echo State's and Neural
+Viaduct's own hero-grid headers.
+
+**This is a fixed illustration, not a rendering of any real forward pass** — the same choice
+Neural Viaduct made for its own hero (a decorative arc over a line of dots, see that tool's
+CLAUDE.md), for the same reason: the page deliberately opens with no letter drawn and a freshly
+randomized, untrained network (see "The page opens genuinely blank" below), so there is nothing
+*real* yet worth animating. `HERO_LETTER` is a hand-authored 8×8 block "A" (matching `GRID`, so it
+reads as this tool's actual input shape, not an arbitrary size), fed through hand-drawn fan-out
+lines to 7 illustrative "hidden" dots and on to 5 illustrative "output" dots, one of which glows —
+`HN`/`ON` are deliberately *not* `HID`/`OUT`; showing all 18/26 at this canvas's small size would
+be unreadable, and the point is to illustrate the mechanism, not to be a literal miniature of the
+real diagram. Everything about *how* it's colored, though, is real and shared, not reinvented:
+`divergingColor`/`ACCENT_RGB`/`COOL_RGB` for the hidden dots and forward connections (the same
+rose/blue-or-colorblind-orange/blue convention every other real diagram on this page uses) and
+`C_GOOD` for the one glowing "this is the answer" output dot (the same green used everywhere else
+on the page for a correct prediction). A visitor who scrolls down and sees the real stage
+animation or network diagram is looking at the same visual language they just saw in the hero,
+not a different one.
+
+Reads its own `canvas.clientWidth`/`clientHeight` at draw time (the Neural Viaduct `drawHero()`
+pattern) rather than a fixed size, since `#heroCanvas` is `width:100%` and collapses to a single
+column under 800px (`theme.css`'s `hero-grid` media query) — redrawn on `window.resize` and once
+more from the colorblind toggle's handler (alongside `refreshLookInside`/`renderArchDiagram`/
+`idleStage`) so it recolors in step with every other real diagram on the page rather than being
+the one thing left showing the old palette.
+
 ## The network (`forward`, `forwardAndGrad`, `applyGrad`, `runEpochs`)
 
 Deliberately the plainest possible architecture, stated directly in the "How this actually works"
