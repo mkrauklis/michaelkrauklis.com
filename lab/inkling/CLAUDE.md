@@ -410,6 +410,36 @@ path the forward pass just lit up, all the way back to the pixels). Captions cha
 boundaries the phases use — if you retune the timing, update both together or the text will desync
 from what's on screen, the same trap the original version already had to watch for.
 
+**Second redesign: lines → packets** (`drawPacket`). Direct request: *"rather than lines, we have
+packets that go from the letters to the hidden layer neurons to the letters that were predicted...
+back props... via packets as well"* — the "network packets of information traveling through the
+network" framing. Every one of the four connection blocks above (pixel→hidden, hidden→output,
+output→hidden, hidden→pixel) draws the exact same real per-connection number it always did
+(`fwdC`/`contribs`/`dz2`/`bwdC`, unchanged), just through `drawPacket(ctx, from, to, t, size, fill)`
+— a small filled square at `lerp(from, to, t)` — instead of a `stroke()`'d line whose *opacity*
+carried the phase progress. `t` is the same `p1`/`p2`/`p3` value every packet in that phase shares,
+so every in-flight packet moves in lockstep: a visible wave arriving together, not independent
+timers. A packet is only drawn while `0 < p < 1` (in flight); at `p===1` it's arrived and been
+absorbed into the neuron it was headed to, so it simply stops being drawn rather than sitting there
+at full brightness the way the old lines did once their phase finished — packets are inherently
+transient, unlike a line. Forward packets keep the same excite/inhibit accent/cool coloring by
+sign; backward packets keep the same neutral `C_INK` coloring the old dashed backprop lines used
+(this is the correction signal itself, not a signed weight — the legend already draws this
+distinction and didn't need to change). The marching-dashes (`setLineDash`/`lineDashOffset`) that
+used to convey backprop's direction are gone entirely — a packet moving from output to hidden to
+pixel already shows direction on its own, nothing dashed needs to fake it.
+
+Verifying this one is awkward in this specific automation environment and worth knowing before
+trying again: `document.visibilityState` reports `"hidden"` here regardless of `tabs_select`, and
+`requestAnimationFrame` never fires at all while hidden — so `frame()` only ever runs once, forced
+by a `computer` screenshot call, at whatever `el` has accumulated by the time that screenshot's
+round-trip completes (usually already past every phase, landing on the final resting frame). That
+made it impossible to visually catch a mid-flight packet through this tool; correctness here rests
+on the transformation being mechanical (same numbers, same gating, `stroke()` swapped for
+`drawPacket()`) plus a clean, error-free idle end-state after several full train cycles. A real
+browser tab (this bug doesn't exist outside automation) will show the actual traveling packets
+smoothly — check there if `drawPacket`'s math is ever touched again.
+
 **Persistent column labels** (`drawStageLabels()`, called from both `idleStage()` and every
 animation frame) directly state the architecture on the diagram itself: "`GRIDN` pixels" (64 today,
 derived live rather than hardcoded — see "Real hand tremor is non-rigid" above for why that matters),
@@ -757,6 +787,17 @@ this version is re-rendered every time the weights actually do — wired into th
 live picture of the current network, exactly like the tiles and heatmap are. Downloadable via
 `archCanvas.toDataURL('image/png')`, same as every other canvas export on this page.
 
+**No text anywhere on this diagram, and every layer vertically centered** — direct request. Removed
+the "Inkling" title, the "this network's real trained weights" subtitle, every output dot's `A`-`Z`
+letter label, the `GRIDN+' pixels'`/`'18 hidden (tanh)'`/`'26 outputs'` axis captions, and the
+bottom "N real weights and biases..." line — this diagram is meant to print clean as pure
+weights-and-connections, with any explanation living in the surrounding page instead. Removing the
+text also freed up the vertical margins it used to need, so `ARCH_IN`/`ARCH_HID_TOP`/
+`ARCH_HID_BOTTOM`/`ARCH_OUT_TOP`/`ARCH_OUT_BOTTOM` are now all derived from `ARCH_H/2` (each layer's
+own span centered on the canvas's mid-height) instead of the old fixed offsets that existed to leave
+room for a title above and axis labels below. If text or asymmetric layers are ever added back here,
+recheck the centering math rather than assuming the old offsets are still meaningful.
+
 **QR download** (`#downloadQrBtn`): qrcodejs renders a hidden `<canvas>` plus a visible `<img>`
 whose `src` it already set to that canvas's own `toDataURL('image/png')` — same confirmed behavior
 already documented in Echo State's CLAUDE.md ("Two Zazzle links" section doesn't apply here, but
@@ -831,9 +872,9 @@ below it, `trainStatus` reading exactly 0 examples across 0 letters, every chip'
 draw a letter and teach it" trigger, confirm the wizard opens to the draw step with a plain "Draw
 the letter" header, draw something, click "Next →", confirm it switches to the letter-picker step
 with Train disabled until a letter is picked, pick one, click Train, confirm the modal closes and
-the stage animation plays real per-active-pixel fan-out lines from the input raster into the hidden
-column (not a single bundled line), then hidden→output, then dashed backward lines all the way back
-to the same input pixels → confirm the compact "reads today's word... as: X" line under the diagram
+the stage animation plays real per-active-pixel packets traveling from the input raster into the
+hidden column (not a single bundled line), then hidden→output, then packets traveling backward all
+the way back to the same input pixels → confirm the compact "reads today's word... as: X" line under the diagram
 updates in sync with section 01's own decoded word, and `#trainingTip` now shows a real message
 (likely "Looking solid" right after a single fresh example) → back on the page, click a *specific*
 letter chip (not the generic trigger), confirm the wizard opens with that letter named directly in
