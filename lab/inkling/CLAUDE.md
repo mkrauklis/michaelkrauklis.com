@@ -878,6 +878,21 @@ shipped without one being provided. Add a real hero CTA the same way (right afte
 paragraph, `?rf=` included) once a real product exists — don't fabricate one or guess a product URL
 in the meantime.
 
+## `lab/inkling/thumbnail.jpg` is a cropped real export, not a separate asset
+
+Inkling shipped for a while with `lab/index.html`'s card pointing at a `thumbnail.jpg` that didn't
+exist yet (silently falling back to the text-only card via the `onerror` handler, per the site-wide
+convention — nothing broke, it just showed no thumbnail). The image is a tight 600×600 crop of a
+real `#archCanvas` "Download diagram as PNG" export — the input pixel grid, the fan of real
+connections, and the hidden-neuron column, all real trained weights, not staged art. The diagram
+itself is much wider than tall (920×640 in its exported, DPR-doubled form), so the crop deliberately
+favors the *left* side (input grid through the hidden column) over including the output column too —
+the input grid's solid color block is the most immediately recognizable part at 96×96 icon size, and
+fitting the full width into a square would have meant either cropping through the grid itself or
+adding real letterboxing, both worse options. If the diagram's layout changes (e.g., the layer
+spacing from the vertical-centering work above), re-export and re-crop rather than assuming the old
+600×600 window still frames the right part of the image.
+
 ## Testing changes
 
 No test suite — static page. Verify via a local static server (root-relative `/nav.js` and
