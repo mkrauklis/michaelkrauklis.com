@@ -417,9 +417,10 @@ network" framing. Every one of the four connection blocks above (pixel→hidden,
 output→hidden, hidden→pixel) draws the exact same real per-connection number it always did
 (`fwdC`/`contribs`/`dz2`/`bwdC`, unchanged), just through `drawPacket(ctx, from, to, t, size, fill)`
 — a small filled square at `lerp(from, to, t)` — instead of a `stroke()`'d line whose *opacity*
-carried the phase progress. `t` is the same `p1`/`p2`/`p3` value every packet in that phase shares,
-so every in-flight packet moves in lockstep: a visible wave arriving together, not independent
-timers. A packet is only drawn while `0 < p < 1` (in flight); at `p===1` it's arrived and been
+carried the phase progress. `t` is the same phase-progress value (`p1`, `p2`, `p3a`, or `p3b` — see
+below) every packet in that phase shares, so every in-flight packet moves in lockstep: a visible
+wave arriving together, not independent timers. A packet is only drawn while `0 < p < 1` (in
+flight); at `p===1` it's arrived and been
 absorbed into the neuron it was headed to, so it simply stops being drawn rather than sitting there
 at full brightness the way the old lines did once their phase finished — packets are inherently
 transient, unlike a line. Forward packets keep the same excite/inhibit accent/cool coloring by
@@ -439,6 +440,21 @@ on the transformation being mechanical (same numbers, same gating, `stroke()` sw
 `drawPacket()`) plus a clean, error-free idle end-state after several full train cycles. A real
 browser tab (this bug doesn't exist outside automation) will show the actual traveling packets
 smoothly — check there if `drawPacket`'s math is ever touched again.
+
+**Third redesign: backward is two sequential sub-phases, not one simultaneous one** (`p3a`, `p3b`).
+Direct follow-up after the packets shipped: *"I want the backprop from the letters to the neurons
+to happen before the packets going from the neurons to the pixels"* — the single `p3` window
+(1300-1950ms) used to gate both the output→hidden packets and the hidden→pixel packets at once, so
+both legs of backprop arrived on screen simultaneously. That's not just a visual preference to
+accommodate — it's actually *more* correct: the chain rule computes `dz2` (the output layer's
+error) and only *then* derives `dz1` (`dz1[h] = (W2ᵀdz2) ⊙ (1-a1²)`, a real data dependency on
+`dz2` already existing) before there's anything meaningful to send on toward the pixels. `p3` split
+into `p3a = clamp((el-1300)/325,0,1)` (output→hidden) and `p3b = clamp((el-1625)/325,0,1)`
+(hidden→pixel, starting only once `p3a` reaches 1) — same total backward window, same 650ms, just
+sequenced instead of overlapped. The two backprop captions (previously one shared "backprop → the
+correction flows back through the same connections, all the way to the pixels" for the whole
+window) split the same way, at the same `el>1300 && el<=1625` / `el>1625` boundary as the packet
+timing, so the caption never claims a leg is happening before its packets actually appear.
 
 **Persistent column labels** (`drawStageLabels()`, called from both `idleStage()` and every
 animation frame) directly state the architecture on the diagram itself: "`GRIDN` pixels" (64 today,

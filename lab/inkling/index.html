@@ -1277,7 +1277,15 @@
 
         var p1 = clamp((el-250)/550,0,1);   // pixels -> hidden
         var p2 = clamp((el-800)/500,0,1);   // hidden -> output
-        var p3 = clamp((el-1300)/650,0,1);  // backward
+        // Backward is two sequential sub-phases, not one -- real backprop computes the output
+        // layer's error and pushes it into the hidden layer first (dz2 -> dz1 is a real data
+        // dependency in the chain rule), and only *then* is there anything to send on to the
+        // pixels. Rendering both legs at once made it look like a single simultaneous event
+        // instead of the two-step derivation it actually is, direct feedback after shipping the
+        // packet redesign: "I want the backprop from the letters to the neurons to happen before
+        // the packets going from the neurons to the pixels."
+        var p3a = clamp((el-1300)/325,0,1); // backward: output -> hidden
+        var p3b = clamp((el-1625)/325,0,1); // backward: hidden -> pixel, starts once p3a finishes
 
         // forward: every active pixel -> every hidden neuron, real weighted contribution,
         // traveling as a packet (position = lerp(pixel, hidden neuron, p1)) instead of a lit line --
@@ -1321,29 +1329,33 @@
           });
         }
 
-        // backward: output -> hidden (real dz2 gradient), then hidden -> the same active pixels
-        // (real dz1[h]*W1[h][k] gradient) -- the correction retraces the exact connections the
-        // forward pass just used, all the way back to the pixels that actually mattered, as packets
-        // traveling the opposite direction at the same shared p3. Neutral-ink colored rather than
-        // excite/inhibit -- this is the correction signal itself, not a signed weight, the same
-        // distinction the legend already draws.
+        // backward, stage one: output -> hidden (real dz2 gradient) -- the output layer's error,
+        // the first thing the chain rule actually computes, arriving at the hidden neurons as
+        // packets. Neutral-ink colored rather than excite/inhibit -- this is the correction signal
+        // itself, not a signed weight, the same distinction the legend already draws.
         var maxDz2=1e-6; for (var o3=0;o3<OUT;o3++) if (Math.abs(pre.dz2[o3])>maxDz2) maxDz2=Math.abs(pre.dz2[o3]);
-        if (p3>0 && p3<1){
+        if (p3a>0 && p3a<1){
           targets.forEach(function(o){
             for (var h4=0;h4<HID;h4++){
               var g2 = pre.dz2[o];
               var mag3 = clamp(Math.abs(g2)/maxDz2,0,1);
               var size3 = 2.5+4*mag3;
-              drawPacket(stageCtx, outputPos[o], hiddenPos[h4], p3, size3, rgbStr(hexToRgb(C_INK), 0.5+0.4*mag3));
+              drawPacket(stageCtx, outputPos[o], hiddenPos[h4], p3a, size3, rgbStr(hexToRgb(C_INK), 0.5+0.4*mag3));
             }
           });
+        }
+        // backward, stage two: hidden -> the same active pixels (real dz1[h]*W1[h][k] gradient) --
+        // only starts once stage one (above) has finished, since dz1 is only meaningful once dz2
+        // has actually propagated into the hidden layer; the same real chain-rule dependency, now
+        // reflected in when each stage's packets are even eligible to appear.
+        if (p3b>0 && p3b<1){
           active.forEach(function(px, pi){
             for (var h=0;h<HID;h++){
               var g = bwdC[pi][h];
               var mag4 = clamp(Math.abs(g)/maxBwd,0,1);
               if (mag4<0.05) continue;
               var size4 = 2+3.5*mag4;
-              drawPacket(stageCtx, hiddenPos[h], px, p3, size4, rgbStr(hexToRgb(C_INK), 0.3+0.5*mag4));
+              drawPacket(stageCtx, hiddenPos[h], px, p3b, size4, rgbStr(hexToRgb(C_INK), 0.3+0.5*mag4));
             }
           });
         }
@@ -1366,7 +1378,8 @@
         var caption = 'sampling your drawing into '+GRIDN+' pixel values…';
         if (el>250 && el<=800) caption = 'forward pass → each ink pixel feeds into all 18 hidden neurons';
         else if (el>800 && el<=1300) caption = 'forward pass → 18 hidden neurons vote, argmax guesses "'+ALPHA[predIdx]+'"'+(predIdx===trueIdx?' — got it':' (you said "'+ALPHA[trueIdx]+'")');
-        else if (el>1300) caption = 'backprop → the correction flows back through the same connections, all the way to the pixels';
+        else if (el>1300 && el<=1625) caption = 'backprop → the output error flows back into the 18 hidden neurons';
+        else if (el>1625) caption = 'backprop → each hidden neuron passes its share of the correction back to the pixels';
         $('stageCaption').textContent = caption;
 
         if (t<1){ requestAnimationFrame(frame); } else { resolve(); }
