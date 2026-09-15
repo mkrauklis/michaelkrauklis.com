@@ -370,6 +370,21 @@ the area-averaging), then reads back `getImageData` and converts luminance to in
 (`1 − luminance`, clamped). This is genuine pixel data feeding the network, not a synthetic
 stand-in — the same "verify against the real thing" discipline as every other tool here.
 
+**The teach wizard used to silently carry over old ink on open — a real, reported bug**: *"when we
+open the drawing modal while training, the old letter remains. I want a fresh board every time I
+click the button or letter that opens the modal."* The carry-over line right after `paintPaper` in
+`openExpander` (`if (padApi.isDirty()) expandCtx.drawImage(padApi.canvasEl, ...)`) exists so
+*re-opening a word pad* to touch up a letter doesn't discard what's already drawn there — genuinely
+useful in that mode. But `openExpander(pad, ...)` is the same function for the teach wizard, and the
+teach `pad`'s dirty flag can still be set from whatever was last drawn into it, so the exact same
+line was quietly reappearing the previous letter every time the wizard reopened, regardless of
+whether it came from the generic trigger or a preset-letter chip. Fixed with a single
+`if (expandWizard) padApi.clear();` right before that block — the teach wizard now always starts
+from a genuinely blank board, while word-pad mode (`expandWizard` false) is completely unaffected
+and still carries ink over as before. Verified both open paths (`#openTeachBtn` and a letter chip)
+land on a blank canvas after a full train cycle, and confirmed a word pad's existing ink still
+carries over correctly on reopen (checked real pixel data both times, not just visually).
+
 ## The stage animation (`animateSequence`, `idleStage`) — real per-pixel connections, not a bundled line
 
 **This went through a full redesign, not a tweak.** The first shipped version treated the entire

@@ -838,8 +838,14 @@
     if (expandWizard) Object.keys(modalChipRefs).forEach(function(l){ modalChipRefs[l].classList.toggle('active', l===preset); });
     $('expandTrain').disabled = !preset;
     $('expandLabel').textContent = label;
+    // The teach wizard always starts from a genuinely blank board -- unlike a word pad (below),
+    // leftover ink here isn't "work in progress" worth preserving, it's the last letter already
+    // taught (or abandoned) reappearing on the next open, which reads as a real bug, not a feature.
+    // Reported directly: "when we open the drawing modal while training, the old letter remains."
+    if (expandWizard) padApi.clear();
     paintPaper(expandCtx, EXPAND_SIZE);
-    // carry over whatever's already on the thumbnail, scaled up, so re-opening never loses work
+    // carry over whatever's already on the thumbnail, scaled up, so re-opening a word pad never
+    // loses work -- padApi.clear() just above means this is always a no-op in wizard mode.
     if (padApi.isDirty()) expandCtx.drawImage(padApi.canvasEl, 0, 0, EXPAND_SIZE, EXPAND_SIZE);
     expandDirty = padApi.isDirty();
     $('expandFoot').textContent = !expandWizard
