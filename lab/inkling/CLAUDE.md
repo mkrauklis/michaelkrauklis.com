@@ -595,6 +595,12 @@ updating `#wordOutput`/`#stageWordReadout` directly, or the thumbnails will sile
 
 ## Page order: the word comes first, teaching comes second
 
+**Superseded by "The wizard redesign" further down** — the "01"/"02" numbering, the pre-loaded
+seed word, and `#stageWordReadout`'s "reads today's word (step 01, above)" wording described here
+are all from before the wizard restructure. Kept as the historical record of *why* word-before-
+teach was the right call in the first place (that reasoning still holds, it just now spans more
+steps) — don't treat the specific step numbers or the seeded-word details below as current.
+
 Sections were reordered from teach→word to word→teach (now "01 — the goal / Give it a word" then
 "02 — teach / Teach it a letter"), on direct request: "the example word that's pre-loaded, that
 should be the first thing we do before we train. Give it the word, then we train it to try and
@@ -621,6 +627,14 @@ for clearing just one letter.
 
 ## The seeded word looks hand-drawn, not like pixel-art bricks
 
+**Superseded by "The wizard redesign" further down — there is no seeded word anymore.** Every
+word pad starts genuinely blank now, and `SEED`/`patternToGrid`/`HANDWRITTEN_STROKES`/
+`drawHandwrittenLetter`/`seedWord()` were all deleted outright, not just disabled — a visitor
+writes their own first word from the very first thing they see, which is the whole point of the
+new step 2 ("here's what a random network reads *your* word as"). Kept below as the historical
+record of a real bug this once fixed, in case a future seeded-example feature is ever added back
+and needs the same "look like handwriting, not pixel-art bricks" lesson.
+
 The word pads' pre-loaded "HAT" used to render by filling a solid square for every `patternToGrid`
 cell above 0.5 — literally the training data's own blocky rasterization, drawn straight onto the
 60×60 mini-pad canvas. At that scale it read as pixel-art bricks, not handwriting — direct
@@ -644,6 +658,15 @@ so the word simply decodes to whatever a random network decodes anything to unti
 teach it something.
 
 ## The training tip (`computeTrainingTip`) — a real self-consistency check, not a guess at intent
+
+**Hidden by default now (`SHOW_TRAINING_TIP = false`, see "The wizard redesign" further down) —
+not deleted.** Direct feedback, after living with it for a while: even the honestly-computed
+self-consistency version documented below still *reads* as an accuracy claim ("Looking solid," a
+specific confidence percentage), and this tool has no ground truth to justify that framing any
+more here than the rejected "suggest which letter is wrong" framing did. The computation itself
+is untouched and still runs on every train/reset/load — only whether `#trainingTip` is ever
+un-hidden changed. Revisit this if a more honestly-framed version (one that doesn't read as
+measuring accuracy) is ever designed.
 
 Direct request: analyze the output and suggest which letter would benefit most from another
 example — "if someone's test input is HTT and they have the output HHH ... they should probably
@@ -926,44 +949,135 @@ adding real letterboxing, both worse options. If the diagram's layout changes (e
 spacing from the vertical-centering work above), re-export and re-crop rather than assuming the old
 600×600 window still frames the right part of the image.
 
+## The wizard redesign — a step-by-step flow, not a page of independent sections
+
+Direct, extensive feedback (dictated, so summarized here rather than quoted at length): the page
+"doesn't grab the user," asked someone to read three or four sentences before doing anything, and
+should instead walk them through the process like a wizard — write a word, see it fail, then fix
+it. This touched nearly every section on the page; the pieces below are all one coordinated
+change, not independent tweaks.
+
+**New flow, five numbered sections instead of four:**
+1. **`#step-word` "Write a word"** — copy cut to one sentence. Word pads start genuinely blank
+   (see "The seeded word looks hand-drawn" above — that whole feature was deleted, not just
+   disabled) so a visitor's first action is writing *their own* word, not looking at a canned
+   "HAT." The always-visible attempts log became a collapsed-by-default `<details
+   class="disclosure">` ("Past attempts") — direct feedback that it "takes up a lot of real
+   estate" without earning it; still there, just not competing with the actual task for space.
+2. **`#step-guess` "See its first guess" (new)** — shows the same live decode step 1 just
+   produced, framed as a random network's guess, and states flatly that it's wrong. This doesn't
+   (and can't) check per-letter correctness — this tool still has no ground truth for what a
+   visitor meant to write, the same real limitation "The training tip" section above documents —
+   but it doesn't need one here: a freshly-initialized network's weights are pure random noise, so
+   *any* non-empty decode from it is guaranteed nonsense regardless of what was actually drawn.
+   That's a true statement about the network's state, not a claim about being able to read a
+   specific intended word, which is what keeps this honest where the training tip's old framing
+   wasn't. `renderDecoded()` now updates a second readout (`#firstGuessOutput`/
+   `#firstGuessStatus`) alongside the existing `#wordOutput`/`#stageWordReadout`, from the same
+   single function, so all of them stay in sync automatically — no separate update path to drift.
+3. **`#step-teach` "Teach it a letter"** — intro paragraph removed. The excite/inhibit/backprop
+   legend (`#stageLegend`) now starts `hidden` and is only revealed during the very first Train
+   click ever (`doTrain()`'s `isFirstTrain = dataset.length === 0`, checked *before* the push),
+   then hidden again once that first animation finishes — direct feedback wanted the explanation
+   to exist once, not as permanent chrome under the diagram forever after. Re-triggers correctly
+   after Reset, since `dataset.length` genuinely returns to 0 there too.
+4. **`#shareSection` "Take it with you"** (moved up, was after Look Inside) — the "render a
+   network portrait" button, its whole explanatory paragraph, and `renderArchDiagram`-adjacent
+   portrait-export code (`$('portraitBtn')`'s click handler, `#portraitImg`, `#downloadPortraitRow`/
+   `#downloadPortraitBtn`) are deleted outright, not hidden — direct feedback: "I still don't
+   understand what that even does... just get rid of it." `#qrNote` is now static, simple prose
+   ("Scan this to come back to this exact page with your trained network already loaded") instead
+   of `refreshLedger()`-generated byte-count text — the byte-count/quantization detail moved into
+   the deep-dive instead (below).
+5. **`#step-lookinside` "Look inside the network"** (moved down, was before Take it with you) —
+   cut to one sentence ("A live picture of the network's actual weights and biases — no averages,
+   no stand-ins"). The fuller explanation that used to live here moved into "How this actually
+   works" as its own "Look inside the network, in detail" subsection, verbatim in substance.
+
+**"How this actually works" now opens expanded (`<details ... open>`) instead of collapsed** —
+direct feedback that there was "no reason why we should hide all of that information," alongside a
+standing complaint that the section itself "is actually kind of light." Both are addressed
+together: opening it by default, and genuinely adding content rather than just un-hiding what was
+already there — the relocated Look Inside explanation (above) and a new "The QR code is quantized"
+subsection are both net-new material, not copy moved around for its own sake. That second
+subsection also fixed a real, separate staleness bug found while writing it: the old copy said
+"Total parameters: 100×18+18 hidden... = 2,312... At 8 bits that's 2,312 bytes... At 4 bits it's
+1,156 bytes" — numbers from when `GRID` was still 10 (100 inputs), never updated when it dropped
+to 8 (64 inputs; see "Real hand tremor is non-rigid" for that change). Correct current numbers are
+64×18+18 hidden, 18×26+26 output = **1,664** parameters, 1,664 bytes at 8-bit, 832 bytes at 4-bit —
+matching the ~1,120-base64-character payload the live QR ledger has reported all along (the
+*computed* ledger note was always correct; only this hardcoded prose paragraph had drifted). The
+new subsection also explicitly states what the old copy left implicit — that scanning the QR code
+back in reconstructs a network *close to* the live one, not byte-identical to it — and repeats the
+actual QR code (`renderQrInto()`, factored out of `refreshLedger()` so both `#qrHolder` and the new
+`#qrHolderDeep` render the identical payload from one function) right next to that explanation,
+per direct request: "repeat the QR code down there."
+
+**A real `[hidden]` CSS bug, caught by testing this rather than assumed correct — the exact same
+class of bug `.expand-actions[hidden]` already has a documented fix for, elsewhere on this page.**
+`.legend{ display:flex; ... }` is an *author* rule, which beats the *user-agent* stylesheet's
+`[hidden]{ display:none }` regardless of selector specificity (author rules always win over UA
+defaults in the cascade, a tier above specificity math) — so setting `$('stageLegend').hidden =
+true` silently did nothing visually; `getComputedStyle(el).display` read `"flex"` with `.hidden ===
+true` at the same time, confirmed directly, not assumed from reading the CSS. Fixed the same way
+`.expand-actions[hidden]` was: an explicit `.legend[hidden]{ display:none; }` override. **If you
+add `hidden` toggling to any *new* element on this page, check whether its own class sets a
+`display` property before trusting the attribute alone — this is now the second time this exact
+mistake has shipped on this file.**
+
+**`SHOW_TRAINING_TIP = false`** — see "The training tip" section above for the reasoning (it reads
+as an accuracy claim this tool has no ground truth to back up, the same problem step 2's wording
+was written carefully to avoid). The `Reset` button's "no seedTrain()" test/behavior and the
+`#resetBtn` double-click-to-confirm flow are unchanged by any of this — direct confirmation to
+keep it exactly as it was.
+
 ## Testing changes
 
 No test suite — static page. Verify via a local static server (root-relative `/nav.js` and
-`/theme.css` mean `file://` won't pick them up). Golden path: confirm the page opens with section
-01 ("Give it a word") showing the hand-drawn-looking "HAT" first, section 02 ("Teach it a letter")
-below it, `trainStatus` reading exactly 0 examples across 0 letters, every chip's count at 0, and
-`#trainingTip` hidden (nothing to suggest yet from an empty dataset) → click the generic "Tap to
-draw a letter and teach it" trigger, confirm the wizard opens to the draw step with a plain "Draw
-the letter" header, draw something, click "Next →", confirm it switches to the letter-picker step
-with Train disabled until a letter is picked, pick one, click Train, confirm the modal closes and
-the stage animation plays real per-active-pixel packets traveling from the input raster into the
-hidden column (not a single bundled line), then hidden→output, then packets traveling backward all
-the way back to the same input pixels → confirm the compact "reads today's word... as: X" line under the diagram
-updates in sync with section 01's own decoded word, and `#trainingTip` now shows a real message
-(likely "Looking solid" right after a single fresh example) → back on the page, click a *specific*
-letter chip (not the generic trigger), confirm the wizard opens with that letter named directly in
-the header ('Draw the letter "X"'), the draw step's own button already reads "Train ↳" (not "Next
-→"), and clicking it after drawing commits and trains immediately — the letter-picker step should
-never appear at all for this path → in section 01, change one word-pad letter and confirm it
-re-decodes and logs a new attempt with no separate button click needed, then click "Clear all" and
-confirm every pad clears and it re-decodes to blanks in one action → click "Reset network" twice
-(first click only arms the confirmation toast) and confirm chip counts and `trainStatus` both go to
-exactly 0, `#trainingTip` hides again, the look-inside tiles snap to random noise, the word decode
+`/theme.css` mean `file://` won't pick them up). Golden path: confirm the page opens with step 1
+("Write a word") showing every word pad genuinely blank (no pre-seeded letters anywhere), step 2
+("See its first guess") showing "draw a word in step 1 first" until something's drawn, step 3
+("Teach it a letter") below with `trainStatus` reading exactly 0 examples across 0 letters, every
+chip's count at 0, `#trainingTip` hidden, and `#stageLegend` hidden (nothing trained yet, `.legend`
+should be `getComputedStyle(...).display === "none"`, not just have `.hidden === true` — see "The
+wizard redesign" above for why that distinction matters here specifically) → draw a letter into a
+step-1 word pad, confirm step 2 updates to show that same decode with a red "Wrong!" message and a
+"Next →" button → click it (or just scroll — these are anchor jumps, not gated navigation) into
+step 3, click the generic "Tap to draw a letter and teach it" trigger, draw something, click
+"Next →", pick a letter, click Train, confirm the modal closes, `#stageLegend` becomes visible
+(`display:flex`) for this first training only, the stage animation plays real per-active-pixel
+packets traveling pixel→hidden→output then backward output→hidden→pixel (two sequential legs, see
+the packets section above), and once the animation resolves `#stageLegend` goes back to
+`display:none` and `#trainingTip` stays hidden throughout (it should never appear at all with
+`SHOW_TRAINING_TIP = false`) → train a *second* letter and confirm the legend does **not**
+reappear (only the very first training ever, or the first after a Reset, should show it) → back on
+the page, click a *specific* letter chip (not the generic trigger), confirm the wizard opens with
+that letter named directly in the header ('Draw the letter "X"'), the draw step's own button
+already reads "Train ↳" (not "Next →"), and clicking it after drawing commits and trains
+immediately — the letter-picker step should never appear at all for this path → in step 1, change
+one word-pad letter and confirm it re-decodes and logs a new (collapsed-by-default) attempt with no
+separate button click needed, then click "Clear all" and confirm every pad clears and it re-decodes
+to blanks in one action, and confirm step 2 falls back to its "draw a word first" state again too →
+click "Reset network" twice (first click only arms the confirmation toast) and confirm chip counts
+and `trainStatus` both go to exactly 0, the look-inside tiles snap to random noise, the word decode
 updates to reflect the now-random network, and the network-weights diagram's input grid visibly
 loses whatever letter-shaped pattern it had and shows uniform noise instead → check the
-"Colorblind-friendly colors" checkbox and confirm the legend swatches, the look-inside tiles, the
-heatmap, the stage diagram, and the network-weights diagram all switch from rose/blue to
-orange/blue together, with nothing left showing the old colors; reload the page and confirm the
-checkbox and the colors both persisted → confirm the QR code and the network-weights diagram both
-render in step 04 with no quantization toggle or ledger table visible, and both "Download QR as
-PNG" and "Download diagram as PNG" save real, non-empty PNGs → train one more letter and confirm
-the diagram's connections/dot colors visibly change afterward (it re-renders on every Train, not
-just at page load) → open "how this actually works" and confirm the full-precision copy/load
-weights UI is there (not in step 04) → copy the full-precision weights, clear/retrain a little,
-then paste the copied JSON back into "Load weights" and confirm the look-inside tiles snap back to
-the earlier state (a real round-trip, not just "no error thrown") → render a portrait, confirm the
-download button only appears after rendering (not before), and confirm the downloaded PNG actually
-contains the tiles/heatmap/word, not a blank canvas.
+"Colorblind-friendly colors" checkbox and confirm the legend swatches (next time they're shown),
+the look-inside tiles, the heatmap, the stage diagram, and the network-weights diagram all switch
+from rose/blue to orange/blue together, with nothing left showing the old colors; reload the page
+and confirm the checkbox and the colors both persisted → confirm step 4 ("Take it with you") shows
+the QR code with the simple one-line note (no byte-count text) and the network-weights diagram, in
+that order, with no "render a network portrait" button or section anywhere on the page, and both
+"Download QR as PNG" and "Download diagram as PNG" save real, non-empty PNGs → confirm step 5
+("Look inside the network") comes *after* step 4, not before, with just the one-sentence intro →
+train one more letter and confirm the diagram's connections/dot colors visibly change afterward
+(it re-renders on every Train, not just at page load) → confirm "how this actually works" is
+**expanded on page load**, not collapsed, and contains (in order) the architecture diagram/math, a
+"Look inside the network, in detail" subsection, a "The QR code is quantized" subsection with a
+*second*, independently-rendered QR code (`#qrHolderDeep`) showing the same payload as step 4's,
+and the full-precision copy/load weights UI → copy the full-precision weights, clear/retrain a
+little, then paste the copied JSON back into "Load weights" and confirm the look-inside tiles snap
+back to the earlier state (a real round-trip, not just "no error thrown").
 
 Also: at the page's own `.wrap` max-width (900px), confirm all 26 chips sit on a single row rather
 than wrapping to two → confirm the stage diagram at idle shows no caption text at all (not even a

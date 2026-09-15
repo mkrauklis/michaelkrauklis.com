@@ -110,6 +110,11 @@
   canvas#stage{ width:100%; max-width:760px; height:auto; display:block; background:var(--bg-panel-2); border-radius:10px; border:1px solid var(--line); }
   .stage-caption{ font-family:var(--mono); font-size:.78rem; color:var(--ink-dim); margin-top:.5rem; min-height:1.4em; }
   .legend{ display:flex; gap:1rem; flex-wrap:wrap; margin-top:.4rem; }
+  /* Same real bug as .expand-actions[hidden] elsewhere on this page: an author rule's `display`
+     beats the UA stylesheet's [hidden]{display:none} regardless of selector specificity, so
+     setting the `hidden` *property* in JS (see #stageLegend, shown only for the first Train)
+     silently did nothing without this explicit override. */
+  .legend[hidden]{ display:none; }
   .legend span{ font-family:var(--mono); font-size:.72rem; color:var(--ink-dim); display:flex; align-items:center; gap:.4em; }
   .legend-swatch{ width:10px; height:10px; border-radius:3px; display:inline-block; }
   .cb-toggle{
@@ -159,7 +164,6 @@
   .export-io{ display:grid; grid-template-columns:1fr 1fr; gap:1.6rem; margin-top:2rem; }
   @media (max-width:720px){ .export-io{ grid-template-columns:1fr; } }
   .io-block h3{ font-size:.95rem; margin-bottom:.5rem; font-family:'Fraunces',serif; font-weight:500; }
-  #portraitImg{ max-width:100%; border-radius:8px; margin-top:1rem; border:1px solid var(--line); display:none; }
 
   svg.arch text{ font-family:var(--mono); fill:var(--ink-dim); }
   svg.arch .accent-line{ stroke:var(--accent); }
@@ -210,31 +214,47 @@
 
 <main class="wrap">
 
-  <section>
-    <span class="step-tag">01 — the goal</span>
-    <h2>Give it a word</h2>
-    <p>Here's a word, spelled out one letter per box below. The network hasn't learned much yet,
-    so it may well misread it — teach it letters in the next step and watch this decode improve,
-    live, as you go. Every time you train, it re-reads this whole word from scratch — no
-    memorization, just its current weights doing the work.</p>
+  <section id="step-word">
+    <span class="step-tag">1 — write a word</span>
+    <h2>Write a word</h2>
+    <p>Draw a word below, one letter per box — whatever you like, any length.</p>
 
     <div class="panel">
       <div class="word-row" id="wordPads"></div>
       <div class="decoded" id="wordOutput"></div>
       <div class="actions" style="margin-top:.8rem;">
         <button type="button" class="secondary" id="clearAllWordBtn">Clear all</button>
-        <span class="status-mono" style="margin:0;">re-decodes automatically the moment a letter above changes, or the moment you train</span>
       </div>
-      <div class="attempts" id="attemptsLog"></div>
+      <details class="disclosure" style="margin-top:.4rem;">
+        <summary>Past attempts</summary>
+        <div class="disclosure-body">
+          <div class="attempts" id="attemptsLog"></div>
+        </div>
+      </details>
+      <div class="actions" style="margin-top:1.2rem; justify-content:flex-end;">
+        <button type="button" class="primary" data-jump="#step-guess">Next &rarr;</button>
+      </div>
     </div>
   </section>
 
-  <section>
-    <span class="step-tag">02 — teach</span>
+  <section id="step-guess">
+    <span class="step-tag">2 — its first guess</span>
+    <h2>See its first guess</h2>
+    <p>This network hasn't learned anything about your handwriting yet — every weight is still
+    random. Here's what it reads your word as right now:</p>
+
+    <div class="panel">
+      <div class="decoded" id="firstGuessOutput"></div>
+      <div class="status-mono" id="firstGuessStatus" style="margin-top:.8rem;"></div>
+      <div class="actions" style="margin-top:1.2rem; justify-content:flex-end;">
+        <button type="button" class="primary" data-jump="#step-teach">Next &rarr; teach it your handwriting</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="step-teach">
+    <span class="step-tag">3 — teach it</span>
     <h2>Teach it a letter</h2>
-    <p>Tap below to draw a character and tell it what letter that was. The net sees your ink,
-    guesses, checks itself against the label you gave it, and adjusts — a full forward pass
-    followed by a full backward pass, every time.</p>
 
     <div class="panel">
       <div class="teach-header">
@@ -253,7 +273,7 @@
       <div class="stage-wrap">
         <canvas id="stage" width="760" height="160"></canvas>
         <div class="stage-caption" id="stageCaption"></div>
-        <div class="legend">
+        <div class="legend" id="stageLegend" hidden>
           <span><i class="legend-swatch" id="legendAccentSwatch" style="background:var(--accent);"></i>excites (+ weight / + activation)</span>
           <span><i class="legend-swatch" id="legendCoolSwatch" style="background:var(--cool);"></i>inhibits (− weight / − activation)</span>
           <span><i class="legend-swatch" style="background:var(--ink);"></i>backprop signal, flowing right→left</span>
@@ -266,44 +286,18 @@
     </div>
   </section>
 
-  <section>
-    <span class="step-tag">03 — look inside</span>
-    <h2>Look inside the network</h2>
-    <p>The whole network is only three layers: your drawing becomes <b style="color:var(--ink);">64
-    pixel values</b>, every one of which connects to all <b style="color:var(--ink);">18 hidden
-    neurons</b> below — the network's one and only hidden layer — which in turn connect to
-    <b style="color:var(--ink);">26 output neurons</b>, one per letter A–Z. The 18 tiles below
-    <i>are</i> those 18 hidden neurons: each has learned to look for one pattern of ink across your
-    drawing grid — its <i>receptive field</i>. The larger grid to the right shows how strongly
-    those same 18 neurons vote for each of the 26 letters. Both update live as you train.</p>
-
-    <div class="panel">
-      <div class="tiles" id="tilesGrid"></div>
-      <div id="heatmapWrap">
-        <canvas id="heatmap" width="440" height="306"></canvas>
-      </div>
-      <p style="margin-top:1rem; font-size:.82rem;">Each tile is one hidden neuron's real weights,
-      not a stylized icon: its border color is that neuron's bias, and its interior is its 64
-      input weights — one per pixel — reshaped back into the 8×8 drawing grid, rose where a pixel
-      excites that neuron and blue where it inhibits it. The heatmap is the <i>next</i> layer's
-      weights: one column per output letter, one row per hidden neuron (the same 18, same order as
-      the tiles), again rose/blue for how much that neuron pushes toward or away from that
-      letter.</p>
-    </div>
-  </section>
-
   <section id="shareSection">
-    <span class="step-tag">04 — save &amp; share</span>
+    <span class="step-tag">4 — take it with you</span>
     <h2>Take it with you</h2>
     <p>The whole trained network — every weight, every bias — is small enough to fit in a QR
-    code. Quantize it down, scan it, and this exact net comes back to life somewhere else.</p>
+    code.</p>
 
     <div class="panel">
       <div class="qr-block">
         <div id="qrHolder"></div>
         <div>
-          <p class="qr-note" id="qrNote">Scan this to carry the trained network — seed, shape, and
-          every quantized weight — anywhere the site can read it back.</p>
+          <p class="qr-note" id="qrNote">Scan this to come back to this exact page with your
+          trained network already loaded.</p>
           <button type="button" class="secondary" style="margin-top:.6rem;" id="downloadQrBtn">Download QR as PNG</button>
         </div>
       </div>
@@ -311,24 +305,10 @@
       <div class="qr-block" style="margin-top:1.6rem;">
         <canvas id="archCanvas" width="460" height="320"></canvas>
         <div>
-          <p class="qr-note">Every real connection this network has, drawn directly — not a
-          stylized icon: each pixel's actual weight into each of the 18 hidden neurons, each
-          neuron's own bias, and its weight into each of the 26 possible letters. Updates live as
-          you train. Print this next to the QR code so the shape and the trained weights travel
-          together.</p>
+          <p class="qr-note">Every real connection this network has, drawn directly. Updates live
+          as you train — print this next to the QR code so the shape and the trained weights
+          travel together.</p>
           <button type="button" class="secondary" style="margin-top:.6rem;" id="downloadArchBtn">Download diagram as PNG</button>
-        </div>
-      </div>
-
-      <div style="margin-top:2rem;">
-        <button type="button" class="secondary" id="portraitBtn">Render a network portrait</button>
-        <p style="font-size:.8rem; max-width:52ch;">A "portrait" here just means one snapshot image
-        of everything this trained network looks like right now: all 18 hidden-neuron tiles from
-        step 03, the neuron-to-letter heatmap next to them, and the word you're testing in step 01
-        — click the button and it renders below, ready to download and print.</p>
-        <img id="portraitImg" alt="Rendered portrait of the current network">
-        <div class="actions" id="downloadPortraitRow" style="display:none;">
-          <button type="button" class="primary" id="downloadPortraitBtn">Download portrait PNG</button>
         </div>
       </div>
     </div>
@@ -337,9 +317,8 @@
       <span class="step-tag">make it a gift</span>
       <p style="font-size:0.9rem;">Print the QR code on one side of a mug and the network diagram
       on the other — scan the QR to bring this exact trained network back to life, with the
-      diagram right there explaining its shape. Or render a portrait above and print that instead
-      — any of the three downloads on this page is ready for a mug, a shirt, a poster, whatever
-      Zazzle will put an uploaded image on.</p>
+      diagram right there explaining its shape. Either download on this page is ready for a mug,
+      a shirt, a poster, whatever Zazzle will put an uploaded image on.</p>
       <p style="font-size:0.85rem;">
         <a href="https://www.zazzle.com/design_your_own_logo_design_coffee_mug-256206116898885602?rf=238054754631086278" target="_blank" rel="noopener">Open a Zazzle "upload your own image" template &rarr;</a>
         — works for a mug, and most of Zazzle's other blank templates take the same kind of upload.
@@ -347,7 +326,20 @@
     </div>
   </section>
 
-  <details class="disclosure advanced">
+  <section id="step-lookinside">
+    <span class="step-tag">5 — look inside</span>
+    <h2>Look inside the network</h2>
+    <p>A live picture of the network's actual weights and biases — no averages, no stand-ins.</p>
+
+    <div class="panel">
+      <div class="tiles" id="tilesGrid"></div>
+      <div id="heatmapWrap">
+        <canvas id="heatmap" width="440" height="306"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <details class="disclosure advanced" open>
     <summary>How this actually works <span class="adv-sub">— the whole network, in one screen</span></summary>
     <div class="disclosure-body">
       <p>Every drawing is downsampled to an 8×8 grid — 64 numbers between 0 (blank) and 1 (full
@@ -385,13 +377,32 @@
       and <code class="inline">b</code> nudged by <code class="inline">−η·∂L</code>. Pressing Train
       adds your sample to everything taught so far and re-runs several passes over all of it, so
       earlier letters don't get forgotten as new ones arrive.</p>
-      <p>Total parameters: 100×18+18 hidden, 18×26+26 output =
-      <b style="color:var(--ink);">2,312</b> numbers. At 8 bits each that's 2,312 bytes — genuinely
-      too dense to fit in one QR code at this network's size, confirmed directly against the real
-      QR library rather than assumed. At 4 bits it's 1,156 bytes, which fits comfortably, so the QR
-      export in step 04 always quantizes to 4 bits — there's no real choice to offer there. Loading
-      weights back in only restores the numbers, not this session's drawn examples — teaching is
-      one-way unless you keep the browser tab open.</p>
+
+      <h3>Look inside the network, in detail</h3>
+      <p>Your drawing becomes <b style="color:var(--ink);">64 pixel values</b>, every one of which
+      connects to all <b style="color:var(--ink);">18 hidden neurons</b> — the network's one and
+      only hidden layer — which in turn connect to <b style="color:var(--ink);">26 output
+      neurons</b>, one per letter A–Z. Step 5's 18 tiles <i>are</i> those 18 hidden neurons: each
+      has learned to look for one pattern of ink across your drawing grid — its <i>receptive
+      field</i>. A tile's border color is that neuron's bias; its interior is its 64 input weights
+      reshaped back into the 8×8 drawing grid, rose where a pixel excites that neuron and blue
+      where it inhibits it. The larger heatmap next to the tiles is the <i>next</i> layer's
+      weights: one column per output letter, one row per hidden neuron (same order as the tiles),
+      again rose/blue for how much that neuron pushes toward or away from that letter. Both update
+      live as you train.</p>
+
+      <h3>The QR code is quantized — it's not quite the full network</h3>
+      <p>Total parameters: 64×18+18 hidden, 18×26+26 output =
+      <b style="color:var(--ink);">1,664</b> numbers. At 8 bits each that's 1,664 bytes —
+      genuinely too dense to fit in one QR code at this network's size, confirmed directly against
+      the real QR library rather than assumed. So the QR code above compresses every weight and
+      bias down to 4 bits each first (832 bytes) — enough to fit comfortably, but a real,
+      permanent loss of precision compared to the exact numbers this network is actually using
+      right now. Scanning it back in reconstructs a network that's <i>close</i> to this one, not
+      byte-identical to it. The "copy full-precision weights" box further down is the exact,
+      lossless version of the same numbers, if that difference ever matters more to you than a QR
+      code's convenience.</p>
+      <div id="qrHolderDeep" style="margin:.6rem 0;"></div>
 
       <div class="export-io">
         <div class="io-block">
@@ -413,8 +424,9 @@
         </div>
       </div>
 
-      <p>Nothing you draw ever leaves your browser — every forward pass, every gradient, every
-      export happens right here.</p>
+      <p>Loading weights back in only restores the numbers, not this session's drawn examples —
+      teaching is one-way unless you keep the browser tab open. Nothing you draw ever leaves your
+      browser — every forward pass, every gradient, every export happens right here.</p>
     </div>
   </details>
 
@@ -686,35 +698,12 @@
     }
   }
 
-  // ---------------- seed letters (bootstrap so the page isn't empty) ----------------
-  var SEED = {
-    H: [".........#","#........#","#........#","#........#","##########","#........#","#........#","#........#","#........#",".........."],
-    I: [".........#","##########","....##....","....##....","....##....","....##....","....##....","....##....","##########",".........."],
-    A: ["....##....","...####...","..##..##..","..##..##..","..######..","..##..##..","..##..##..","..##..##..","..##..##..",".........."],
-    B: ["#.........","#####.....","#....#....","#....#....","#####.....","#....#....","#....#....","#....#....","#####.....",".........."],
-    C: ["..#####...",".#....#...","#.........","#.........","#.........","#.........","#.........",".#....#...","..#####...",".........."],
-    T: ["##########","....##....","....##....","....##....","....##....","....##....","....##....","....##....","....##....",".........."]
-  };
-  function patternToGrid(rows, dx){
-    dx = dx||0;
-    var g = new Float32Array(GRIDN);
-    for (var r=0;r<GRID;r++){
-      var row = rows[r];
-      for (var c=0;c<GRID;c++){
-        var sc = c-dx;
-        var v = (sc>=0 && sc<GRID && row[sc]==='#') ? 1 : 0;
-        g[r*GRID+c] = v;
-      }
-    }
-    return g;
-  }
   // The page deliberately opens on a genuinely fresh, untrained random network -- no seedTrain()
   // call here. An earlier version pre-trained six letters at load so the page "never opened
   // blank," but that meant a first-time visitor's very first look at "look inside" or the word
   // decode wasn't showing *their* network at all, and they had to click Reset to get one -- direct
   // feedback: "it's not intuitive that someone needs to go back and reset to get their own
-  // network." SEED/patternToGrid are still used below, just for the seeded word pads' handwritten-
-  // stroke-fallback rendering, not for training anything at load anymore.
+  // network."
 
   // ---------------- letter chips: an overview on the page that also opens the wizard ----------------
   // Clicking one of these opens the same teach wizard as the "tap to draw" trigger, but pre-aimed
@@ -1027,55 +1016,12 @@
     wordPads.forEach(function(sp){ sp.clear(); });
     var d = decodeWordPads(); renderDecoded(d); pushAttempt(d);
   });
-  // Hand-authored pen paths (grid-cell coordinates, 0-9) for the three letters in the seeded word
-  // -- filling SEED's ASCII-art squares directly (the old approach) rendered as solid grid blocks,
-  // which reads as pixel-art bricks rather than something a hand actually wrote. These are only
-  // used for the seeded word's *display*; decoding a word pad just re-samples whatever is
-  // currently drawn on its canvas, so the word pads' look is free to differ from SEED/patternToGrid
-  // (which nothing trains on anymore -- the page opens on a genuinely random, untaught network).
-  var HANDWRITTEN_STROKES = {
-    H: [ [[2,1],[2,8.5]], [[7,1],[7,8.5]], [[2,4.6],[7,4.4]] ],
-    A: [ [[1.5,8.5],[4.5,1],[7.5,8.5]], [[3,5.8],[6.5,5.6]] ],
-    T: [ [[1,1.3],[8,1]], [[4.5,1.1],[4.7,8.5]] ]
-  };
-  function drawHandwrittenLetter(ctx, letter, cssSize){
-    var strokes = HANDWRITTEN_STROKES[letter];
-    if (!strokes) return false;
-    var step = cssSize/GRID;
-    ctx.strokeStyle = C_STROKE;
-    ctx.lineWidth = step*0.8;
-    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    strokes.forEach(function(pts){
-      ctx.beginPath();
-      pts.forEach(function(p, i){
-        var px=p[0]*step, py=p[1]*step;
-        if (i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
-      });
-      ctx.stroke();
-    });
-    return true;
-  }
-  // seed the test word with "HAT" so the page opens mid-story
-  (function seedWord(){
-    var word = [{l:'H',dx:0},{l:'A',dx:0},{l:'T',dx:0}];
-    word.forEach(function(w, i){
-      var canvas = wordPadsEl.children[i].querySelector('canvas');
-      var ctx = canvas.getContext('2d');
-      var cssSize=60;
-      ctx.setTransform(1,0,0,1,0,0);
-      var dpr = canvas.width/cssSize;
-      ctx.setTransform(dpr,0,0,dpr,0,0);
-      ctx.fillStyle=C_PAPER; ctx.fillRect(0,0,cssSize,cssSize);
-      if (!drawHandwrittenLetter(ctx, w.l, cssSize)){
-        // fallback for any letter without a hand-authored stroke path
-        var g = patternToGrid(SEED[w.l], w.dx);
-        var step = cssSize/GRID;
-        ctx.fillStyle=C_STROKE;
-        for (var r=0;r<GRID;r++) for (var c2=0;c2<GRID;c2++) if (g[r*GRID+c2]>0.5) ctx.fillRect(c2*step, r*step, step, step);
-      }
-      wordPads[i].markDirty();
-    });
-  })();
+  // The page opens with every word pad genuinely blank -- direct request, so a visitor writes
+  // their *own* word from the very first thing they see, rather than being handed a pre-drawn
+  // "HAT" to look at before ever touching the page. An earlier version pre-drew a seeded word
+  // here specifically so the page "opened mid-story"; that's superseded by the wizard flow below,
+  // which needs the pads to start empty so step 2's "here's what a random network reads your word
+  // as" framing is about *your* handwriting from the first step, not a canned example.
 
   function decodeWordPads(){
     var out = '';
@@ -1106,17 +1052,30 @@
       box.appendChild(c);
     });
   }
+  // Step 2's "first guess" readout mirrors whatever's currently drawn in the word pads, the same
+  // way the compact stage readout already does -- there's deliberately no ground-truth check here
+  // (this tool never asks what word you *meant* to spell, so it has no way to verify a decode
+  // letter-by-letter, the same real limitation that's why the training tip below is hidden). The
+  // "Wrong!" framing doesn't need one: a brand-new network's weights are pure random noise, so
+  // *any* non-empty decode from it is guaranteed nonsense regardless of what was actually drawn --
+  // a true statement about the network's state, not a claim about your specific word.
   function renderDecoded(str){
     var el = $('wordOutput');
     var compact = $('stageWordReadout');
+    var guessEl = $('firstGuessOutput');
+    var guessStatus = $('firstGuessStatus');
     syncStageWordThumbs();
     if (!str) {
       el.innerHTML = '<span class="gap">— draw a word above —</span>';
       if (compact) compact.textContent = '—';
+      if (guessEl) guessEl.innerHTML = '<span class="gap">— draw a word in step 1 first —</span>';
+      if (guessStatus) guessStatus.textContent = '';
       return;
     }
     el.textContent = str.replace(/ /g,'·');
     if (compact) compact.textContent = str.replace(/ /g,'·');
+    if (guessEl) guessEl.textContent = str.replace(/ /g,'·');
+    if (guessStatus) guessStatus.innerHTML = '<b style="color:var(--accent);">Wrong!</b> A brand-new network is just random numbers — it has no idea what your handwriting looks like yet. Time to fix that.';
   }
   var attemptN = 0;
   function pushAttempt(str){
@@ -1128,8 +1087,18 @@
     var log = $('attemptsLog');
     log.insertBefore(row, log.firstChild);
   }
-  // seed the very first attempt so the log isn't empty at rest
-  (function(){ var d = decodeWordPads(); renderDecoded(d); pushAttempt(d); })();
+  // Initialize the readouts against the (empty) starting pads -- no pushAttempt() here, since
+  // logging a blank "attempt 1: —" before a visitor has drawn anything isn't a real attempt worth
+  // keeping in the log.
+  (function(){ var d = decodeWordPads(); renderDecoded(d); })();
+
+  // ---------------- wizard "Next" buttons: jump straight to the next step's heading ----------------
+  document.querySelectorAll('[data-jump]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var target = document.querySelector(btn.getAttribute('data-jump'));
+      if (target) target.scrollIntoView({behavior:'smooth', block:'start'});
+    });
+  });
 
   // ---------------- look inside: tiles + heatmap ----------------
   var tileCanvases = [];
@@ -1187,9 +1156,17 @@
   // average how much probability mass lands on its own correct class. A letter sitting at low
   // self-confidence is either under-taught (often just one example) or genuinely confusable with
   // something else already taught -- either way, teaching it another example is the best next move.
+  // Hidden for now, not removed -- direct feedback: this tip reads as measuring how *accurate*
+  // the network is, but it can't be, since this tool never asks what word a visitor actually
+  // meant to spell (no ground truth to check a decode against, the same real limitation "See its
+  // first guess" above works around by never claiming to check per-letter correctness either).
+  // The tip's underlying computation (self-confidence on a letter's own taught examples) is still
+  // real and still runs below, in case a future, more honestly-framed version of this is worth
+  // reviving -- it's just never shown while this flag is false.
+  var SHOW_TRAINING_TIP = false;
   function computeTrainingTip(){
     var tipEl = $('trainingTip');
-    if (!dataset.length){ tipEl.hidden = true; return; }
+    if (!SHOW_TRAINING_TIP || !dataset.length){ tipEl.hidden = true; return; }
     var sums = {}, ns = {}, realNs = {};
     dataset.forEach(function(ex){
       var letter = ALPHA[ex.y];
@@ -1548,6 +1525,10 @@
   }
   function doTrain(letter){
     if (animating) return;
+    // The excite/inhibit/backprop legend only appears during the very first training pass ever
+    // (dataset.length===0 right now means nothing has been taught since load or Reset) -- direct
+    // feedback: useful context worth explaining once, not permanent on-page chrome after that.
+    var isFirstTrain = dataset.length === 0;
     var grid = pad.getGrid();
     var yIdx = ALPHA.indexOf(letter);
     var pre = forwardAndGrad(grid, yIdx);
@@ -1556,6 +1537,7 @@
     counts[yIdx]++;
     refreshChipCounts();
     setControlsEnabled(false);
+    if (isFirstTrain) $('stageLegend').hidden = false;
     return animateSequence(pre, grid, yIdx).then(function(){
       runEpochs(EPOCHS, LR);
       refreshLookInside();
@@ -1568,6 +1550,7 @@
       pad.clear();
       setControlsEnabled(true);
       animating = false;
+      if (isFirstTrain) $('stageLegend').hidden = true;
       $('trainStatus').innerHTML = '<b>'+dataset.length+'</b> examples taught across <b>'+counts.filter(function(c){return c>0;}).length+'</b> letters';
     });
   }
@@ -1641,30 +1624,38 @@
   // characters -- genuinely too big for one QR code -- so this has to be checked for real and
   // handled before calling new QRCode(), not just hoped past.
   var QR_MAX_B64_CHARS = 2900;
-  function refreshLedger(){
-    var payload = quantizePayload(QUANT_BITS);
-    var b64 = bytesToBase64(payload.bytes);
-    var holder = $('qrHolder');
+  // Renders the same QR payload into any holder -- used for both the primary QR (step 4) and the
+  // second copy repeated in "how this actually works" (direct request: explain the quantization
+  // tradeoff right next to a real QR, not just in prose referring to one shown elsewhere).
+  function renderQrInto(holder, b64){
     holder.innerHTML='';
     if (b64.length > QR_MAX_B64_CHARS){
-      // Not reachable at this network's current size (2,312 params at 4-bit is ~1,552 base64
+      // Not reachable at this network's current size (1,664 params at 4-bit is ~1,120 base64
       // characters, well under the ~2,900 ceiling) -- kept as a real safety net, not dead code,
       // in case GRID/HID/OUT ever grow enough to change that.
       holder.innerHTML = '<div style="color:#333; font-family:monospace; font-size:.68rem; padding:8px; text-align:center;">Too large for one QR code — use the full-precision copy/paste export below instead.</div>';
-      $('downloadQrBtn').disabled = true;
+      return false;
     } else if (window.QRCode){
       try {
         new QRCode(holder, {text: b64, width:140, height:140, correctLevel: QRCode.CorrectLevel.L});
-        $('downloadQrBtn').disabled = false;
+        return true;
       } catch(e){
         // Belt-and-suspenders: the length check above should already prevent this, but a QR
         // library throwing must never be allowed to abort the rest of this script (it did,
         // the first time this shipped -- everything after this call silently never ran).
         holder.innerHTML = '<div style="color:#333; font-family:monospace; font-size:.68rem; padding:8px; text-align:center;">QR generation failed for this payload — use the full-precision copy/paste export below instead.</div>';
-        $('downloadQrBtn').disabled = true;
+        return false;
       }
     }
-    $('qrNote').innerHTML = 'Payload: <span class="mono">'+b64.length+'</span> base64 characters ('+payload.bytes.length+' bytes) encoding the shape ('+GRID+'×'+GRID+', '+HID+' hidden, '+OUT+' outputs) and every 4-bit-quantized weight and bias.';
+    return false;
+  }
+  function refreshLedger(){
+    var payload = quantizePayload(QUANT_BITS);
+    var b64 = bytesToBase64(payload.bytes);
+    var ok = renderQrInto($('qrHolder'), b64);
+    $('downloadQrBtn').disabled = !ok;
+    var deepHolder = $('qrHolderDeep');
+    if (deepHolder) renderQrInto(deepHolder, b64);
     cachedQrText = b64;
   }
   var cachedQrText = '';
@@ -1821,38 +1812,6 @@
     }
   });
 
-  // ---------------- portrait export ----------------
-  $('portraitBtn').addEventListener('click', function(){
-    var W=560, H=520;
-    var out = document.createElement('canvas'); out.width=W; out.height=H;
-    var ctx = out.getContext('2d');
-    ctx.fillStyle=C_BG; ctx.fillRect(0,0,W,H);
-    ctx.font='600 26px Fraunces, serif'; ctx.fillStyle=C_INK; ctx.fillText('Inkling', 24, 44);
-    ctx.font='11px "JetBrains Mono", monospace'; ctx.fillStyle=C_INKDIM;
-    ctx.fillText(dataset.length+' examples taught · '+counts.filter(function(c){return c>0;}).length+' letters', 24, 64);
-
-    tileCanvases.forEach(function(tc, i){
-      var col=i%6, row=(i/6)|0;
-      var x = 24+col*84, y=90+row*84;
-      ctx.drawImage(tc.canvas, x, y, 76, 76);
-    });
-    ctx.drawImage($('heatmap'), 24, 350, 440, 306*0.55);
-    var decoded = $('wordOutput').textContent || '';
-    ctx.font='600 30px Fraunces, serif'; ctx.fillStyle=C_INK;
-    ctx.fillText(decoded, 24, 500);
-
-    var img = $('portraitImg');
-    img.src = out.toDataURL('image/png');
-    img.style.display='block';
-    $('downloadPortraitRow').style.display='flex';
-  });
-
-  $('downloadPortraitBtn').addEventListener('click', function(){
-    var link = document.createElement('a');
-    link.download = 'inkling-portrait.png';
-    link.href = $('portraitImg').src;
-    link.click();
-  });
 
 })();
 </script>
