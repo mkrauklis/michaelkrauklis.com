@@ -1031,24 +1031,107 @@ was written carefully to avoid). The `Reset` button's "no seedTrain()" test/beha
 `#resetBtn` double-click-to-confirm flow are unchanged by any of this — direct confirmation to
 keep it exactly as it was.
 
+## Step 1's prediction/attempts moved out entirely, not just hidden
+
+Direct feedback: "get rid of the prediction and past attempts in step one. Those should be
+exclusive to steps two and three." `#wordOutput` (the full decode display) and the "Past
+attempts" `<details>` block were both **deleted from `#step-word`'s markup**, not hidden with
+CSS — step 1 is now just the word pads, "Clear all," and the Next button, exactly the "prompt
+them to write a word" framing the original wizard redesign called for, with nothing downstream
+of that action visible yet. "Past attempts" moved down into `#step-teach` (step 3), still a
+collapsed-by-default `<details>`, sitting after the stage diagram/readout — it's a training-time
+log, and step 3 is the only place training happens. Step 2 (`#step-guess`) already had its own
+`#firstGuessOutput`/`#firstGuessStatus` readout, untouched by this change.
+
+Removing `#wordOutput` meant `renderDecoded(str)` — the one function every word-pad
+change/train/reset/load already funnels through — could no longer unconditionally write to it.
+Rather than null-guard a reference to an element that will now never exist again, the `el`/
+`wordOutput` lookup was deleted from the function outright (the other three targets —
+`#stageWordReadout`, `#firstGuessOutput`, `#firstGuessStatus` — are still individually
+null-checked, since they're real, current elements). If step 1 ever gets its own decode display
+back, that's a new element with a new lookup, not a revival of this one.
+
+## The translate-readout spinner and highlight flash (`#translateSpinner`, `.just-updated`)
+
+Direct feedback: during a Train click, `#stageWordReadout` ("Your network translates ... to
+X") silently sits on its *old* value for the entire ~2s stage animation plus the `runEpochs`
+pass after it — "it's not clear that that's being updated." Two additions, both scoped to
+`doTrain()` only (a word pad being drawn on or cleared already gives its own immediate visual
+feedback — the ink itself — so neither the spinner nor the flash fires for that path):
+
+- **`#translateSpinner`** (a small CSS-only rotating ring, `.spinner-inline`) sits right next to
+  the readout, `hidden` by default. `doTrain()` un-hides it the moment training starts (right
+  alongside `setControlsEnabled(false)`) and hides it again inside the `.then()` callback once
+  `renderDecoded()` has actually run with the new weights — so it's a literal "this value is
+  stale, a real computation is in flight" indicator, not a fixed-duration decoration.
+  `.spinner-inline[hidden]{ display:none; }` is declared proactively, before this element ever
+  shipped with a bug — `.spinner-inline{ display:inline-block; ... }` is exactly the kind of
+  author rule that the file's two prior `[hidden]` bugs (`.expand-actions`, `.legend`, both
+  documented above) came from, so the override went in from the start rather than waiting for a
+  third real regression to teach the lesson again.
+- **`.just-updated`** (`readout-flash` keyframes: a brief flash to `var(--good)` with a text
+  glow, fading back to inherit over 900ms) marks the *moment* the readout actually changes.
+  `renderDecoded(str, flash)` takes a new second parameter — `true` only from `doTrain()`'s
+  `.then()` callback, never from the word-pad-edit/clear/reset/load call sites, since those
+  already have their own obvious cause-and-effect (you just watched yourself draw or clear
+  something) and don't need a second highlight layered on. When `flash` is true, it removes then
+  re-adds the class with a forced reflow (`void compact.offsetWidth`) in between — restarts the
+  CSS animation from the top even if a fast second Train click retriggers it while the first
+  flash is still fading, rather than the browser silently no-op'ing a redundant `classList.add()`
+  on a class that's technically already present.
+
+Verified end-to-end via a temporary debug harness (`window.__debugInkling`, exposing `doTrain`/
+`pad`/`wordPads`/`decodeWordPads`/`renderDecoded`, removed before shipping — same pattern as
+every other debug harness documented in this file): drew directly onto the teach pad and a word
+pad's real canvases, then called `doTrain()` with `window.requestAnimationFrame` temporarily
+patched to invoke its callback synchronously with `performance.now()+5000` (jumping straight past
+the animation's `TOTAL=2000` window in one deterministic call, since this automation environment's
+`document.visibilityState` stays `'hidden'` throughout — the same known limitation documented
+elsewhere in this file — so a real rAF-driven completion never arrives here). Confirmed directly:
+spinner hidden before the call, visible immediately after `doTrain()` starts, hidden again once
+its promise resolves; the readout's text changed to the newly-trained letter's decode; and
+`stageWordReadout.classList.contains('just-updated')` was true right after resolution.
+
+## Heatmap axis labels (`refreshLookInside`)
+
+Direct feedback: the `W2` heatmap's row numbers (0-17) had no label saying what they were
+indexing. Canvas grew from 440×306 to 460×330 (`leftM` 22→36 for a widened left margin, plus a
+new bottom margin) to make room for two axis titles, drawn after the existing grid/number
+rendering: `'output letter (A–Z)'` centered below the grid (the columns already carry real A-Z
+letter labels above them, but nothing said what the axis *was*), and `'hidden neuron (0–17, same
+order as tiles)'` rotated -90° in the widened left margin, replacing what used to be bare, unlabeled
+numbers. "Same order as tiles" is a deliberate callback to the tiles-vs-heatmap connection this
+section's intro paragraph already makes in prose ("one row per hidden neuron in the same order as
+the tiles") — the axis label repeats it right where a reader is actually looking at that row
+index, not just once in the surrounding paragraph. Verified by sampling non-background pixel
+counts in both label regions directly from the live canvas (`getImageData`), rather than by
+screenshot — this session's browser pane wasn't compositing frames at all (a different, harder
+failure than the usual `document.visibilityState` issue, which at least resolves with a forced
+paint) — confirming both regions have real drawn content and aren't silently clipped or blank.
+
 ## Testing changes
 
 No test suite — static page. Verify via a local static server (root-relative `/nav.js` and
 `/theme.css` mean `file://` won't pick them up). Golden path: confirm the page opens with step 1
-("Write a word") showing every word pad genuinely blank (no pre-seeded letters anywhere), step 2
+("Write a word") showing every word pad genuinely blank (no pre-seeded letters anywhere) and
+**no decode display or "Past attempts" disclosure anywhere in step 1** — both now live
+exclusively in later steps (step 1 is just the pads, "Clear all," and Next), step 2
 ("See its first guess") showing "draw a word in step 1 first" until something's drawn, step 3
 ("Teach it a letter") below with `trainStatus` reading exactly 0 examples across 0 letters, every
-chip's count at 0, `#trainingTip` hidden, and `#stageLegend` hidden (nothing trained yet, `.legend`
+chip's count at 0, `#trainingTip` hidden, `#stageLegend` hidden (nothing trained yet, `.legend`
 should be `getComputedStyle(...).display === "none"`, not just have `.hidden === true` — see "The
-wizard redesign" above for why that distinction matters here specifically) → draw a letter into a
-step-1 word pad, confirm step 2 updates to show that same decode with a red "Wrong!" message and a
-"Next →" button → click it (or just scroll — these are anchor jumps, not gated navigation) into
-step 3, click the generic "Tap to draw a letter and teach it" trigger, draw something, click
+wizard redesign" above for why that distinction matters here specifically), `#translateSpinner`
+hidden, and a collapsed "Past attempts" disclosure sitting under the stage readout → draw a letter
+into a step-1 word pad, confirm step 2 updates to show that same decode with a red "Wrong!" message
+and a "Next →" button → click it (or just scroll — these are anchor jumps, not gated navigation)
+into step 3, click the generic "Tap to draw a letter and teach it" trigger, draw something, click
 "Next →", pick a letter, click Train, confirm the modal closes, `#stageLegend` becomes visible
-(`display:flex`) for this first training only, the stage animation plays real per-active-pixel
+(`display:flex`) for this first training only, `#translateSpinner` becomes visible the moment
+training starts and hides again once it resolves, the stage animation plays real per-active-pixel
 packets traveling pixel→hidden→output then backward output→hidden→pixel (two sequential legs, see
 the packets section above), and once the animation resolves `#stageLegend` goes back to
-`display:none` and `#trainingTip` stays hidden throughout (it should never appear at all with
+`display:none`, the readout under the diagram briefly flashes green (`.just-updated`, see above)
+if it changed, and `#trainingTip` stays hidden throughout (it should never appear at all with
 `SHOW_TRAINING_TIP = false`) → train a *second* letter and confirm the legend does **not**
 reappear (only the very first training ever, or the first after a Reset, should show it) → back on
 the page, click a *specific* letter chip (not the generic trigger), confirm the wizard opens with
@@ -1069,7 +1152,9 @@ and confirm the checkbox and the colors both persisted → confirm step 4 ("Take
 the QR code with the simple one-line note (no byte-count text) and the network-weights diagram, in
 that order, with no "render a network portrait" button or section anywhere on the page, and both
 "Download QR as PNG" and "Download diagram as PNG" save real, non-empty PNGs → confirm step 5
-("Look inside the network") comes *after* step 4, not before, with just the one-sentence intro →
+("Look inside the network") comes *after* step 4, not before, with just the one-sentence intro,
+and the heatmap shows both axis titles ("output letter (A–Z)" below the grid, "hidden neuron
+(0–17, same order as tiles)" rotated in the left margin) rather than bare unlabeled row numbers →
 train one more letter and confirm the diagram's connections/dot colors visibly change afterward
 (it re-renders on every Train, not just at page load) → confirm "how this actually works" is
 **expanded on page load**, not collapsed, and contains (in order) the architecture diagram/math, a

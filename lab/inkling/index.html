@@ -25,6 +25,7 @@
   :root{
     --accent: #c81d4f; --accent-dim: #7a1030;
     --cool: #2f6fe0; --paper: #efe7d6; --stroke: #7a1030;
+    --good: #5fd88a; /* matches C_GOOD in the script below -- the one "this is correct" color */
     --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
   }
   .wrap{ max-width: 900px; margin: 0 auto; padding: 0 24px; }
@@ -122,6 +123,25 @@
     font-family:var(--mono); font-size:.72rem; color:var(--ink-dim); cursor:pointer;
   }
   .cb-toggle input{ accent-color:var(--accent); cursor:pointer; }
+  /* Shown only while a Train click's animation+epochs are running, next to "Your network
+     translates ... to X" -- direct feedback that it wasn't obvious that readout was even updating
+     during training, since it silently sits on the *old* value until the whole cycle finishes. */
+  .spinner-inline{
+    display:inline-block; width:12px; height:12px; margin-left:.15em; vertical-align:-2px;
+    border-radius:50%; border:2px solid var(--line); border-top-color:var(--accent);
+    animation:spinner-rotate .7s linear infinite;
+  }
+  /* Same [hidden]-vs-author-display-rule bug as .legend above -- fixed the same way, proactively
+     this time rather than after finding it broken. */
+  .spinner-inline[hidden]{ display:none; }
+  @keyframes spinner-rotate{ to{ transform:rotate(360deg); } }
+  /* Briefly flashes the readout itself once a training cycle actually changes it, so the update
+     reads as an *event* worth noticing rather than text that silently sat there the whole time. */
+  #stageWordReadout.just-updated{ animation:readout-flash 900ms ease-out; border-radius:4px; }
+  @keyframes readout-flash{
+    0%{ color:var(--good); text-shadow:0 0 10px var(--good); }
+    100%{ color:inherit; text-shadow:none; }
+  }
 
   /* ---------- test word ---------- */
   .word-row{ display:flex; flex-wrap:wrap; gap:.7rem; margin-top:1.2rem; }
@@ -221,16 +241,9 @@
 
     <div class="panel">
       <div class="word-row" id="wordPads"></div>
-      <div class="decoded" id="wordOutput"></div>
       <div class="actions" style="margin-top:.8rem;">
         <button type="button" class="secondary" id="clearAllWordBtn">Clear all</button>
       </div>
-      <details class="disclosure" style="margin-top:.4rem;">
-        <summary>Past attempts</summary>
-        <div class="disclosure-body">
-          <div class="attempts" id="attemptsLog"></div>
-        </div>
-      </details>
       <div class="actions" style="margin-top:1.2rem; justify-content:flex-end;">
         <button type="button" class="primary" data-jump="#step-guess">Next &rarr;</button>
       </div>
@@ -279,10 +292,20 @@
           <span><i class="legend-swatch" style="background:var(--ink);"></i>backprop signal, flowing right→left</span>
         </div>
         <div class="status-mono" style="margin-top:.8rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:.6rem;">
-          <span style="display:inline-flex; align-items:center; gap:.35rem; flex-wrap:wrap;">Your network translates <span class="word-thumbs" id="stageWordThumbs"></span> to <b id="stageWordReadout">—</b></span>
+          <span style="display:inline-flex; align-items:center; gap:.35rem; flex-wrap:wrap;">Your network translates <span class="word-thumbs" id="stageWordThumbs"></span> to
+            <b id="stageWordReadout">—</b>
+            <span class="spinner-inline" id="translateSpinner" hidden></span>
+          </span>
           <label class="cb-toggle" style="margin-top:0;"><input type="checkbox" id="colorblindToggle"> Colorblind-friendly colors (orange / blue)</label>
         </div>
       </div>
+
+      <details class="disclosure" style="margin-top:1rem;">
+        <summary>Past attempts</summary>
+        <div class="disclosure-body">
+          <div class="attempts" id="attemptsLog"></div>
+        </div>
+      </details>
     </div>
   </section>
 
@@ -334,7 +357,7 @@
     <div class="panel">
       <div class="tiles" id="tilesGrid"></div>
       <div id="heatmapWrap">
-        <canvas id="heatmap" width="440" height="306"></canvas>
+        <canvas id="heatmap" width="460" height="330"></canvas>
       </div>
     </div>
   </section>
@@ -1059,23 +1082,31 @@
   // "Wrong!" framing doesn't need one: a brand-new network's weights are pure random noise, so
   // *any* non-empty decode from it is guaranteed nonsense regardless of what was actually drawn --
   // a true statement about the network's state, not a claim about your specific word.
-  function renderDecoded(str){
-    var el = $('wordOutput');
+  // `flash` is only ever passed true from doTrain()'s completion -- a plain word-pad edit (drawing
+  // a letter, clearing) already gives its own immediate visual feedback (the ink itself changing),
+  // but a *training* cycle's effect on this readout is otherwise silent until the whole animation+
+  // epochs run finishes, which direct feedback flagged as unclear ("it's not clear that that's
+  // being updated"). The flash exists specifically to mark that one moment as an event, not a
+  // general-purpose "value changed" indicator.
+  function renderDecoded(str, flash){
     var compact = $('stageWordReadout');
     var guessEl = $('firstGuessOutput');
     var guessStatus = $('firstGuessStatus');
     syncStageWordThumbs();
     if (!str) {
-      el.innerHTML = '<span class="gap">— draw a word above —</span>';
       if (compact) compact.textContent = '—';
       if (guessEl) guessEl.innerHTML = '<span class="gap">— draw a word in step 1 first —</span>';
       if (guessStatus) guessStatus.textContent = '';
       return;
     }
-    el.textContent = str.replace(/ /g,'·');
     if (compact) compact.textContent = str.replace(/ /g,'·');
     if (guessEl) guessEl.textContent = str.replace(/ /g,'·');
     if (guessStatus) guessStatus.innerHTML = '<b style="color:var(--accent);">Wrong!</b> A brand-new network is just random numbers — it has no idea what your handwriting looks like yet. Time to fix that.';
+    if (flash && compact){
+      compact.classList.remove('just-updated');
+      void compact.offsetWidth; // restart the CSS animation even if it's already mid-flash from a fast prior Train
+      compact.classList.add('just-updated');
+    }
   }
   var attemptN = 0;
   function pushAttempt(str){
@@ -1128,9 +1159,15 @@
 
     var maxAbsW2=1e-6;
     for (var o=0;o<OUT;o++){ var row2=W2[o]; for (var hi=0;hi<HID;hi++){ var av2=Math.abs(row2[hi]); if (av2>maxAbsW2) maxAbsW2=av2; } }
-    var leftM=22, topM=16, cellW=16, cellH=16;
-    heatmapCtx.clearRect(0,0,440,306);
-    heatmapCtx.fillStyle = C_PANEL2; heatmapCtx.fillRect(0,0,440,306);
+    // leftM widened from the original 22 to make room for a rotated axis-title label to the left
+    // of the plain row-index numbers -- direct feedback was that the bare 0-17 numbers alone don't
+    // say what they're indexing (hidden neurons, same order as the tiles to the left). Canvas grew
+    // to match (440x306 -> 460x330): +20 width for the wider leftM, +24 height for the new x-axis
+    // title sitting below the grid.
+    var leftM=36, topM=16, cellW=16, cellH=16;
+    var gridW = OUT*cellW, gridH = HID*cellH;
+    heatmapCtx.clearRect(0,0,460,330);
+    heatmapCtx.fillStyle = C_PANEL2; heatmapCtx.fillRect(0,0,460,330);
     for (var o2=0;o2<OUT;o2++){
       heatmapCtx.fillStyle = C_INKDIM;
       heatmapCtx.font = '9px "JetBrains Mono", monospace';
@@ -1144,6 +1181,17 @@
     heatmapCtx.fillStyle = C_INKDIM;
     heatmapCtx.textAlign='right'; heatmapCtx.font='8px "JetBrains Mono", monospace';
     for (var h4=0;h4<HID;h4++) heatmapCtx.fillText(String(h4), leftM-4, topM+h4*cellH+cellH/2+3);
+
+    // Axis titles -- what the row/column indices above actually mean, not just their raw numbers.
+    heatmapCtx.fillStyle = C_INKDIM;
+    heatmapCtx.font = '9px "JetBrains Mono", monospace';
+    heatmapCtx.textAlign = 'center';
+    heatmapCtx.fillText('output letter (A–Z)', leftM+gridW/2, topM+gridH+16);
+    heatmapCtx.save();
+    heatmapCtx.translate(11, topM+gridH/2);
+    heatmapCtx.rotate(-Math.PI/2);
+    heatmapCtx.fillText('hidden neuron (0–17, same order as tiles)', 0, 0);
+    heatmapCtx.restore();
   }
   refreshLookInside();
 
@@ -1538,6 +1586,11 @@
     refreshChipCounts();
     setControlsEnabled(false);
     if (isFirstTrain) $('stageLegend').hidden = false;
+    // The readout under the diagram sits on its old value for this entire animation+runEpochs
+    // stretch -- direct feedback was that this reads as "not clear that that's being updated."
+    // The spinner covers that silent gap; renderDecoded's `flash` argument marks the moment it
+    // actually changes, right below.
+    $('translateSpinner').hidden = false;
     return animateSequence(pre, grid, yIdx).then(function(){
       runEpochs(EPOCHS, LR);
       refreshLookInside();
@@ -1545,11 +1598,12 @@
       computeTrainingTip();
       refreshLedger();
       var d = decodeWordPads();
-      renderDecoded(d);
+      renderDecoded(d, true);
       pushAttempt(d);
       pad.clear();
       setControlsEnabled(true);
       animating = false;
+      $('translateSpinner').hidden = true;
       if (isFirstTrain) $('stageLegend').hidden = true;
       $('trainStatus').innerHTML = '<b>'+dataset.length+'</b> examples taught across <b>'+counts.filter(function(c){return c>0;}).length+'</b> letters';
     });
