@@ -66,7 +66,7 @@ a:hover{ text-decoration: underline; }
 
 /* ---------- Shared by the tool pages (Ridgeline, Afterimage, future lab tools) ---------- */
 
-header.hero{ padding: 64px 0 40px; border-bottom: 1px solid var(--line); }
+header.hero{ padding: 32px 0 40px; border-bottom: 1px solid var(--line); }
 .hero-grid{ display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 40px; align-items: center; }
 @media (max-width: 800px){ .hero-grid{ grid-template-columns: 1fr; } }
 .hero-line{ color: var(--accent); font-size: 0.95rem; margin-bottom: 14px; display: block; }
