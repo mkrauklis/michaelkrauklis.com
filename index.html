@@ -24,10 +24,17 @@
   .links{ margin-top: 40px; display:flex; gap:20px; flex-wrap:wrap; }
   .card{
     border:1px solid var(--line); border-radius:8px; padding:20px;
-    flex:1; min-width:220px; background:#171b24;
+    flex:1; min-width:220px; background:#171b24; text-decoration:none;
+    display:flex; align-items:center; gap:16px;
   }
-  .card h2{ font-family:'Fraunces', serif; font-weight:500; font-size:1.2rem; margin:0 0 6px; }
+  .card:hover{ border-color: var(--amber); }
+  .card-body{ flex:1 1 auto; min-width:0; }
+  .card h2{ font-family:'Fraunces', serif; font-weight:500; font-size:1.2rem; margin:0 0 6px; color:var(--ink); }
   .card p{ color:var(--ink-dim); font-size:0.92rem; margin:0; }
+  .card-icon{
+    flex:0 0 auto; width:64px; height:64px; border-radius:10px; object-fit:cover;
+    background:var(--bg-panel-2);
+  }
 
   .cert-grid{
     display:grid;
@@ -85,14 +92,23 @@
     <h1>Michael Krauklis</h1>
     <p class="lede">Chief Architect at Thryve Labs, building machine-learning vision systems for caregiving environments. Based in Rochester, NY, with a background spanning cloud architecture, AI/ML, and enterprise systems.</p>
     <div class="links">
-      <div class="card">
-        <h2><a href="https://www.linkedin.com/in/mkrauklis/">LinkedIn</a></h2>
-        <p>Full background, experience, and professional history.</p>
-      </div>
-      <div class="card">
-        <h2><a href="/lab/">The Concept Lab</a></h2>
-        <p>A growing collection of interactive tools — for example, Ridgeline, a Fourier-transform mountain silhouette reconstructor.</p>
-      </div>
+      <a class="card" href="https://www.linkedin.com/in/mkrauklis/">
+        <div class="card-body">
+          <h2>LinkedIn</h2>
+          <p>Full background, experience, and professional history.</p>
+        </div>
+        <svg class="card-icon" viewBox="0 0 64 64" role="img" aria-label="LinkedIn">
+          <rect width="64" height="64" rx="12" fill="#0A66C2"/>
+          <text x="32" y="43" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-weight="700" font-size="28" fill="#ffffff">in</text>
+        </svg>
+      </a>
+      <a class="card" href="/lab/">
+        <div class="card-body">
+          <h2>The Concept Lab</h2>
+          <p>A growing collection of interactive tools — for example, Ridgeline, a Fourier-transform mountain silhouette reconstructor.</p>
+        </div>
+        <img class="card-icon" src="/lab-mosaic.jpg" alt="" loading="lazy" onerror="this.remove()">
+      </a>
     </div>
 
     <div style="margin-top:48px;">

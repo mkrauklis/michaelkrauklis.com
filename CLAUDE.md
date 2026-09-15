@@ -18,7 +18,17 @@ Two root-level files are included, unmodified, by every page on the site (root `
   signal what the tools are *for*: taking a concept and making it something you build, break,
   and watch work, not just read about. Keep this name consistent across `lab/index.html`,
   every tool's footer ("Part of The Concept Lab by Michael Krauklis."), and the homepage link —
-  don't let a new tool drift back to the old generic name.
+  don't let a new tool drift back to the old generic name. The breadcrumb also renders a tiny
+  18×18 `.site-nav-icon` (the site favicon, `/echo-state-trace-mkconceptlab.png`, browser-scaled
+  down from its real 512×512 — no separate small asset needed for this) immediately to the left
+  of "Michael Krauklis," linking `/` — direct request, on every page, since this is the one
+  shared component every page already includes. If you edit `nav.js` and test it locally by
+  reloading a page you've already loaded earlier in the same browser session, you may see the
+  *old* cached copy despite the file on disk being correct — Chrome caches this exact URL
+  aggressively across navigations since it's identical on every page. Confirm a real change
+  actually shipped with a cache-busted fetch (`fetch('/nav.js?x='+Date.now(), {cache:'no-store'})`)
+  or by injecting a fresh `<script src="/nav.js?x=...">` and checking its output, not just by
+  reloading the page and eyeballing it.
 - **`/theme.css`** — the shared palette, base typography, and the component styles the tool
   pages share almost verbatim (`.panel`, `.dropzone`, buttons, `header.hero`, disclosure/
   advanced, etc.). A page opts into a specific accent color by overriding `--accent`/
@@ -29,6 +39,38 @@ Two root-level files are included, unmodified, by every page on the site (root `
   it). Letting paragraphs fill their container fixed that everywhere at once; if a specific
   paragraph genuinely wants to be a narrow, short teaser, give it an explicit class (see
   `p.lede` on the two content pages) rather than reintroducing a blanket cap.
+
+## The homepage's LinkedIn / Concept Lab cards
+
+Direct request: give both of root `index.html`'s `.links` cards a real icon, "whatever you have
+permission to use" for LinkedIn. Both cards became a single clickable `<a class="card">` (icon +
+heading + description all one link target, matching the `.writing-item` pattern already used
+further down this same page) rather than just the `<h2>` text being a link — `.card:hover`'s
+amber border and `.card h2`'s explicit `color:var(--ink)` mirror `.writing-item`/`.writing-item
+h3` exactly, for the same reason: once the *whole* card is the link, the heading shouldn't look
+like a separate, differently-styled link floating inside it.
+
+- **LinkedIn**: a plain inline SVG — a rounded `#0A66C2` (LinkedIn's own brand blue) square with
+  a bold white "in" wordmark — rather than an external icon font or a fetched brand-asset file.
+  Simple enough to hand-draw exactly, keeps the site's zero-runtime-icon-dependency posture, and
+  LinkedIn's own brand guidelines permit using their mark to link to a real profile, which this
+  is.
+- **The Concept Lab**: `/lab-mosaic.jpg`, a 2×2 composite built from four of the *actual* tool
+  thumbnails already living under `lab/*/thumbnail.jpg` (Inkling, Echo State, Afterimage,
+  Ridgeline — picked for visual variety at small size, not the newest four; Neural Viaduct's
+  thumbnail reads as a fairly uniform orange blur this small, and Vectis's is mostly small text
+  labels, neither of which survives a 64px card icon legibly) — real tool output, the same
+  "build it from what the tool actually produces" rule `lab/index.html`'s own thumbnails follow,
+  just tiled instead of single. Built once, offline, with a small Pillow script
+  (`ImageOps.fit` to crop each source thumbnail to a square tile, pasted onto a `#10131a`-filled
+  canvas with a 12px gap between tiles so two adjacent near-black thumbnails don't visually merge
+  into one) — not regenerated automatically, so if `lab/index.html`'s own thumbnail set changes
+  meaningfully, regenerate this file by hand rather than assuming it stays representative forever.
+  `.card-icon` (64×64, `object-fit:cover`) is the shared sizing/shape class for both cards'
+  icons; the mosaic `<img>` additionally carries an `onerror="this.remove()"` fallback (the
+  inline LinkedIn SVG can't fail to load, so it doesn't need one), identical in spirit to
+  `lab/index.html`'s own `.tool-thumb` handling — a missing file collapses back to a clean
+  icon-less card rather than a broken-image glyph.
 
 When adding a new lab tool, link both files and rely on `theme.css`'s defaults before writing
 new CSS — copying a whole `<style>` block from an existing tool page (the old pattern) is how

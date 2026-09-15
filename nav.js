@@ -43,8 +43,11 @@
     '.site-nav a:hover{color:#e0a54c;text-decoration:underline;}' +
     '.site-nav-sep{color:#454c5e;}' +
     '.site-nav-current{color:#e9e7de;}' +
+    '.site-nav-icon{width:18px;height:18px;border-radius:4px;display:block;flex:0 0 auto;}' +
     '</style>' +
-    '<nav class="site-nav"><div class="site-nav-wrap">' + crumbHtml + '</div></nav>';
+    '<nav class="site-nav"><div class="site-nav-wrap">' +
+    '<a href="/" style="display:flex;"><img class="site-nav-icon" src="/echo-state-trace-mkconceptlab.png" width="18" height="18" alt=""></a>' +
+    crumbHtml + '</div></nav>';
 
   var here = document.currentScript;
   if (here) {
