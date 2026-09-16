@@ -1,11 +1,11 @@
 # Tonus
 
-Generate a 2D dataset — six built-in shapes, or your own drawn/uploaded points — and watch seven
+Generate a 2D dataset — six built-in shapes, or your own drawn/uploaded points — and watch eight
 genuinely different machine learning models each compute their own real decision boundary over
 it: a closed-form linear fit, a gradient-descent-trained logistic curve, a hinge-loss linear
-classifier, k-nearest-neighbors, Gaussian Naive Bayes, a hand-rolled random forest, and a real
-backprop-trained neural network (via TensorFlow.js). Started life as a spec drafted in a separate
-conversation, sanity-checked against this site's actual conventions before anything was built
+classifier, a real kernelized SVM, k-nearest-neighbors, Gaussian Naive Bayes, a hand-rolled random
+forest, and a real backprop-trained neural network (via TensorFlow.js). Started life as a spec
+drafted in a separate conversation, sanity-checked against this site's actual conventions before anything was built
 (see "Where this started" below), then built directly in this repo.
 
 ## Where this started, and what changed before building
@@ -30,10 +30,11 @@ Workers, and XGBoost. None of those shipped:
   nets... compare to some more traditional machine learning methods"), a second tree-ensemble
   method next to Random Forest wasn't the best use of a model slot anyway. It was replaced with
   **k-Nearest Neighbors** and **Gaussian Naive Bayes** — two paradigms (instance-based, and
-  properly probabilistic) that weren't represented at all otherwise. The final seven-model roster
-  spans linear, probabilistic, instance-based, tree-ensemble, and deep-learning approaches, which
-  tells a much richer "here's what's actually different about these techniques" story than three
-  tree/ensemble variants would have.
+  properly probabilistic) that weren't represented at all otherwise. The roster (later joined by a
+  real kernelized SVM — see "SVM (RBF kernel)" below) spans linear, kernel, probabilistic,
+  instance-based, tree-ensemble, and deep-learning approaches, which tells a much richer "here's
+  what's actually different about these techniques" story than three tree/ensemble variants would
+  have.
 
 **The name** was chosen from a short Latin-word brainstorm, once "alternatives to neural nets /
 traditional ML methods" and "something Latin evoking hyperparameter tuning" were both settled.
@@ -114,6 +115,26 @@ see below.
   labeled "linear classifier, hinge loss," never "SVM" — a true SVM is defined by its dual
   formulation and support vectors, and this is a primal, linearly-parameterized model trained to
   a similar-looking objective, not the same algorithm.
+- **SVM (RBF kernel)** (`trainSVM`/`predictSVM`) is what actually earns the name the model above
+  deliberately avoids — added on direct request ("add a svc/svm option"). Trains in the *dual*,
+  via kernelized Pegasos (the same paper as the linear one, generalized to kernels the way the
+  paper itself describes) — one running coefficient (`alpha[i]`) per training point rather than
+  one weight per axis, updated by checking whether that point currently violates the margin
+  (`y_i · f(x_i) < 1`) using an RBF kernel (`exp(-γ‖a-b‖²)`) instead of a plain dot product for
+  every similarity comparison. A point's coefficient stays at exactly zero unless it ever
+  triggers an update — only the points that do are "support vectors" in the literal sense, and
+  only they ever influence a prediction. Two hyperparameters, both reusing existing UI patterns:
+  `gamma` (kernel width, log-scale slider 0.1-10 — higher means each point's influence reaches a
+  smaller neighborhood, letting the boundary bend more tightly) and the same log-scale `lambda`
+  regularization slider the linear hinge-loss model already has (intentionally shared state —
+  they're the same *kind* of quantity for two different algorithms, not two unrelated settings
+  that happen to have the same name). Verified directly: on XOR, concentric rings, and moons —
+  none linearly separable — this model reached 95-100% accuracy where the linear/hinge-loss models
+  and Gaussian Naive Bayes all stayed well below 100%, confirming the kernel is doing real,
+  non-linear work and not just quietly falling back to a linear fit. Grid/point prediction is
+  O(grid × training points) per render (every cell sums a kernel evaluation against every nonzero-
+  alpha training point) — the same complexity class k-NN's own grid prediction already has, and
+  measured fast enough at this tool's point-count ceiling (300) not to need any special handling.
 - **k-Nearest Neighbors** has no training step at all — `trainKNN` just stores the points and
   `k`. It's the one model that can't generalize past its own data by construction, which is the
   whole pedagogical point of including it: turn `k` down to 1 and the boundary traces every
@@ -286,21 +307,37 @@ also bumped (title 22px→30px, panel labels 14px→20px, both bold) while this 
 the original sizing was designed around the *intended* clean background, not tested against the
 actual overlap bug.
 
-## Throbbers (`.spinner-inline`, `#computeSpinner`, `#exportSpinner`)
+## Throbbers (`.spinner-inline`, `.spinner-big`, `#computeSpinner`, `#plotOverlay`, `#exportSpinner`)
 
 Direct request: "we need some sort of throbber while it's thinking for pretty much all the
-steps." A single `#computeSpinner` (the same rotating-ring `.spinner-inline` pattern already
-established in Inkling, copied verbatim rather than reinvented) sits next to the accuracy readout
-and covers every path through `recompute()` — which is every dataset change, every model switch,
-and every hyperparameter tweak, not just the neural network, since all of them funnel through that
-one function. `recompute()` now shows the spinner and does one real `setTimeout(0)` yield *before*
-running any computation, classical or not — most classical models finish in a handful of
-milliseconds, too fast for a spinner to ever actually paint without this, but Random Forest at a
-high tree count and depth on a large dataset is a real, measurable exception, and there was
-previously no visual feedback at all for the gap between "you changed something" and "the boundary
-updated," on any step. The export button gets its own separate `#exportSpinner`, shown for the
-entire multi-model export (including, now, live per-epoch text during that export's own neural-
-network panel).
+steps." First version: a single `#computeSpinner` (the rotating-ring `.spinner-inline` pattern
+already established in Inkling) next to the accuracy readout, shown around every path through
+`recompute()`, with a `setTimeout(0)` yield before any computation so the spinner had at least one
+chance to paint before a fast classical model finished.
+
+**That version shipped, and the very next report was "I'm not getting any spinners at all."**
+Verified directly, not dismissed: `spinner.hidden` genuinely did flip to `false` immediately after
+a model/dataset click and the element's computed `display` genuinely became `inline-block` at that
+instant — the show/hide *logic* was correct. The actual problem is a real, well-documented browser
+behavior: a DOM mutation that gets reverted before the browser's next scheduled paint may never be
+painted at all — there is no guarantee of "one paint per macrotask," only "paint when there's
+something new to show and a frame is due." Most classical models here finish in low single-digit
+milliseconds even after the yield, comfortably within one 16ms frame budget, so the spinner's
+entire visible window could complete without ever actually reaching the screen. A 13px ring
+sitting next to small status text was also just easy to miss even on the rare frame where it did
+render — not the most likely place a user is looking while watching the boundary redraw.
+
+**Two changes fixed this, not one.** `MIN_SPINNER_MS = 300` enforces a real minimum visible
+duration — `recompute()`'s `hideSpinner()` checks how long the spinner has actually been shown and
+waits out the remainder before hiding it, so even an instant computation now holds the spinner
+on-screen for a genuinely perceivable stretch. And a second, much larger spinner (`.spinner-big`,
+44px) now lives in `#plotOverlay`, a semi-transparent dark layer positioned directly over
+`#plotCanvas` itself (`.canvas-wrap` + `position:absolute; inset:0`) — shown and hidden in lockstep
+with `#computeSpinner` from the same `showSpinner()`/`hideSpinner()` helpers, so there's no way for
+one to show without the other. This puts unmissable, centered feedback exactly where a user's eyes
+already are (watching the boundary), rather than relying on a small icon in a status line they may
+not be looking at. The export button keeps its own separate `#exportSpinner`, shown for the entire
+multi-model export.
 
 ## A real bug: switching to an empty custom dataset while the Neural Network is selected
 
@@ -340,10 +377,11 @@ whether the first cell parses as a number), and always min-max rescales the pars
 
 A 12-byte header — dataset index, model index, a 4-byte seed, a 2-byte point count, and 4 bytes
 of model-specific hyperparameters (meaning depends on which model is selected: regularization
-strength for the hinge-loss classifier on a log scale, `k` for k-NN, tree count and max depth for
-Random Forest, or layer count/width/activation for the neural network — training itself always
-runs to real convergence rather than a chosen epoch count, so there's nothing to encode for it)
-— covers every
+strength for the hinge-loss classifier on a log scale, regularization *and* kernel width for the
+RBF SVM (both log-scale, via the same `lambdaToByte`/`gammaToByte` pair), `k` for k-NN, tree count
+and max depth for Random Forest, or layer count/width/activation for the neural network — training
+itself always runs to real convergence rather than a chosen epoch count, so there's nothing to
+encode for it) — covers every
 built-in dataset in just those 12 bytes, since the seed alone is enough to regenerate the exact
 same points. A `points`-type dataset has no seed to replay, so its actual points are appended
 after the header instead, 3 bytes each (`x1`/`x2` quantized to int8, `y` as a plain 0/1 byte) —
@@ -383,11 +421,15 @@ No test suite — static page. Verify via a local static server (root-relative `
 Moons dataset and Logistic Regression selected, a real heatmap and scattered points visible, and a
 training-accuracy readout well under 100% (moons genuinely isn't linearly separable) → switch to
 XOR and confirm Logistic Regression and the hinge-loss linear classifier both land near 50%
-accuracy while k-Nearest Neighbors, Random Forest, and the Neural Network all reach 100% — this is
-the core pedagogical claim of the whole tool, so it's the single most important thing to
-re-verify if any model's math is ever touched → confirm Gaussian Naive Bayes lands well below 100%
-on XOR too (its independence assumption is a textbook failure case for exactly this dataset) →
-drag every hyperparameter slider for k-NN/Random Forest/the Neural Network and confirm the
+accuracy while k-Nearest Neighbors, Random Forest, the SVM (RBF kernel), and the Neural Network
+all reach 90%+ — this is the core pedagogical claim of the whole tool, so it's the single most
+important thing to re-verify if any model's math is ever touched → confirm Gaussian Naive Bayes
+lands well below 100% on XOR too (its independence assumption is a textbook failure case for
+exactly this dataset) → for the SVM specifically, drag the gamma slider to both extremes and
+confirm the boundary visibly changes shape each time — poll the actual trained model's `gamma`
+field rather than trusting a fixed wait if scripting this, since a debounce (180ms) plus the
+spinner's now-enforced minimum visible duration (300ms) means a change can take a moment to fully
+settle → drag every hyperparameter slider for k-NN/Random Forest/the Neural Network and confirm the
 boundary and accuracy actually change, not just the displayed number → for the Neural Network
 specifically, confirm there's no epoch-count slider at all, confirm the architecture diagram
 redraws its *shape* the instant a layers/width slider moves (before the retrain finishes — check
@@ -403,9 +445,14 @@ custom dataset) every point round-trip correctly → click "Export comparison gr
 four panels render with visibly different boundaries for the same underlying points, every panel
 label and the title are cleanly legible against the plain dark background (not overlapping any
 panel's own heatmap colors — the exact bug documented above), a QR code appears in the bottom-right
-corner, and "Download comparison as PNG" saves a real, non-empty file → confirm a spinner
-(`#computeSpinner`) is visible next to the accuracy readout during *every* kind of change (dataset,
-model, and hyperparameter, not just Neural Network ones) and a separate spinner covers the whole
+corner, and "Download comparison as PNG" saves a real, non-empty file → confirm **both** the
+overlay spinner centered on the plot canvas (`#plotOverlay`/`.spinner-big`) and the small inline
+one next to the accuracy readout (`#computeSpinner`) are actually visible — not just toggled in
+the DOM — for *every* kind of change (dataset, model, and hyperparameter, not just Neural Network
+ones), and that each stays up for a real, perceivable moment even for an instant classical-model
+change (the exact "I'm not getting any spinners at all" bug documented above — verifying
+`hidden` flips correctly in script is not sufficient, since that was already true when the bug was
+real; look at the page, not just the attribute) → confirm a separate spinner covers the whole
 "Export comparison grid" action → start training the Neural Network with a large layer/width
 setting, then immediately switch to a fast classical model before it's finished, and confirm the
 classical model's real result appears within a couple of seconds rather than waiting behind the

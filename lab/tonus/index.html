@@ -5,16 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="google-adsense-account" content="ca-pub-5936916546458743">
 <title>Tonus — Watch Machine Learning Models Draw the Line</title>
-<meta name="description" content="Generate a 2D dataset — or draw your own — and watch seven real machine learning models, from a closed-form linear fit to a live-trained neural network, each draw its own decision boundary.">
+<meta name="description" content="Generate a 2D dataset — or draw your own — and watch eight real machine learning models, from a closed-form linear fit to a live-trained neural network, each draw its own decision boundary.">
 <link rel="canonical" href="https://michaelkrauklis.me/lab/tonus/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Michael Krauklis">
 <meta property="og:title" content="Tonus — Watch Machine Learning Models Draw the Line">
-<meta property="og:description" content="Generate a 2D dataset — or draw your own — and watch seven real machine learning models, from a closed-form linear fit to a live-trained neural network, each draw its own decision boundary.">
+<meta property="og:description" content="Generate a 2D dataset — or draw your own — and watch eight real machine learning models, from a closed-form linear fit to a live-trained neural network, each draw its own decision boundary.">
 <meta property="og:url" content="https://michaelkrauklis.me/lab/tonus/">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="Tonus — Watch Machine Learning Models Draw the Line">
-<meta name="twitter:description" content="Generate a 2D dataset — or draw your own — and watch seven real machine learning models, from a closed-form linear fit to a live-trained neural network, each draw its own decision boundary.">
+<meta name="twitter:description" content="Generate a 2D dataset — or draw your own — and watch eight real machine learning models, from a closed-form linear fit to a live-trained neural network, each draw its own decision boundary.">
 <link rel="icon" type="image/png" href="/echo-state-trace-mkconceptlab.png">
 <link rel="stylesheet" href="/theme.css">
 <style>
@@ -70,6 +70,18 @@
   }
   .spinner-inline[hidden]{ display:none; }
   @keyframes spinner-rotate{ to{ transform:rotate(360deg); } }
+
+  .canvas-wrap{ position:relative; }
+  .canvas-overlay{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    background:rgba(12,14,19,0.55); border-radius:6px;
+  }
+  .canvas-overlay[hidden]{ display:none; }
+  .spinner-big{
+    width:44px; height:44px; border-radius:50%;
+    border:4px solid var(--line); border-top-color:var(--accent);
+    animation:spinner-rotate .7s linear infinite;
+  }
 </style>
 <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5936916546458743"
      crossorigin="anonymous"></script>
@@ -80,7 +92,7 @@
 <header class="hero">
   <div class="wrap hero-grid">
     <div>
-      <span class="hero-line">seven models, one dataset, seven different ideas of where the line goes</span>
+      <span class="hero-line">eight models, one dataset, eight different ideas of where the line goes</span>
       <h1>Tonus</h1>
       <p>Every classifier here is answering the same question — given a point on this page,
       which class is it? — but each one gets there completely differently. A straight line
@@ -149,7 +161,10 @@
   <p>The background shading is the model's own confidence at every point in the space — computed
   on a real 100×100 grid, not interpolated between a handful of samples.</p>
   <div class="panel">
-    <canvas class="stage" id="plotCanvas" width="600" height="600"></canvas>
+    <div class="canvas-wrap">
+      <canvas class="stage" id="plotCanvas" width="600" height="600"></canvas>
+      <div class="canvas-overlay" id="plotOverlay" hidden><span class="spinner-big"></span></div>
+    </div>
     <div class="legend-row">
       <span><span class="legend-dot" style="background:var(--c0);"></span>Class 0</span>
       <span><span class="legend-dot" style="background:var(--c1);"></span>Class 1</span>
@@ -223,6 +238,21 @@
     "SVM" outright — a true support vector machine is defined by its dual formulation and
     support vectors; this is a linearly-parameterized model trained to the same max-margin
     objective, which produces a similar-looking boundary without being the same algorithm.</p>
+
+    <h3 style="margin-top:24px;">SVM (RBF kernel)</h3>
+    <p>The model above earns "SVM" specifically by <i>not</i> having a fixed-size weight vector —
+    it trains in the dual, via kernelized Pegasos, keeping one running coefficient per training
+    point rather than one weight per axis. Two points' similarity is measured by a radial basis
+    function kernel instead of a plain dot product:</p>
+    <div class="math-block">K(a, b) = exp(−γ·‖a − b‖²)</div>
+    <p>A point only ever influences the boundary if it violated the margin at least once during
+    training — every other point's coefficient stays exactly zero — which is the literal meaning
+    of "support vector": only some of the training points end up mattering to the final decision.
+    <code>γ</code> (gamma) controls how local that influence is — a high gamma means each point
+    only "reaches" a small neighborhood around itself, letting the boundary bend tightly around
+    individual points; a low gamma lets influence spread further, producing smoother, more global
+    curves. This is a real, hand-rolled approximation of what a full SMO/quadratic-programming
+    solver converges to, not a reimplementation of SMO itself.</p>
 
     <h3 style="margin-top:24px;">k-Nearest Neighbors</h3>
     <p>No training step at all — the "model" is just the stored points. To classify anywhere,
@@ -487,6 +517,49 @@
   }
   function predictLinSVM(m, x1, x2){ return 1 / (1 + Math.exp(-2 * (m.w[0] + m.w[1] * x1 + m.w[2] * x2))); }
 
+  // A real SVM, distinct from "Linear (hinge loss)" above -- that one is a primal, linearly-
+  // parameterized model that merely *shares* Pegasos and hinge loss with a true SVM. This one
+  // trains in the dual (a weighted combination of kernel evaluations against the training points
+  // themselves, not a fixed-size weight vector) via kernelized Pegasos with an RBF kernel
+  // (Shalev-Shwartz, Singer & Srebro's algorithm, generalized to kernels the same way the paper
+  // itself describes) -- a real, hand-rollable approximation of what a full SMO/QP solver would
+  // converge to, not a from-scratch reimplementation of SMO itself. `alpha[i]` counts how many
+  // times point i triggered a margin violation during training; the decision function is a
+  // weighted sum of kernel similarities to every point with alpha>0, exactly what makes this a
+  // genuine "support vector" method -- only points that ever violated the margin ever influence
+  // a prediction.
+  function rbfKernel(ax1, ax2, bx1, bx2, gamma){
+    var dx = ax1 - bx1, dy = ax2 - bx2;
+    return Math.exp(-gamma * (dx * dx + dy * dy));
+  }
+  function trainSVM(points, params){
+    var gamma = params.gamma, lambda = params.lambda, n = points.length;
+    var alpha = new Float64Array(n);
+    var T = Math.max(200, Math.min(4000, n * 20));
+    var rnd = mulberry32(0xc0ffee ^ n);
+    for (var t = 1; t <= T; t++){
+      var i = Math.floor(rnd() * n);
+      var pi = points[i], yi = pi.y === 1 ? 1 : -1;
+      var sum = 0;
+      for (var j = 0; j < n; j++){
+        if (alpha[j] === 0) continue;
+        var pj = points[j], yj = pj.y === 1 ? 1 : -1;
+        sum += alpha[j] * yj * rbfKernel(pj.x1, pj.x2, pi.x1, pi.x2, gamma);
+      }
+      if (yi * (sum / (lambda * t)) < 1) alpha[i] += 1;
+    }
+    return { points: points, alpha: alpha, gamma: gamma, lambda: lambda, T: T };
+  }
+  function predictSVM(m, x1, x2){
+    var sum = 0;
+    for (var j = 0; j < m.points.length; j++){
+      if (m.alpha[j] === 0) continue;
+      var pj = m.points[j], yj = pj.y === 1 ? 1 : -1;
+      sum += m.alpha[j] * yj * rbfKernel(pj.x1, pj.x2, x1, x2, m.gamma);
+    }
+    return 1 / (1 + Math.exp(-2 * (sum / (m.lambda * m.T))));
+  }
+
   function trainKNN(points, params){ return { points: points, k: params.k }; }
   function predictKNN(m, x1, x2){
     var arr = m.points.map(function(p){ var dx = p.x1 - x1, dy = p.x2 - x2; return { d: dx * dx + dy * dy, y: p.y }; });
@@ -721,16 +794,17 @@
     if (note) note.textContent = current ? 'Colored by this network’s real trained weights (blue positive, rust negative).' : 'Structure only — retrain to see it colored by real weights.';
   }
 
-  var MODELS = ['linreg', 'logreg', 'linsvm', 'knn', 'nb', 'rf', 'mlp'];
+  var MODELS = ['linreg', 'logreg', 'linsvm', 'svm', 'knn', 'nb', 'rf', 'mlp'];
   var MODEL_LABELS = {
     linreg: 'Linear Regression', logreg: 'Logistic Regression', linsvm: 'Linear (hinge loss)',
-    knn: 'k-Nearest Neighbors', nb: 'Gaussian Naive Bayes', rf: 'Random Forest', mlp: 'Neural Network'
+    svm: 'SVM (RBF kernel)', knn: 'k-Nearest Neighbors', nb: 'Gaussian Naive Bayes',
+    rf: 'Random Forest', mlp: 'Neural Network'
   };
 
   // ---------------- state ----------------
   var state = {
     datasetType: 'moons', points: [], seed: (Math.random() * 4294967295) >>> 0, pointCount: 150,
-    model: 'logreg', params: { lambda: 0.05, k: 7, trees: 20, maxDepth: 5, layers: 2, width: 8, activation: 'relu' },
+    model: 'logreg', params: { lambda: 0.05, gamma: 2, k: 7, trees: 20, maxDepth: 5, layers: 2, width: 8, activation: 'relu'},
     drawClass: 0, mlpModel: null, trainedModel: null
   };
 
@@ -752,7 +826,7 @@
     if (state.model === 'mlp'){
       return state.mlpModel ? predictMLPGrid(state.mlpModel, GRID_N) : null;
     }
-    var predict = { linreg: predictLinReg, logreg: predictLogReg, linsvm: predictLinSVM, knn: predictKNN, nb: predictNB, rf: predictRF }[state.model];
+    var predict = { linreg: predictLinReg, logreg: predictLogReg, linsvm: predictLinSVM, svm: predictSVM, knn: predictKNN, nb: predictNB, rf: predictRF }[state.model];
     var out = new Float32Array(GRID_N * GRID_N);
     var idx = 0;
     for (var j = 0; j < GRID_N; j++){
@@ -771,7 +845,7 @@
       if (!state.mlpModel) return null;
       probs = predictMLPPoints(state.mlpModel, state.points);
     } else {
-      var predict = { linreg: predictLinReg, logreg: predictLogReg, linsvm: predictLinSVM, knn: predictKNN, nb: predictNB, rf: predictRF }[state.model];
+      var predict = { linreg: predictLinReg, logreg: predictLogReg, linsvm: predictLinSVM, svm: predictSVM, knn: predictKNN, nb: predictNB, rf: predictRF }[state.model];
       probs = state.points.map(function(p){ return predict(state.trainedModel, p.x1, p.x2); });
     }
     var correct = 0;
@@ -814,9 +888,24 @@
 
   // ---------------- recompute ----------------
   var trainSeq = 0;
+  // A spinner shown and hidden again within the same synchronous/microtask turn can genuinely
+  // never get painted at all -- browsers don't guarantee a paint between two DOM mutations that
+  // both happen before the next scheduled frame, and most classical models here finish fast
+  // enough (single-digit milliseconds) that this was happening every time, which is exactly why
+  // a direct report said "I'm not getting any spinners at all" despite the show/hide calls
+  // themselves being verified to fire correctly. MIN_SPINNER_MS forces every compute, however
+  // fast, to hold the spinner visible for at least one real, perceivable stretch.
+  var MIN_SPINNER_MS = 300;
   async function recompute(){
     var mySeq = ++trainSeq;
-    var spinner = $('computeSpinner');
+    var spinner = $('computeSpinner'), overlay = $('plotOverlay');
+    var shownAt = null;
+    function showSpinner(){ spinner.hidden = false; overlay.hidden = false; shownAt = performance.now(); }
+    async function hideSpinner(){
+      var elapsed = shownAt === null ? MIN_SPINNER_MS : performance.now() - shownAt;
+      if (elapsed < MIN_SPINNER_MS) await new Promise(function(res){ setTimeout(res, MIN_SPINNER_MS - elapsed); });
+      spinner.hidden = true; overlay.hidden = true;
+    }
     if (!state.points.length){
       // tf.tensor2d([]) throws (no shape to infer from an empty flat array) -- and since that
       // throw happens after trainMLP() has already disposed the previous model but before a new
@@ -828,18 +917,15 @@
       renderPlot();
       $('accuracyReadout').textContent = 'No points yet';
       $('trainStatus').textContent = '';
-      spinner.hidden = true;
+      spinner.hidden = true; overlay.hidden = true;
       refreshShare();
       return;
     }
-    // The spinner is shown *and given a real chance to paint* (a plain setTimeout yield, not
-    // requestAnimationFrame -- see trainMLP's own note on why rAF can't be trusted to fire here)
-    // before any computation runs, including the classical models -- most finish in a few
-    // milliseconds, too fast for a spinner to ever be seen without this, but Random Forest at a
-    // high tree count/depth on a large dataset is a real exception, and there was previously no
-    // visual feedback at all for the moment between "you changed something" and "the boundary
-    // updated," across every step on this page.
-    spinner.hidden = false;
+    // Also given a real chance to paint (a plain setTimeout yield, not requestAnimationFrame --
+    // see trainMLP's own note on why rAF can't be trusted to fire here) before any computation
+    // runs, including the classical models -- there was previously no visual feedback at all for
+    // the moment between "you changed something" and "the boundary updated," across every step.
+    showSpinner();
     $('trainStatus').textContent = 'computing…';
     await new Promise(function(res){ setTimeout(res, 0); });
     if (mySeq !== trainSeq) return;
@@ -854,14 +940,16 @@
       renderMLPArchIfCurrent();
     } else {
       var rnd = mulberry32(state.seed ^ 0x9e3779b9);
-      var trainer = { linreg: trainLinReg, logreg: trainLogReg, linsvm: trainLinSVM, knn: trainKNN, nb: trainNB, rf: trainRF }[state.model];
-      state.trainedModel = state.model === 'rf' ? trainer(state.points, state.params, rnd) : (state.model === 'knn' || state.model === 'linsvm' ? trainer(state.points, state.params) : trainer(state.points));
+      var trainer = { linreg: trainLinReg, logreg: trainLogReg, linsvm: trainLinSVM, svm: trainSVM, knn: trainKNN, nb: trainNB, rf: trainRF }[state.model];
+      var needsRnd = state.model === 'rf';
+      var needsParams = state.model === 'knn' || state.model === 'linsvm' || state.model === 'svm';
+      state.trainedModel = needsRnd ? trainer(state.points, state.params, rnd) : (needsParams ? trainer(state.points, state.params) : trainer(state.points));
     }
     renderPlot();
     var acc = computeAccuracy();
     $('accuracyReadout').innerHTML = acc === null ? 'No points yet' : 'Training accuracy: <b>' + Math.round(acc * 100) + '%</b> (right call on the points shown)';
     $('trainStatus').textContent = '';
-    spinner.hidden = true;
+    await hideSpinner();
     refreshShare();
   }
 
@@ -978,6 +1066,12 @@
       var r = paramRow('Margin strength (regularization)', 'lambdaRange', -3, 0, 0.05, lambdaPow, function(){ return state.params.lambda.toFixed(3); });
       r.input.addEventListener('input', function(){ state.params.lambda = Math.pow(10, parseFloat(this.value)); r.val.textContent = state.params.lambda.toFixed(3); debouncedRecompute(); });
       box.appendChild(r.wrap);
+    } else if (state.model === 'svm'){
+      var rg = paramRow('Kernel width (gamma)', 'gammaRange', -1, 1, 0.05, Math.log10(state.params.gamma), function(){ return state.params.gamma.toFixed(2); });
+      rg.input.addEventListener('input', function(){ state.params.gamma = Math.pow(10, parseFloat(this.value)); rg.val.textContent = state.params.gamma.toFixed(2); debouncedRecompute(); });
+      var rs = paramRow('Margin strength (regularization)', 'svmLambdaRange', -3, 0, 0.05, Math.log10(state.params.lambda), function(){ return state.params.lambda.toFixed(3); });
+      rs.input.addEventListener('input', function(){ state.params.lambda = Math.pow(10, parseFloat(this.value)); rs.val.textContent = state.params.lambda.toFixed(3); debouncedRecompute(); });
+      box.appendChild(rg.wrap); box.appendChild(rs.wrap);
     } else if (state.model === 'knn'){
       var rk = paramRow('k (neighbors)', 'kRange', 1, 25, 1, state.params.k);
       rk.input.addEventListener('input', function(){ state.params.k = parseInt(this.value, 10); rk.val.textContent = state.params.k; debouncedRecompute(); });
@@ -1029,6 +1123,8 @@
   }
   function lambdaToByte(lambda){ return Math.max(0, Math.min(255, Math.round(((Math.log10(lambda) + 3) / 3) * 255))); }
   function byteToLambda(b){ return Math.pow(10, (b / 255) * 3 - 3); }
+  function gammaToByte(gamma){ return Math.max(0, Math.min(255, Math.round(((Math.log10(gamma) + 1) / 2) * 255))); }
+  function byteToGamma(b){ return Math.pow(10, (b / 255) * 2 - 1); }
   function buildPayload(){
     var header = new Uint8Array(12);
     header[0] = DATASETS.indexOf(state.datasetType);
@@ -1038,6 +1134,7 @@
     var n = state.pointCount; header[6] = (n >> 8) & 255; header[7] = n & 255;
     var p = state.params;
     if (state.model === 'linsvm') header[8] = lambdaToByte(p.lambda);
+    else if (state.model === 'svm'){ header[8] = lambdaToByte(p.lambda); header[9] = gammaToByte(p.gamma); }
     else if (state.model === 'knn') header[8] = p.k;
     else if (state.model === 'rf'){ header[8] = p.trees; header[9] = p.maxDepth; }
     else if (state.model === 'mlp'){ header[8] = p.layers; header[9] = p.width; header[10] = ACTIVATIONS.indexOf(p.activation); }
@@ -1062,9 +1159,10 @@
     if (dsIdx < 0 || dsIdx >= DATASETS.length || modelIdx < 0 || modelIdx >= MODELS.length) return null;
     var seed = ((bytes[2] << 24) | (bytes[3] << 16) | (bytes[4] << 8) | bytes[5]) >>> 0;
     var n = (bytes[6] << 8) | bytes[7];
-    var params = { lambda: 0.05, k: 7, trees: 20, maxDepth: 5, layers: 2, width: 8, activation: 'relu' };
+    var params = { lambda: 0.05, gamma: 2, k: 7, trees: 20, maxDepth: 5, layers: 2, width: 8, activation: 'relu'};
     var modelKey = MODELS[modelIdx];
     if (modelKey === 'linsvm') params.lambda = byteToLambda(bytes[8]);
+    else if (modelKey === 'svm'){ params.lambda = byteToLambda(bytes[8]); params.gamma = byteToGamma(bytes[9]); }
     else if (modelKey === 'knn') params.k = bytes[8] || 7;
     else if (modelKey === 'rf'){ params.trees = bytes[8] || 20; params.maxDepth = bytes[9] || 5; }
     else if (modelKey === 'mlp'){ params.layers = bytes[8] || 2; params.width = bytes[9] || 8; params.activation = ACTIVATIONS[bytes[10]] || 'relu'; }
