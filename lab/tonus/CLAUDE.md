@@ -55,11 +55,21 @@ inspectable computation. Links the two site-wide shared files (`/nav.js`, `/them
 every other tool.
 
 Accent is a periwinkle-indigo blue (`--accent:#6f8fe0`), distinct from every other tool's accent
-(amber, teal, violet, rust, cyan, rose). The two *data class* colors — orange-red for class 0,
-cyan-blue for class 1 (`--c0`/`--c1`) — are deliberately separate constants from the page accent,
-following the original spec's own "Orange/Red vs Blue/Cyan" convention; they encode which class a
-point belongs to, not which tool this is, the same separation Inkling keeps between its rose
-"accent" and its blue "cool" excite/inhibit color.
+(amber, teal, violet, rust, cyan, rose). The two *data class* colors (`--c0`/`--c1`) are
+deliberately separate constants from the page accent — they encode which class a point belongs
+to, not which tool this is, the same separation Inkling keeps between its rose "accent" and its
+blue "cool" excite/inhibit color. They're the Okabe-Ito colorblind-safe orange/blue pair
+(`#e69f00`/`#0072b2`) — the same verified pair Inkling's colorblind toggle already uses (see that
+tool's CLAUDE.md) — not a fresh guess at "looks distinct enough," and not a toggle here at all:
+since data-encoding color is the *entire point* of this tool (every visualization is built around
+"which of these two colors is this"), there's no reason to ship a less-safe default and gate the
+better one behind an opt-in switch the way Inkling and Echo State do for their own diagrams.
+
+Every data point (on the main plot, the export grid's panels, and the hero canvas) is drawn with
+a light `#e9e7de` stroke around its fill — a first version used a dark, semi-transparent stroke,
+which all but disappeared against the heatmap's own dark-ish mid-tones right where points most
+need to stay legible (near the decision boundary itself, where the background color is closest to
+50/50 between the two classes and therefore darkest/most desaturated in the lerp).
 
 ## Dataset generators (`GENERATORS`, seeded via `mulberry32`)
 
