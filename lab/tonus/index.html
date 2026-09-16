@@ -62,6 +62,14 @@
   #shareUrlBox{ font-family:'JetBrains Mono', ui-monospace, monospace; font-size:0.78rem; color:var(--ink-dim); word-break:break-all; background:var(--bg-panel-2); border:1px solid var(--line); border-radius:6px; padding:10px 12px; max-width:420px; }
 
   .math-block{ font-family:'JetBrains Mono', ui-monospace, monospace; color:var(--ink); background:var(--bg-panel-2); border:1px solid var(--line); border-radius:6px; padding:10px 14px; margin: 10px 0; display:inline-block; }
+
+  .spinner-inline{
+    display:inline-block; width:13px; height:13px; margin-right:.4em; vertical-align:-2px;
+    border-radius:50%; border:2px solid var(--line); border-top-color:var(--accent);
+    animation:spinner-rotate .7s linear infinite;
+  }
+  .spinner-inline[hidden]{ display:none; }
+  @keyframes spinner-rotate{ to{ transform:rotate(360deg); } }
 </style>
 <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5936916546458743"
      crossorigin="anonymous"></script>
@@ -148,7 +156,7 @@
     </div>
     <div class="metric-row">
       <span class="metric" id="accuracyReadout">—</span>
-      <span class="status" id="trainStatus"></span>
+      <span class="status"><span class="spinner-inline" id="computeSpinner" hidden></span><span id="trainStatus"></span></span>
     </div>
   </div>
 </section>
@@ -170,7 +178,7 @@
   </div>
   <div class="actions" style="margin-top:24px;">
     <button type="button" class="primary" id="exportGridBtn">Export comparison grid</button>
-    <span class="status" id="exportStatus"></span>
+    <span class="status"><span class="spinner-inline" id="exportSpinner" hidden></span><span id="exportStatus"></span></span>
   </div>
   <canvas id="exportCanvas" width="1500" height="500" hidden></canvas>
   <div class="actions" id="downloadExportRow" style="display:none;">
@@ -251,7 +259,12 @@
     TensorFlow.js so the actual matrix math runs accelerated in your browser (WebGL where it's
     available) rather than in a hand-written loop. 1-4 hidden layers, 2-64 neurons each, your
     choice of ReLU/sigmoid/tanh activation, trained with the Adam optimizer against binary
-    cross-entropy loss for the chosen number of epochs. <b>Known simplification:</b> unlike
+    cross-entropy loss — one real epoch at a time, stopping automatically once loss stops
+    meaningfully improving over the last 10 epochs (or at a hard cap of 250, whichever comes
+    first), rather than asking you to guess a good epoch count up front. The architecture diagram
+    next to the sliders redraws instantly as you change layers/width, structurally at first, then
+    colored by the actual trained weights (blue positive, rust negative) once training finishes.
+    <b>Known simplification:</b> unlike
     Afterimage's decoder (see that tool's write-up for why), this doesn't check for or fall back
     from low-precision WebGL — at this network's tiny size a precision issue hasn't shown up in
     testing, but if a training result ever looks visibly wrong, that's the first thing to
@@ -279,6 +292,7 @@
 </footer>
 
 <script src="qrcode.min.js"></script>
+<script>window.requestAnimationFrame = function(cb){ return setTimeout(function(){ cb(performance.now()); }, 16); };</script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
 <script>
 (function(){
@@ -551,7 +565,30 @@
   }
 
   var ACTIVATIONS = ['relu', 'sigmoid', 'tanh'];
-  async function trainMLP(points, params, prevModel){
+  var MAX_EPOCHS = 250;
+  // One single model.fit() call for up to MAX_EPOCHS, stopped early via the real tf.js mechanism
+  // for it (`model.stopTraining = true` inside a callback) once loss stops meaningfully improving.
+  // This went through two worse designs first, both real, measured failures, not guesses:
+  //   1. yieldEvery:'never' for the whole call fixed the *hang* this environment's stuck
+  //      requestAnimationFrame otherwise causes (see below), but also blocks the main thread for
+  //      the entire multi-second run in one unbroken stretch -- a real, reported bug ("when I
+  //      change anything it all freezes up"), since removing tf.js's yielding removes the exact
+  //      mechanism that's supposed to keep the page responsive during a long computation.
+  //   2. Calling fit() once per single epoch, yielding via a plain setTimeout between calls,
+  //      fixed the freeze but introduced a *different* real problem, measured directly: each
+  //      separate fit() call carries roughly a flat ~1 second of fixed overhead regardless of how
+  //      many epochs it covers (a 1-epoch call and a 10-epoch call both took ~1000ms; the actual
+  //      per-epoch compute cost, ~5-40ms, was negligible next to that fixed cost) -- so calling it
+  //      250 times to train 250 epochs would take minutes, not seconds.
+  // The actual fix is neither of those: `window.requestAnimationFrame` is monkey-patched (see the
+  // <script> tag right before this one loads tf.js) to a plain `setTimeout`-based implementation,
+  // once, for the whole page, before tf.js ever runs -- tf.js reads `requestAnimationFrame` once
+  // at load time and keeps that reference, so this only works done *before* its own script tag,
+  // not from inside this script. This page has no other real use for `requestAnimationFrame` (the
+  // hero canvas is a one-shot static render, not a continuous animation), so replacing it site-
+  // wide here is safe, and it makes tf.js's own default yielding -- the mechanism it was actually
+  // designed around -- work correctly, rather than fighting it with a hand-rolled substitute.
+  async function trainMLP(points, params, prevModel, onProgress, isStale){
     if (prevModel) prevModel.dispose();
     var model = tf.sequential();
     model.add(tf.layers.dense({ units: params.width, activation: params.activation, inputShape: [2] }));
@@ -560,12 +597,34 @@
     model.compile({ optimizer: tf.train.adam(0.03), loss: 'binaryCrossentropy' });
     var xs = tf.tensor2d(points.map(function(p){ return [p.x1, p.x2]; }));
     var ys = tf.tensor2d(points.map(function(p){ return [p.y]; }));
-    // yieldEvery:'never' -- tf.js otherwise yields between epochs via tf.nextFrame(), which is
-    // backed by requestAnimationFrame and never resolves in a backgrounded/hidden tab, silently
-    // stalling training forever. At this network's tiny size (2D input, a handful of dense
-    // layers, a few hundred points) a training run finishes in well under a second regardless,
-    // so there's no responsiveness reason to yield mid-training in the first place.
-    await model.fit(xs, ys, { epochs: params.epochs, batchSize: Math.max(8, Math.min(32, points.length)), shuffle: true, verbose: 0, yieldEvery: 'never' });
+    var batchSize = Math.max(8, Math.min(32, points.length));
+    // "Converged" = loss stopped meaningfully improving over a short recent window, not just one
+    // quiet epoch -- a single epoch's loss can tick up or plateau by chance even while the network
+    // is still genuinely improving overall.
+    var recentLosses = [];
+    await model.fit(xs, ys, {
+      epochs: MAX_EPOCHS, batchSize: batchSize, shuffle: true, verbose: 0,
+      callbacks: {
+        onEpochEnd: function(epoch, logs){
+          // A rapid hyperparameter change (e.g. dragging "neurons per layer") can start a new
+          // recompute() while an older one's training is still running -- there's no way to
+          // cancel a model.fit() call already in flight, so without this check the *stale* run
+          // would keep training all the way to convergence or MAX_EPOCHS, blocking every newer
+          // request behind it (JS is single-threaded; a new fit() call can't even start until the
+          // old one's promise settles). Checking staleness at every epoch boundary and bailing out
+          // via the same real stopTraining mechanism keeps a superseded run from blocking anything
+          // for more than one epoch.
+          if (isStale && isStale()){ model.stopTraining = true; return; }
+          if (onProgress) onProgress(epoch + 1, MAX_EPOCHS);
+          recentLosses.push(logs.loss);
+          if (recentLosses.length > 10) recentLosses.shift();
+          if (logs.loss < 1e-3){ model.stopTraining = true; return; }
+          if (recentLosses.length === 10 && recentLosses[0] - recentLosses[recentLosses.length - 1] < 1e-4){
+            model.stopTraining = true;
+          }
+        }
+      }
+    });
     xs.dispose(); ys.dispose();
     return model;
   }
@@ -585,6 +644,83 @@
     });
   }
 
+  function mlpLayerSizes(params){
+    var sizes = [2];
+    for (var i = 0; i < params.layers; i++) sizes.push(params.width);
+    sizes.push(1);
+    return sizes;
+  }
+  // A model trained against an *older* set of hyperparameters (e.g. mid-drag on the width slider,
+  // before the debounced retrain has fired) still sits in state.mlpModel -- this is the guard that
+  // stops the diagram from drawing stale weights onto a shape that no longer matches them.
+  function mlpModelMatchesParams(model, params){
+    if (!model) return false;
+    var w = model.getWeights();
+    if (w.length !== (params.layers + 1) * 2) return false;
+    return w[0].shape[1] === params.width;
+  }
+  // Real trained weights when they're available and current; a neutral structural sketch of the
+  // same shape otherwise -- so moving a slider shows the *new* architecture instantly, even before
+  // the debounced retrain actually finishes and has real numbers to color it with.
+  function renderMLPArch(canvas, params, model){
+    var ctx = canvas.getContext('2d'), W = canvas.width, H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+    var sizes = mlpLayerSizes(params);
+    var nLayers = sizes.length;
+    var marginX = 60, topY = 14, bottomY = H - 26;
+    var xs = []; for (var l = 0; l < nLayers; l++) xs.push(marginX + l * (W - 2 * marginX) / (nLayers - 1));
+    function nodeY(layerIdx, nodeIdx){
+      var n = sizes[layerIdx];
+      if (n === 1) return (topY + bottomY) / 2;
+      return topY + (nodeIdx + 0.5) * (bottomY - topY) / n;
+    }
+    var weights = null;
+    if (model){
+      try { weights = model.getWeights().map(function(t){ return t.arraySync(); }); }
+      catch (e){ weights = null; }
+    }
+    for (var l1 = 0; l1 < nLayers - 1; l1++){
+      var fromN = sizes[l1], toN = sizes[l1 + 1];
+      var Wl = weights ? weights[l1 * 2] : null;
+      var maxAbs = 1e-6;
+      if (Wl) for (var a = 0; a < fromN; a++) for (var b = 0; b < toN; b++) maxAbs = Math.max(maxAbs, Math.abs(Wl[a][b]));
+      for (var i = 0; i < fromN; i++){
+        for (var j = 0; j < toN; j++){
+          var x1 = xs[l1], y1 = nodeY(l1, i), x2 = xs[l1 + 1], y2 = nodeY(l1 + 1, j);
+          if (Wl){
+            var wv = Wl[i][j], mag = Math.min(1, Math.abs(wv) / maxAbs);
+            ctx.strokeStyle = wv >= 0 ? 'rgba(111,143,224,' + (0.12 + 0.55 * mag) + ')' : 'rgba(217,122,108,' + (0.12 + 0.55 * mag) + ')';
+            ctx.lineWidth = 0.5 + 1.3 * mag;
+          } else {
+            ctx.strokeStyle = 'rgba(154,160,174,0.16)'; ctx.lineWidth = 0.5;
+          }
+          ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+        }
+      }
+    }
+    for (var l2 = 0; l2 < nLayers; l2++){
+      for (var n2 = 0; n2 < sizes[l2]; n2++){
+        var x = xs[l2], y = nodeY(l2, n2);
+        ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2);
+        ctx.fillStyle = '#1d2230'; ctx.fill();
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = l2 === 0 ? '#9aa0ae' : (l2 === nLayers - 1 ? '#e9e7de' : '#6f8fe0');
+        ctx.stroke();
+      }
+    }
+    ctx.fillStyle = '#9aa0ae'; ctx.font = '11px Inter, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('input (x1, x2)', xs[0], H - 8);
+    for (var l3 = 1; l3 < nLayers - 1; l3++) ctx.fillText('hidden ' + l3 + ' (' + sizes[l3] + ', ' + params.activation + ')', xs[l3], H - 8);
+    ctx.fillText('output (ŷ)', xs[nLayers - 1], H - 8);
+  }
+  function renderMLPArchIfCurrent(){
+    if (state.model !== 'mlp' || !mlpArchCanvas) return;
+    var current = mlpModelMatchesParams(state.mlpModel, state.params) ? state.mlpModel : null;
+    renderMLPArch(mlpArchCanvas, state.params, current);
+    var note = $('mlpArchNote');
+    if (note) note.textContent = current ? 'Colored by this network’s real trained weights (blue positive, rust negative).' : 'Structure only — retrain to see it colored by real weights.';
+  }
+
   var MODELS = ['linreg', 'logreg', 'linsvm', 'knn', 'nb', 'rf', 'mlp'];
   var MODEL_LABELS = {
     linreg: 'Linear Regression', logreg: 'Logistic Regression', linsvm: 'Linear (hinge loss)',
@@ -594,7 +730,7 @@
   // ---------------- state ----------------
   var state = {
     datasetType: 'moons', points: [], seed: (Math.random() * 4294967295) >>> 0, pointCount: 150,
-    model: 'logreg', params: { lambda: 0.05, k: 7, trees: 20, maxDepth: 5, layers: 2, width: 8, activation: 'relu', epochs: 120 },
+    model: 'logreg', params: { lambda: 0.05, k: 7, trees: 20, maxDepth: 5, layers: 2, width: 8, activation: 'relu' },
     drawClass: 0, mlpModel: null, trainedModel: null
   };
 
@@ -680,6 +816,7 @@
   var trainSeq = 0;
   async function recompute(){
     var mySeq = ++trainSeq;
+    var spinner = $('computeSpinner');
     if (!state.points.length){
       // tf.tensor2d([]) throws (no shape to infer from an empty flat array) -- and since that
       // throw happens after trainMLP() has already disposed the previous model but before a new
@@ -691,16 +828,30 @@
       renderPlot();
       $('accuracyReadout').textContent = 'No points yet';
       $('trainStatus').textContent = '';
+      spinner.hidden = true;
       refreshShare();
       return;
     }
-    $('trainStatus').textContent = state.model === 'mlp' ? 'training…' : '';
+    // The spinner is shown *and given a real chance to paint* (a plain setTimeout yield, not
+    // requestAnimationFrame -- see trainMLP's own note on why rAF can't be trusted to fire here)
+    // before any computation runs, including the classical models -- most finish in a few
+    // milliseconds, too fast for a spinner to ever be seen without this, but Random Forest at a
+    // high tree count/depth on a large dataset is a real exception, and there was previously no
+    // visual feedback at all for the moment between "you changed something" and "the boundary
+    // updated," across every step on this page.
+    spinner.hidden = false;
+    $('trainStatus').textContent = 'computing…';
+    await new Promise(function(res){ setTimeout(res, 0); });
+    if (mySeq !== trainSeq) return;
     if (state.model === 'mlp'){
       var prevModel = state.mlpModel;
       state.mlpModel = null;
-      var m = await trainMLP(state.points, state.params, prevModel);
+      var m = await trainMLP(state.points, state.params, prevModel, function(epoch, maxEpoch){
+        $('trainStatus').textContent = 'training… epoch ' + epoch + '/' + maxEpoch;
+      }, function(){ return mySeq !== trainSeq; });
       if (mySeq !== trainSeq){ m.dispose(); return; }
       state.mlpModel = m;
+      renderMLPArchIfCurrent();
     } else {
       var rnd = mulberry32(state.seed ^ 0x9e3779b9);
       var trainer = { linreg: trainLinReg, logreg: trainLogReg, linsvm: trainLinSVM, knn: trainKNN, nb: trainNB, rf: trainRF }[state.model];
@@ -710,6 +861,7 @@
     var acc = computeAccuracy();
     $('accuracyReadout').innerHTML = acc === null ? 'No points yet' : 'Training accuracy: <b>' + Math.round(acc * 100) + '%</b> (right call on the points shown)';
     $('trainStatus').textContent = '';
+    spinner.hidden = true;
     refreshShare();
   }
 
@@ -817,9 +969,10 @@
   }
   var debounceTimer = null;
   function debouncedRecompute(){ clearTimeout(debounceTimer); debounceTimer = setTimeout(recompute, 180); }
+  var mlpArchCanvas = null;
   function syncModelUI(){
     Array.prototype.forEach.call(modelGrid.children, function(btn){ btn.classList.toggle('selected', btn.dataset.model === state.model); });
-    var box = $('modelParams'); box.innerHTML = '';
+    var box = $('modelParams'); box.innerHTML = ''; mlpArchCanvas = null;
     if (state.model === 'linsvm'){
       var lambdaPow = Math.log10(state.params.lambda);
       var r = paramRow('Margin strength (regularization)', 'lambdaRange', -3, 0, 0.05, lambdaPow, function(){ return state.params.lambda.toFixed(3); });
@@ -837,17 +990,23 @@
       box.appendChild(rt.wrap); box.appendChild(rd.wrap);
     } else if (state.model === 'mlp'){
       var rl = paramRow('Hidden layers', 'layersRange', 1, 4, 1, state.params.layers);
-      rl.input.addEventListener('input', function(){ state.params.layers = parseInt(this.value, 10); rl.val.textContent = state.params.layers; debouncedRecompute(); });
+      rl.input.addEventListener('input', function(){ state.params.layers = parseInt(this.value, 10); rl.val.textContent = state.params.layers; renderMLPArchIfCurrent(); debouncedRecompute(); });
       var rw = paramRow('Neurons per layer', 'widthRange', 2, 64, 1, state.params.width);
-      rw.input.addEventListener('input', function(){ state.params.width = parseInt(this.value, 10); rw.val.textContent = state.params.width; debouncedRecompute(); });
-      var re = paramRow('Training epochs', 'epochsRange', 10, 300, 10, state.params.epochs);
-      re.input.addEventListener('input', function(){ state.params.epochs = parseInt(this.value, 10); re.val.textContent = state.params.epochs; debouncedRecompute(); });
-      box.appendChild(rl.wrap); box.appendChild(rw.wrap); box.appendChild(re.wrap);
+      rw.input.addEventListener('input', function(){ state.params.width = parseInt(this.value, 10); rw.val.textContent = state.params.width; renderMLPArchIfCurrent(); debouncedRecompute(); });
+      box.appendChild(rl.wrap); box.appendChild(rw.wrap);
       var actLab = document.createElement('label'); actLab.className = 'field'; actLab.textContent = 'Activation';
       var actSel = document.createElement('select'); actSel.className = 'model-select';
       ACTIVATIONS.forEach(function(a){ var o = document.createElement('option'); o.value = a; o.textContent = a; if (a === state.params.activation) o.selected = true; actSel.appendChild(o); });
-      actSel.addEventListener('change', function(){ state.params.activation = this.value; recompute(); });
+      actSel.addEventListener('change', function(){ state.params.activation = this.value; renderMLPArchIfCurrent(); recompute(); });
       box.appendChild(actLab); box.appendChild(actSel);
+      var archLab = document.createElement('label'); archLab.className = 'field'; archLab.style.marginTop = '18px';
+      archLab.textContent = 'Network architecture';
+      var archNote = document.createElement('div'); archNote.className = 'status'; archNote.id = 'mlpArchNote';
+      mlpArchCanvas = document.createElement('canvas'); mlpArchCanvas.width = 700; mlpArchCanvas.height = 220;
+      mlpArchCanvas.style.width = '100%'; mlpArchCanvas.style.maxWidth = '700px'; mlpArchCanvas.style.display = 'block';
+      mlpArchCanvas.style.background = '#0c0e13'; mlpArchCanvas.style.border = '1px solid var(--line)'; mlpArchCanvas.style.borderRadius = '6px'; mlpArchCanvas.style.marginTop = '8px';
+      box.appendChild(archLab); box.appendChild(mlpArchCanvas); box.appendChild(archNote);
+      renderMLPArchIfCurrent();
     } else {
       var note = document.createElement('p'); note.className = 'status'; note.textContent = 'No hyperparameters for this one.';
       box.appendChild(note);
@@ -881,7 +1040,7 @@
     if (state.model === 'linsvm') header[8] = lambdaToByte(p.lambda);
     else if (state.model === 'knn') header[8] = p.k;
     else if (state.model === 'rf'){ header[8] = p.trees; header[9] = p.maxDepth; }
-    else if (state.model === 'mlp'){ header[8] = p.layers; header[9] = p.width; header[10] = ACTIVATIONS.indexOf(p.activation); header[11] = Math.round(p.epochs / 2); }
+    else if (state.model === 'mlp'){ header[8] = p.layers; header[9] = p.width; header[10] = ACTIVATIONS.indexOf(p.activation); }
     var parts = [header];
     if (state.datasetType === 'points'){
       var ptBytes = new Uint8Array(state.points.length * 3);
@@ -903,12 +1062,12 @@
     if (dsIdx < 0 || dsIdx >= DATASETS.length || modelIdx < 0 || modelIdx >= MODELS.length) return null;
     var seed = ((bytes[2] << 24) | (bytes[3] << 16) | (bytes[4] << 8) | bytes[5]) >>> 0;
     var n = (bytes[6] << 8) | bytes[7];
-    var params = { lambda: 0.05, k: 7, trees: 20, maxDepth: 5, layers: 2, width: 8, activation: 'relu', epochs: 120 };
+    var params = { lambda: 0.05, k: 7, trees: 20, maxDepth: 5, layers: 2, width: 8, activation: 'relu' };
     var modelKey = MODELS[modelIdx];
     if (modelKey === 'linsvm') params.lambda = byteToLambda(bytes[8]);
     else if (modelKey === 'knn') params.k = bytes[8] || 7;
     else if (modelKey === 'rf'){ params.trees = bytes[8] || 20; params.maxDepth = bytes[9] || 5; }
-    else if (modelKey === 'mlp'){ params.layers = bytes[8] || 2; params.width = bytes[9] || 8; params.activation = ACTIVATIONS[bytes[10]] || 'relu'; params.epochs = (bytes[11] || 60) * 2; }
+    else if (modelKey === 'mlp'){ params.layers = bytes[8] || 2; params.width = bytes[9] || 8; params.activation = ACTIVATIONS[bytes[10]] || 'relu'; }
     var datasetType = DATASETS[dsIdx], points = null;
     if (datasetType === 'points'){
       points = [];
@@ -944,20 +1103,30 @@
   // ---------------- export comparison grid ----------------
   var EXPORT_MODELS = ['logreg', 'rf', 'knn', 'mlp'];
   $('exportGridBtn').addEventListener('click', async function(){
+    var exportSpinner = $('exportSpinner'); exportSpinner.hidden = false;
     $('exportStatus').textContent = 'rendering…';
+    await new Promise(function(res){ setTimeout(res, 0); });
     var canvas = $('exportCanvas'); canvas.hidden = false;
     var ctx = canvas.getContext('2d');
     ctx.fillStyle = '#10131a'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#e9e7de'; ctx.font = '600 22px Inter, sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText('Tonus — ' + DATASET_LABELS[state.datasetType] + ' dataset', canvas.width / 2, 34);
-    var panelW = canvas.width / EXPORT_MODELS.length, panelH = canvas.height - 60, top = 50;
+    ctx.fillStyle = '#e9e7de'; ctx.font = '700 30px Inter, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('Tonus — ' + DATASET_LABELS[state.datasetType] + ' dataset', canvas.width / 2, 42);
+    // panelH leaves a full, untouched band of the base #10131a fill below every panel for the
+    // label -- a first version only left 10px here, which the panel's own heatmap painted right
+    // over (canvas drawing leaves permanent pixels; a clip/translate reset by ctx.restore() only
+    // affects what's drawn *during* that scope, not what already landed there), so the label text
+    // sat directly on top of the heatmap's own colors and was frequently unreadable.
+    var panelW = canvas.width / EXPORT_MODELS.length, panelH = canvas.height - 100, top = 58;
     for (var i = 0; i < EXPORT_MODELS.length; i++){
       var mkey = EXPORT_MODELS[i];
       var probs;
       if (mkey === 'mlp'){
-        var m = await trainMLP(state.points, state.params, null);
+        var m = await trainMLP(state.points, state.params, null, function(epoch, maxEpoch){
+          $('exportStatus').textContent = 'training neural network… epoch ' + epoch + '/' + maxEpoch;
+        });
         probs = predictMLPGrid(m, GRID_N);
         m.dispose();
+        $('exportStatus').textContent = 'rendering…';
       } else {
         var rnd = mulberry32(state.seed ^ 0x9e3779b9);
         var trainer = { logreg: trainLogReg, rf: trainRF, knn: trainKNN }[mkey];
@@ -973,8 +1142,8 @@
       ctx.translate(pad, pad);
       renderPanel(ctx, panelW - pad * 2, panelH - pad * 2, probs, state.points);
       ctx.restore();
-      ctx.fillStyle = '#9aa0ae'; ctx.font = '500 14px Inter, sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText(MODEL_LABELS[mkey], (i + 0.5) * panelW, canvas.height - 14);
+      ctx.fillStyle = '#e9e7de'; ctx.font = '700 20px Inter, sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(MODEL_LABELS[mkey], (i + 0.5) * panelW, canvas.height - 20);
     }
     if (window.QRCode){
       var qrDiv = document.createElement('div'); qrDiv.style.position = 'absolute'; qrDiv.style.left = '-9999px'; document.body.appendChild(qrDiv);
@@ -990,6 +1159,7 @@
       document.body.removeChild(qrDiv);
     }
     $('exportStatus').textContent = '';
+    exportSpinner.hidden = true;
     $('downloadExportRow').style.display = 'flex';
   });
   $('downloadExportBtn').addEventListener('click', function(){

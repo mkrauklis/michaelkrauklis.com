@@ -134,6 +134,9 @@ see below.
 - **Multi-Layer Perceptron** (`trainMLP`/`predictMLPGrid`) is the one model trained with real
   backpropagation through more than one layer, via TensorFlow.js (`tf.sequential`, 1-4 configurable
   dense layers, 2-64 neurons each, ReLU/sigmoid/tanh, Adam optimizer, binary cross-entropy loss).
+  Trains to real convergence rather than a fixed, user-chosen epoch count (see "The actual fix"
+  section below for why, and for the real bugs that section's whole design went through), and gets
+  its own live architecture diagram right under its sliders (see "Architecture diagram" below).
   **Known simplification, not yet hit as a real bug**: unlike Afterimage's decoder, this doesn't
   check for or fall back from low-precision WebGL (`floatPrecision()` returning 16 instead of 32 —
   see Afterimage's CLAUDE.md for why that's a real GPU/driver ceiling, not a config flag). At this
@@ -141,34 +144,163 @@ see below.
   hasn't shown up in testing; if an MLP boundary ever looks visibly wrong for no other reason,
   that's the first thing worth checking.
 
-## A real bug: `model.fit()` silently hangs forever without `yieldEvery: 'never'`
+## `model.fit()` and `requestAnimationFrame`: three attempts before the real fix
 
-**Found directly during testing, not theorized.** The very first working version of `trainMLP()`
-called `model.fit(...)` with tf.js's defaults, and every single training run simply hung — the
-returned promise never resolved, `trainStatus` stayed on "training…" forever, no error, no
-timeout. Confirmed the actual mechanism before touching anything: `tf.nextFrame()` — which
-`model.fit()` calls internally between epochs to yield control back to the browser, so a long
-training run doesn't freeze the page — is backed by `requestAnimationFrame`, and
+**Superseded by the section below — kept as the record of what was actually tried and why each
+attempt failed, since the failures themselves are the useful part.** The final, shipped fix is a
+global `requestAnimationFrame` monkey-patch plus tf.js's own default yielding, not any of the
+approaches described here.
+
+**Attempt 1 — do nothing (tf.js defaults).** The very first working version of `trainMLP()` called
+`model.fit(...)` with no special options, and every training run simply hung — the returned
+promise never resolved, `trainStatus` stayed on "training…" forever, no error. Confirmed the
+mechanism directly: `tf.nextFrame()` — which `model.fit()` calls internally between epochs to
+yield control back to the browser — is backed by `requestAnimationFrame`, and
 `requestAnimationFrame` **never fires while `document.visibilityState !== 'visible'`** (confirmed
 directly: `tf.nextFrame().then(...)` left unresolved for 2+ seconds while the tab reported
-`hidden`). This is the exact same root cause several other tools in this repo have already hit for
-their own canvas `requestAnimationFrame` loops (see Inkling's and Vectis's CLAUDE.md) — the first
-time it's turned out to affect a *library's* internal implementation rather than this codebase's
-own animation code.
+`hidden`). Same root cause several other tools in this repo have already hit for their own canvas
+animation loops (see Inkling's and Vectis's CLAUDE.md) — the first time it turned out to affect a
+*library's* internal implementation rather than this codebase's own code.
 
-Unlike those other cases, this one has a real fix rather than just a testing workaround: tf.js's
-`fit()` accepts a `yieldEvery` option (`'auto' | 'batch' | 'epoch' | 'never' | <ms>`), and passing
-`yieldEvery: 'never'` skips the `tf.nextFrame()` yield entirely. Verified directly, isolated from
-the rest of the app: the identical `fit()` call with `yieldEvery:'never'` completed in ~1.4
-seconds and produced a correctly-trained tiny XOR network, in the same hidden-tab environment
-where the default hung indefinitely. This isn't just a workaround for a broken test harness,
-either — every model this tool trains is small enough (2D input, at most 4×64 dense layers, at
-most 300 epochs, at most a few hundred points) to finish in well under a couple of seconds
-regardless, so there's no real responsiveness reason to yield mid-training in the first place, and
-skipping the yield makes the tool robust against a real user backgrounding the tab mid-train too
-— not just an automation quirk. If a future model added here is large enough that yielding
-actually matters for UI responsiveness, revisit this specific option rather than assuming it's
-always safe to skip.
+**Attempt 2 — `yieldEvery: 'never'` for the whole training run.** This does fix the hang (skips
+the `tf.nextFrame()` yield entirely) and was shipped briefly. It was wrong: **direct user report,
+in a real browser tab, not this automation environment — "when I change anything it all freezes
+up."** Removing tf.js's yielding removes the exact mechanism that's supposed to keep the page
+responsive during a multi-second computation; at this network's largest allowed size (4 layers,
+64 neurons, up to 250 epochs) that's a real, multi-second unbroken block of the main thread, not a
+theoretical concern.
+
+**Attempt 3 — one `model.fit()` call per single epoch, `yieldEvery:'never'` on each, yielding via
+a plain `setTimeout` in between.** This does keep the page responsive (verified: the live epoch
+counter visibly advanced across separate polls during training, which is only possible if the
+main thread is actually yielding control back to the event loop between epochs) — but introduced
+a *different*, also-real problem: benchmarked directly, isolated from the rest of the app, calling
+`fit()` repeatedly with `epochs:1` each time cost roughly a **flat ~1000ms per call**, regardless
+of how many epochs that call actually covered (`epochs:1` and `epochs:10` both took ~1000ms; the
+real per-epoch compute, ~5-40ms, was negligible next to that fixed cost). Training 250 epochs this
+way would take minutes, not seconds — fixed the freeze, broke usability a different way.
+
+## The actual fix: patch `requestAnimationFrame` once, before tf.js loads, and let it yield normally
+
+The real problem was never "yielding is expensive" — attempt 3's benchmark makes that clear (the
+per-epoch compute is cheap; something else was slow). It's that `requestAnimationFrame` doesn't
+fire in a hidden tab, so every approach that depended on it (attempt 1) hung, and every attempt to
+route around it by hand (attempts 2 and 3) fought tf.js's own scheduling instead of fixing the
+actual broken primitive. The fix addresses that directly: a `<script>` tag right before the
+`tfjs` CDN `<script>` tag replaces `window.requestAnimationFrame` with a plain
+`setTimeout(cb, 16)`-based implementation, unconditionally, for the whole page:
+
+```js
+window.requestAnimationFrame = function(cb){ return setTimeout(function(){ cb(performance.now()); }, 16); };
+```
+
+This has to happen **before** tf.js's own script tag, not from inside this page's main script —
+tf.js reads `requestAnimationFrame` once, when its module initializes, and keeps that reference;
+patching it later (confirmed directly, the hard way) has no effect on what tf.js already captured.
+This page has no other real use for `requestAnimationFrame` — the hero canvas is a one-shot static
+render, not a continuous animation — so replacing it globally here has no visible side effect of
+its own, and it makes tf.js's real default yielding (no `yieldEvery` override at all, letting
+`fit()` yield via its own internal `'auto'` policy) work correctly instead of being disabled or
+reimplemented by hand.
+
+`trainMLP()` now makes exactly **one** `model.fit()` call, for up to `MAX_EPOCHS` (250), using
+tf.js's own `callbacks.onEpochEnd` hook — the idiomatic way to get per-epoch progress and to stop
+early (`model.stopTraining = true`) once loss stops meaningfully improving over the last 10 epochs,
+replacing the "train until it converges, capped at 250" behavior a user-facing epoch-count slider
+used to leave to guesswork. This also directly enables the live "training… epoch N/250" status
+text (`onProgress`) and the "known this many epochs" cap is now a real training decision, not a
+number someone has to pick.
+
+**A second bug this restructuring surfaced and fixed**: since `model.fit()` can't be cancelled
+once started, a superseded training run (e.g. the user drags "neurons per layer" again before the
+previous drag's retrain finishes) used to keep running all the way to its own convergence or
+`MAX_EPOCHS`, blocking every newer request behind it — JS is single-threaded, so a new `fit()`
+call can't even *start* until the old one's promise settles. `onEpochEnd` now also checks a passed-
+in `isStale()` function (`mySeq !== trainSeq`, the same staleness token `recompute()` already used
+elsewhere) and calls `model.stopTraining = true` immediately if a newer request has since
+superseded this one — so a stale run gives up its hold on the main thread within one epoch instead
+of running to completion first. Verified directly: started training the default network, then
+immediately switched to Logistic Regression before the neural network had even reached its first
+epoch — the classical model's own (fast, synchronous) result appeared within ~2 seconds rather
+than waiting behind the abandoned neural-network run.
+
+**A genuine testing-environment limit, not glossed over**: this automation environment's
+`document.visibilityState` stays `'hidden'` for the whole session (same documented limitation
+elsewhere in this repo), and tf.js's *own* internal handling of a hidden tab appears to fall back
+to a much slower polling cadence even with the `requestAnimationFrame` patch in place (`tf.nextFrame()`
+measured at 400-1000ms per call here, vs. the patch's own intended ~16ms) — this could not be
+fully resolved or timed end-to-end from inside this environment, and the browser-automation tool
+used to drive it here also appears to reset in-page progress whenever one of its own calls times
+out, rather than letting training continue in the background. What *was* verified directly: no
+permanent hang (real epoch-by-epoch progress, confirmed across many separate checks), no console
+errors under repeated stress, correct final results once a run does complete, and the stale-abort
+mechanism working within a couple of seconds. Full wall-clock training speed in a normal, visible,
+focused browser tab — the actual target environment — should be spot-checked directly there before
+assuming this is fully tuned; there is no technical reason to expect the ~1s/epoch figures measured
+here to reflect real usage, since none of the slow paths this investigation found are gated on
+anything except `document.visibilityState`, which is only ever `hidden` in this sandbox.
+
+## Architecture diagram (`renderMLPArch`, `mlpArchCanvas`)
+
+Direct request: "we need a visual of the neural net architecture." Lives directly under the MLP's
+hyperparameter sliders (not in "how this actually works" — it's meant to be looked at *while*
+tuning the sliders, not read about afterward). `mlpLayerSizes(params)` derives the node-count-per-
+layer array (`[2, width, width, ..., 1]`) straight from the same `params` object driving the
+sliders, so it's structurally impossible for the diagram to drift out of sync with what's actually
+configured.
+
+**Two states, not one.** Moving a layers/width/activation slider calls `renderMLPArchIfCurrent()`
+immediately — before the debounced retrain even fires — redrawing the diagram's *shape* right
+away (neutral gray edges, since there's no trained model matching this shape yet). Once training
+actually completes, the same function redraws it colored by the network's real weights (blue
+positive, rust/`--danger` negative, opacity by magnitude relative to that layer's own largest
+weight — the same diverging-by-magnitude convention every other real-weight visualization on this
+site uses). `mlpModelMatchesParams()` is the guard that decides which state to show: it checks the
+live model's actual tensor count and first-layer width against the *current* `params`, so a model
+that finished training against an now-outdated slider position is never mistakenly drawn as if it
+were current — this exact "stale model, current sliders" state is common now that hyperparameter
+drags update the diagram structurally before the real retrain lands. A caption under the canvas
+(`#mlpArchNote`) states in plain language which of the two states is showing, since "gray lines"
+vs. "blue/rust lines" isn't self-explanatory without it.
+
+At the largest allowed size (4 layers × 64 neurons) this draws up to roughly 16,500 individual
+edges; confirmed this stays a fast, single synchronous draw (not a per-frame animation, so it only
+needs to be fast once per change, not 60 times a second) — no separate performance mitigation
+(e.g. edge culling) was needed in testing.
+
+## Export comparison grid: labels used to sit on top of the heatmap they were labeling
+
+**Direct report: "I can't read the words on the export PNG."** The bug was a real geometry
+mistake, not a font/contrast issue on its own: `panelH` (each panel's height) left only 10px of
+margin below where a panel's own heatmap ended, and the label text was drawn at `canvas.height -
+14` — a coordinate *inside* that occupied region, not below it. Canvas drawing leaves permanent
+pixels; a `ctx.save()`/`clip()`/`ctx.restore()` scope only affects what's drawn *during* that
+scope, not what a later, unscoped `fillText()` call paints on top of pixels already there — so the
+label text was landing directly on the heatmap's own (often light-colored, sometimes near-white)
+background, not on the dark base fill it looked like it should be sitting on. Fixed by genuinely
+widening the margin (`panelH = canvas.height - 100`, up from `- 60`) so every label sits entirely
+within a real, untouched band of the base `#10131a` fill — verified directly by sampling pixel
+colors in that exact band after a real export (dominant color: `rgb(16,19,26)`, i.e. the base fill,
+not heatmap orange or blue) rather than trusting the geometry by eye. Font size and weight were
+also bumped (title 22px→30px, panel labels 14px→20px, both bold) while this was being fixed, since
+the original sizing was designed around the *intended* clean background, not tested against the
+actual overlap bug.
+
+## Throbbers (`.spinner-inline`, `#computeSpinner`, `#exportSpinner`)
+
+Direct request: "we need some sort of throbber while it's thinking for pretty much all the
+steps." A single `#computeSpinner` (the same rotating-ring `.spinner-inline` pattern already
+established in Inkling, copied verbatim rather than reinvented) sits next to the accuracy readout
+and covers every path through `recompute()` — which is every dataset change, every model switch,
+and every hyperparameter tweak, not just the neural network, since all of them funnel through that
+one function. `recompute()` now shows the spinner and does one real `setTimeout(0)` yield *before*
+running any computation, classical or not — most classical models finish in a handful of
+milliseconds, too fast for a spinner to ever actually paint without this, but Random Forest at a
+high tree count and depth on a large dataset is a real, measurable exception, and there was
+previously no visual feedback at all for the gap between "you changed something" and "the boundary
+updated," on any step. The export button gets its own separate `#exportSpinner`, shown for the
+entire multi-model export (including, now, live per-epoch text during that export's own neural-
+network panel).
 
 ## A real bug: switching to an empty custom dataset while the Neural Network is selected
 
@@ -209,7 +341,9 @@ whether the first cell parses as a number), and always min-max rescales the pars
 A 12-byte header — dataset index, model index, a 4-byte seed, a 2-byte point count, and 4 bytes
 of model-specific hyperparameters (meaning depends on which model is selected: regularization
 strength for the hinge-loss classifier on a log scale, `k` for k-NN, tree count and max depth for
-Random Forest, or layer count/width/activation/epochs for the neural network) — covers every
+Random Forest, or layer count/width/activation for the neural network — training itself always
+runs to real convergence rather than a chosen epoch count, so there's nothing to encode for it)
+— covers every
 built-in dataset in just those 12 bytes, since the seed alone is enough to regenerate the exact
 same points. A `points`-type dataset has no seed to replay, so its actual points are appended
 after the header instead, 3 bytes each (`x1`/`x2` quantized to int8, `y` as a plain 0/1 byte) —
@@ -254,7 +388,11 @@ the core pedagogical claim of the whole tool, so it's the single most important 
 re-verify if any model's math is ever touched → confirm Gaussian Naive Bayes lands well below 100%
 on XOR too (its independence assumption is a textbook failure case for exactly this dataset) →
 drag every hyperparameter slider for k-NN/Random Forest/the Neural Network and confirm the
-boundary and accuracy actually change, not just the displayed number → switch to "Custom points"
+boundary and accuracy actually change, not just the displayed number → for the Neural Network
+specifically, confirm there's no epoch-count slider at all, confirm the architecture diagram
+redraws its *shape* the instant a layers/width slider moves (before the retrain finishes — check
+the "structure only" caption) and switches to real-weight coloring with the "colored by this
+network's real trained weights" caption once a training run completes → switch to "Custom points"
 with **zero points already present** while the Neural Network is selected and confirm no console
 errors and a clean "No points yet" message (the exact regression documented above) → draw a small
 shape, confirm points are added continuously while dragging and the boundary retrains after
@@ -262,13 +400,25 @@ release → upload a small CSV with `x1,x2,label` columns at an arbitrary scale 
 `[-1,1]`) and confirm the points land inside the plot, correctly rescaled → copy the share link,
 open it in a fresh tab/session, and confirm the dataset, model, every hyperparameter, and (for a
 custom dataset) every point round-trip correctly → click "Export comparison grid," confirm all
-four panels render with visibly different boundaries for the same underlying points, a QR code
-appears in the bottom-right corner, and "Download comparison as PNG" saves a real, non-empty file.
+four panels render with visibly different boundaries for the same underlying points, every panel
+label and the title are cleanly legible against the plain dark background (not overlapping any
+panel's own heatmap colors — the exact bug documented above), a QR code appears in the bottom-right
+corner, and "Download comparison as PNG" saves a real, non-empty file → confirm a spinner
+(`#computeSpinner`) is visible next to the accuracy readout during *every* kind of change (dataset,
+model, and hyperparameter, not just Neural Network ones) and a separate spinner covers the whole
+"Export comparison grid" action → start training the Neural Network with a large layer/width
+setting, then immediately switch to a fast classical model before it's finished, and confirm the
+classical model's real result appears within a couple of seconds rather than waiting behind the
+abandoned neural-network run (the stale-training-abort fix, `isStale` in `trainMLP`).
 
 One environment-specific trap worth knowing before touching `trainMLP()` again: this automation
 environment's `document.visibilityState` stays `'hidden'` throughout (a documented limitation
-elsewhere in this repo, e.g. Vectis's and Inkling's CLAUDE.md), which is exactly the condition
-that exposed the `yieldEvery` bug above. If a training-related change ever seems to hang during
-testing here, check `document.visibilityState` and `tf.nextFrame()`'s resolution directly before
-assuming the code itself is broken — but don't assume every hang here is *just* the environment,
-either, the way the empty-dataset bug above genuinely wasn't.
+elsewhere in this repo, e.g. Vectis's and Inkling's CLAUDE.md), and testing here found that tf.js's
+own internal handling of a hidden tab is *slower*, not just blocked, even past the
+`requestAnimationFrame` monkey-patch described above — full wall-clock training-speed
+verification could not be completed from inside this environment (see "A genuine testing-
+environment limit" above) and should be spot-checked in a real, focused browser tab after any
+future change to `trainMLP()`. Don't assume every timing oddity seen while testing here is *just*
+the environment, either, the way the empty-dataset bug above genuinely wasn't — check for real
+console errors and incorrect final results first, and only attribute pure slowness (not
+incorrectness) to this limitation.
