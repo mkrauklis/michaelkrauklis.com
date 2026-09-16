@@ -1,0 +1,1042 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="google-adsense-account" content="ca-pub-5936916546458743">
+<title>Tonus — Watch Machine Learning Models Draw the Line</title>
+<meta name="description" content="Generate a 2D dataset — or draw your own — and watch seven real machine learning models, from a closed-form linear fit to a live-trained neural network, each draw its own decision boundary.">
+<link rel="canonical" href="https://michaelkrauklis.me/lab/tonus/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Michael Krauklis">
+<meta property="og:title" content="Tonus — Watch Machine Learning Models Draw the Line">
+<meta property="og:description" content="Generate a 2D dataset — or draw your own — and watch seven real machine learning models, from a closed-form linear fit to a live-trained neural network, each draw its own decision boundary.">
+<meta property="og:url" content="https://michaelkrauklis.me/lab/tonus/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Tonus — Watch Machine Learning Models Draw the Line">
+<meta name="twitter:description" content="Generate a 2D dataset — or draw your own — and watch seven real machine learning models, from a closed-form linear fit to a live-trained neural network, each draw its own decision boundary.">
+<link rel="icon" type="image/png" href="/echo-state-trace-mkconceptlab.png">
+<link rel="stylesheet" href="/theme.css">
+<style>
+  :root{
+    --accent: #6f8fe0; --accent-dim: #33406e;
+    --c0: #e0724c; --c1: #4ec2e0;
+  }
+  .wrap{ max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+  .pill-grid{ display:flex; flex-wrap:wrap; gap:10px; margin-top:14px; }
+  .pill{
+    background: var(--bg-panel-2); border:1px solid var(--line); color: var(--ink);
+    padding: 9px 16px; border-radius: 999px; font-size: 0.86rem; cursor:pointer;
+    font-family:'Inter', sans-serif; transition: border-color .12s ease, color .12s ease;
+  }
+  .pill:hover{ border-color: var(--accent); }
+  .pill.selected{ border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--bg-panel-2)); font-weight:600; }
+
+  .class-toggle{ display:flex; gap:8px; margin-top:14px; }
+  .class-toggle button{ flex:1; }
+  .class-toggle button.c0.selected{ border-color: var(--c0); color: var(--c0); background: color-mix(in srgb, var(--c0) 14%, var(--bg-panel-2)); }
+  .class-toggle button.c1.selected{ border-color: var(--c1); color: var(--c1); background: color-mix(in srgb, var(--c1) 14%, var(--bg-panel-2)); }
+
+  .legend-row{ display:flex; align-items:center; gap:18px; flex-wrap:wrap; margin-top:12px; font-size:0.85rem; color:var(--ink-dim); }
+  .legend-dot{ display:inline-block; width:11px; height:11px; border-radius:50%; margin-right:6px; vertical-align:-1px; }
+
+  .param-row{ margin-top: 4px; }
+  .param-row label.field{ margin: 14px 0 6px; display:flex; justify-content:space-between; }
+  select.model-select{ margin-top:6px; }
+
+  #plotCanvas{ aspect-ratio: 1 / 1; cursor: default; }
+  #plotCanvas.drawable{ cursor: crosshair; }
+
+  .metric-row{ display:flex; justify-content:space-between; align-items:center; margin-top:16px; flex-wrap:wrap; gap:10px; }
+  .metric{ font-family:'JetBrains Mono', ui-monospace, monospace; color: var(--ink); }
+  .metric b{ color: var(--accent); }
+
+  .csv-status{ font-size:0.82rem; color:var(--ink-dim); margin-top:8px; }
+
+  #exportCanvas{ display:block; width:100%; max-width:100%; margin-top:16px; border:1px solid var(--line); border-radius:6px; background:#0c0e13; }
+  .qr-row{ display:flex; align-items:center; gap:20px; flex-wrap:wrap; margin-top:14px; }
+  #qrHolder canvas, #qrHolder img{ display:block; border-radius:6px; }
+  #shareUrlBox{ font-family:'JetBrains Mono', ui-monospace, monospace; font-size:0.78rem; color:var(--ink-dim); word-break:break-all; background:var(--bg-panel-2); border:1px solid var(--line); border-radius:6px; padding:10px 12px; max-width:420px; }
+
+  .math-block{ font-family:'JetBrains Mono', ui-monospace, monospace; color:var(--ink); background:var(--bg-panel-2); border:1px solid var(--line); border-radius:6px; padding:10px 14px; margin: 10px 0; display:inline-block; }
+</style>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5936916546458743"
+     crossorigin="anonymous"></script>
+</head>
+<body>
+<script src="/nav.js"></script>
+
+<header class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <span class="hero-line">seven models, one dataset, seven different ideas of where the line goes</span>
+      <h1>Tonus</h1>
+      <p>Every classifier here is answering the same question — given a point on this page,
+      which class is it? — but each one gets there completely differently. A straight line
+      solved exactly. A sigmoid curve fit by gradient descent. A vote among nearby points. A
+      small forest of decision trees. A real neural network, trained live by backpropagation.
+      Pick a dataset (or draw your own), pick a model, and watch it actually compute its own
+      boundary over your points — nothing here is a canned illustration.</p>
+    </div>
+    <canvas id="heroCanvas"></canvas>
+  </div>
+</header>
+
+<main class="wrap" style="padding-top:40px;">
+
+<section id="step-data">
+  <span class="step-tag">1 — the data</span>
+  <h2>Pick a dataset</h2>
+  <p>Six generated shapes, or make your own by drawing points or uploading a CSV
+  (<code>x1,x2,label</code> columns).</p>
+  <div class="panel">
+    <div class="pill-grid" id="datasetGrid"></div>
+
+    <div id="genControls">
+      <label class="field">Points <span class="field-value" id="pointCountLabel">150</span></label>
+      <input type="range" id="pointCountRange" min="30" max="300" step="10" value="150">
+      <div class="actions" style="margin-top:14px;">
+        <button type="button" class="secondary" id="reseedBtn">New random seed</button>
+        <span class="status" id="seedStatus"></span>
+      </div>
+    </div>
+
+    <div id="drawControls" hidden>
+      <p class="status">Click (or drag) on the plot below to add points.</p>
+      <div class="class-toggle">
+        <button type="button" class="secondary c0 selected" id="drawC0Btn">Class 0 (orange)</button>
+        <button type="button" class="secondary c1" id="drawC1Btn">Class 1 (blue)</button>
+      </div>
+      <div class="actions" style="margin-top:14px;">
+        <button type="button" class="secondary" id="clearDrawBtn">Clear points</button>
+      </div>
+    </div>
+
+    <div id="csvControls" hidden>
+      <div class="dropzone" id="csvDropzone">
+        <input type="file" id="csvInput" accept=".csv,text/csv">
+        <div><span class="cta">Choose a CSV</span> or drag one here — expects <code>x1,x2,label</code></div>
+      </div>
+      <div class="csv-status" id="csvStatus"></div>
+    </div>
+  </div>
+</section>
+
+<section id="step-model">
+  <span class="step-tag">2 — the model</span>
+  <h2>Pick how it learns</h2>
+  <p>Each one is real, hand-computed math — nothing here is a pretrained or simulated model.</p>
+  <div class="panel">
+    <div class="pill-grid" id="modelGrid"></div>
+    <div id="modelParams"></div>
+  </div>
+</section>
+
+<section id="step-plot">
+  <span class="step-tag">3 — the boundary</span>
+  <h2>Watch it draw the line</h2>
+  <p>The background shading is the model's own confidence at every point in the space — computed
+  on a real 100×100 grid, not interpolated between a handful of samples.</p>
+  <div class="panel">
+    <canvas class="stage" id="plotCanvas" width="600" height="600"></canvas>
+    <div class="legend-row">
+      <span><span class="legend-dot" style="background:var(--c0);"></span>Class 0</span>
+      <span><span class="legend-dot" style="background:var(--c1);"></span>Class 1</span>
+    </div>
+    <div class="metric-row">
+      <span class="metric" id="accuracyReadout">—</span>
+      <span class="status" id="trainStatus"></span>
+    </div>
+  </div>
+</section>
+
+<section id="shareSection">
+  <span class="step-tag">4 — take it with you</span>
+  <h2>Save &amp; share</h2>
+  <p>The dataset, model, and every hyperparameter above are packed into the URL below — open it
+  anywhere and you get this exact setup back, as a shareable challenge or a small digital gift.</p>
+  <div class="qr-row">
+    <div id="qrHolder"></div>
+    <div>
+      <div id="shareUrlBox"></div>
+      <div class="actions">
+        <button type="button" class="secondary" id="copyUrlBtn">Copy link</button>
+        <button type="button" class="secondary" id="downloadQrBtn">Download QR as PNG</button>
+      </div>
+    </div>
+  </div>
+  <div class="actions" style="margin-top:24px;">
+    <button type="button" class="primary" id="exportGridBtn">Export comparison grid</button>
+    <span class="status" id="exportStatus"></span>
+  </div>
+  <canvas id="exportCanvas" width="1500" height="500" hidden></canvas>
+  <div class="actions" id="downloadExportRow" style="display:none;">
+    <button type="button" class="secondary" id="downloadExportBtn">Download comparison as PNG</button>
+  </div>
+  <p class="status" style="margin-top:18px;">Want this on a mug? <a href="https://www.zazzle.com/create_your_own_coffee_mug-256341063966297810?rf=238054754631086278" target="_blank" rel="noopener">Here's a blank template</a> to upload the exported comparison grid onto — no verified Tonus-specific design exists yet, so this is the same generic upload-your-own-image mug template used as a placeholder elsewhere on this site.</p>
+</section>
+
+<details class="disclosure advanced" open>
+  <summary>How this actually works <span class="adv-sub">— the real math behind each model</span></summary>
+  <div class="disclosure-body">
+    <p>Every dataset here starts from a seeded pseudorandom generator (mulberry32) — the same
+    number in, the same points out, every time, which is what makes the seed alone enough to
+    reproduce a dataset in a shareable link without ever sending the points themselves. Every
+    model is evaluated across the same real 100×100 grid spanning <code>[-1, 1]</code> on both
+    axes to paint the background — 10,000 real predictions per render, not an interpolation.</p>
+
+    <h3 style="margin-top:24px;">Linear Regression, as a classifier</h3>
+    <p>Ordinary least squares fit directly, in closed form — no gradient descent, no iteration.
+    Three unknowns (a bias and one weight per axis) means the normal equations are just a 3×3
+    linear system, solved exactly with Gaussian elimination:</p>
+    <div class="math-block">(XᵀX) w = Xᵀy</div>
+    <p>The fitted line <code>w₀ + w₁x₁ + w₂x₂</code> is thresholded at 0.5 for a hard class call,
+    but it was never trained to produce probabilities — this is the one model here that's
+    solving a different problem (minimize squared error) and only being repurposed as a
+    classifier, which is exactly why it tends to fail hardest on anything non-linear.</p>
+
+    <h3 style="margin-top:24px;">Logistic Regression</h3>
+    <p>The same linear score, this time passed through a sigmoid and actually trained to
+    minimize cross-entropy loss — real gradient descent, one step per epoch, average gradient
+    over every point:</p>
+    <div class="math-block">ŷ = σ(w₀ + w₁x₁ + w₂x₂)</div>
+    <p>Because the gradient of cross-entropy loss with a sigmoid output collapses to the same
+    clean <code>(ŷ − y)</code> form Inkling's own network uses for its output layer, the update
+    rule here is genuinely the same piece of math, just for a 3-parameter model instead of a
+    64→18→26 network.</p>
+
+    <h3 style="margin-top:24px;">Linear classifier, hinge loss</h3>
+    <p>Trained with the Pegasos algorithm (Shalev-Shwartz, Singer &amp; Srebro) — stochastic
+    subgradient descent on the hinge loss with L2 regularization, one point at a time, learning
+    rate <code>1/(λt)</code> shrinking as training proceeds. Deliberately <b>not</b> called
+    "SVM" outright — a true support vector machine is defined by its dual formulation and
+    support vectors; this is a linearly-parameterized model trained to the same max-margin
+    objective, which produces a similar-looking boundary without being the same algorithm.</p>
+
+    <h3 style="margin-top:24px;">k-Nearest Neighbors</h3>
+    <p>No training step at all — the "model" is just the stored points. To classify anywhere,
+    find the <code>k</code> closest real data points by plain Euclidean distance and take the
+    fraction of them in class 1 as the confidence. It's the one model on this page that
+    genuinely never generalizes past its own data — turn <code>k</code> down to 1 and watch the
+    boundary trace every single point's own tiny neighborhood.</p>
+
+    <h3 style="margin-top:24px;">Gaussian Naive Bayes</h3>
+    <p>The one properly probabilistic model here — everything else either fits a boundary
+    directly or votes; this one models each class's own distribution and applies Bayes' rule.
+    Each axis, within each class, is treated as an independent Gaussian (mean and variance
+    estimated directly from that class's points); a new point's class probability comes from
+    the ratio of the two classes' likelihoods, weighted by how common each class actually is in
+    the data:</p>
+    <div class="math-block">P(y=1∣x) ∝ P(x∣y=1)·P(y=1)</div>
+    <p>Because both classes are Gaussian, this ratio collapses into the same sigmoid shape
+    logistic regression produces — but arrived at from a completely different starting
+    assumption (model the data, not the boundary), which is why its boundary bends where
+    logistic regression's stays straight whenever the two classes' spreads differ.</p>
+
+    <h3 style="margin-top:24px;">Random Forest</h3>
+    <p>A real bootstrap-aggregated ensemble — each of the configurable number of trees is grown
+    from a fresh random resample (with replacement) of the actual dataset, and each tree is
+    built greedily: at every node, try every possible axis-aligned split on both <code>x1</code>
+    and <code>x2</code>, keep whichever split most reduces Gini impurity, and recurse until the
+    max depth or a pure/tiny node stops it. A point's final confidence is the plain average
+    across every tree's vote — which is exactly why the boundary is stepped and orthogonal
+    rather than smooth: every individual tree can only ever cut the space with straight
+    horizontal or vertical lines.</p>
+
+    <h3 style="margin-top:24px;">Multi-Layer Perceptron</h3>
+    <p>The one model here trained with real backpropagation through more than one layer, via
+    TensorFlow.js so the actual matrix math runs accelerated in your browser (WebGL where it's
+    available) rather than in a hand-written loop. 1-4 hidden layers, 2-64 neurons each, your
+    choice of ReLU/sigmoid/tanh activation, trained with the Adam optimizer against binary
+    cross-entropy loss for the chosen number of epochs. <b>Known simplification:</b> unlike
+    Afterimage's decoder (see that tool's write-up for why), this doesn't check for or fall back
+    from low-precision WebGL — at this network's tiny size a precision issue hasn't shown up in
+    testing, but if a training result ever looks visibly wrong, that's the first thing to
+    suspect.</p>
+
+    <h3 style="margin-top:24px;">The share link and QR code</h3>
+    <p>The dataset type, PRNG seed, point count, selected model, and every one of its
+    hyperparameters are packed into a small byte payload, base64url-encoded into this page's own
+    URL — the same scheme Echo State and Inkling already use for their own share links. A
+    drawn-by-hand or uploaded dataset has no seed to replay, so its actual points are quantized
+    (one byte each for <code>x1</code>/<code>x2</code>, one for the label) and packed in
+    afterward instead — still small enough to fit comfortably in a QR code even at a few hundred
+    points. The QR itself is generated by the same vendored <code>qrcode.min.js</code> library
+    already sitting in those two tools' own folders.</p>
+  </div>
+</details>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    Tonus runs entirely in your browser — nothing you draw or upload is sent anywhere.
+    Part of <a href="/lab/">The Concept Lab</a> by <a href="/">Michael Krauklis</a>.
+  </div>
+</footer>
+
+<script src="qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+<script>
+(function(){
+  function $(id){ return document.getElementById(id); }
+
+  // ---------------- seeded PRNG + dataset generators ----------------
+  function mulberry32(seed){
+    return function(){
+      seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+      var t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function gaussian(rnd){
+    var u = Math.max(1e-9, 1 - rnd()), v = rnd();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  }
+  function clamp1(v){ return Math.max(-1, Math.min(1, v)); }
+  function centerAndFit(pts, margin){
+    margin = margin || 0.92;
+    var n = pts.length || 1, mx = 0, my = 0;
+    pts.forEach(function(p){ mx += p.x1; my += p.x2; });
+    mx /= n; my /= n;
+    pts.forEach(function(p){ p.x1 -= mx; p.x2 -= my; });
+    var maxAbs = 1e-6;
+    pts.forEach(function(p){ maxAbs = Math.max(maxAbs, Math.abs(p.x1), Math.abs(p.x2)); });
+    var s = margin / maxAbs;
+    pts.forEach(function(p){ p.x1 *= s; p.x2 *= s; });
+    return pts;
+  }
+
+  function genLinear(rnd, n){
+    var pts = [];
+    for (var i = 0; i < n; i++){
+      var y = i < n / 2 ? 0 : 1;
+      var cx = y === 0 ? -0.5 : 0.5, cy = y === 0 ? -0.5 : 0.5;
+      pts.push({ x1: clamp1(cx + gaussian(rnd) * 0.28), x2: clamp1(cy + gaussian(rnd) * 0.28), y: y });
+    }
+    return pts;
+  }
+  function genXOR(rnd, n){
+    var pts = [], tries = 0;
+    while (pts.length < n && tries < n * 30){
+      tries++;
+      var x1 = rnd() * 2 - 1, x2 = rnd() * 2 - 1;
+      if (Math.abs(x1) < 0.04 || Math.abs(x2) < 0.04) continue;
+      var y = (x1 > 0) !== (x2 > 0) ? 1 : 0;
+      pts.push({ x1: x1, x2: x2, y: y });
+    }
+    return pts;
+  }
+  function genCircles(rnd, n){
+    var pts = [];
+    for (var i = 0; i < n; i++){
+      var y = i < n / 2 ? 1 : 0;
+      var angle = rnd() * 2 * Math.PI;
+      var r = y === 1 ? rnd() * 0.32 : 0.55 + rnd() * 0.35;
+      pts.push({ x1: clamp1(r * Math.cos(angle) + gaussian(rnd) * 0.03), x2: clamp1(r * Math.sin(angle) + gaussian(rnd) * 0.03), y: y });
+    }
+    return pts;
+  }
+  function genSpirals(rnd, n){
+    var pts = [], half = Math.floor(n / 2);
+    for (var cls = 0; cls < 2; cls++){
+      for (var i = 0; i < half; i++){
+        var t = i / half;
+        var r = t * 0.9 + 0.05;
+        var angle = t * 4.5 * Math.PI + (cls === 1 ? Math.PI : 0);
+        pts.push({ x1: r * Math.cos(angle) + gaussian(rnd) * 0.025, x2: r * Math.sin(angle) + gaussian(rnd) * 0.025, y: cls });
+      }
+    }
+    return centerAndFit(pts);
+  }
+  function genMoons(rnd, n){
+    var pts = [], half = Math.floor(n / 2);
+    for (var i = 0; i < half; i++){
+      var t = rnd() * Math.PI;
+      pts.push({ x1: Math.cos(t) + gaussian(rnd) * 0.07, x2: Math.sin(t) + gaussian(rnd) * 0.07, y: 0 });
+    }
+    for (var j = 0; j < half; j++){
+      var t2 = rnd() * Math.PI;
+      pts.push({ x1: 1 - Math.cos(t2) + gaussian(rnd) * 0.07, x2: -Math.sin(t2) + 0.5 + gaussian(rnd) * 0.07, y: 1 });
+    }
+    return centerAndFit(pts);
+  }
+  function genHidden(rnd, n){
+    var off = document.createElement('canvas'); off.width = 240; off.height = 240;
+    var octx = off.getContext('2d');
+    octx.fillStyle = '#000'; octx.fillRect(0, 0, 240, 240);
+    octx.fillStyle = '#fff'; octx.font = 'bold 110px sans-serif'; octx.textAlign = 'center'; octx.textBaseline = 'middle';
+    octx.fillText('AI', 120, 130);
+    var img = octx.getImageData(0, 0, 240, 240).data;
+    function inkAt(px, py){
+      px = Math.max(0, Math.min(239, px | 0)); py = Math.max(0, Math.min(239, py | 0));
+      return img[(py * 240 + px) * 4] > 128;
+    }
+    var pts = [];
+    for (var i = 0; i < n; i++){
+      var x1 = rnd() * 2 - 1, x2 = rnd() * 2 - 1;
+      var px = Math.round((x1 + 1) / 2 * 239), py = Math.round((1 - x2) / 2 * 239);
+      pts.push({ x1: x1, x2: x2, y: inkAt(px, py) ? 1 : 0 });
+    }
+    return pts;
+  }
+  var GENERATORS = { linear: genLinear, xor: genXOR, circles: genCircles, spirals: genSpirals, moons: genMoons, hidden: genHidden };
+  var DATASET_LABELS = {
+    linear: 'Linearly separable', xor: 'XOR', circles: 'Concentric rings', spirals: 'Dual spirals',
+    moons: 'Moons', hidden: 'Hidden message', points: 'Custom points'
+  };
+  var DATASETS = ['linear', 'xor', 'circles', 'spirals', 'moons', 'hidden', 'points'];
+
+  function parseCSV(text){
+    var lines = text.split(/\r?\n/).filter(function(l){ return l.trim().length; });
+    if (!lines.length) return [];
+    var first = lines[0].split(',').map(function(s){ return s.trim(); });
+    var startIdx = isNaN(parseFloat(first[0])) ? 1 : 0;
+    var raw = [];
+    for (var i = startIdx; i < lines.length; i++){
+      var parts = lines[i].split(',').map(function(s){ return s.trim(); });
+      if (parts.length < 3) continue;
+      var x1 = parseFloat(parts[0]), x2 = parseFloat(parts[1]), y = parseFloat(parts[2]);
+      if (isNaN(x1) || isNaN(x2) || isNaN(y)) continue;
+      raw.push({ x1: x1, x2: x2, y: y > 0.5 ? 1 : 0 });
+    }
+    if (!raw.length) return [];
+    var minX1 = Infinity, maxX1 = -Infinity, minX2 = Infinity, maxX2 = -Infinity;
+    raw.forEach(function(p){ minX1 = Math.min(minX1, p.x1); maxX1 = Math.max(maxX1, p.x1); minX2 = Math.min(minX2, p.x2); maxX2 = Math.max(maxX2, p.x2); });
+    var rx1 = (maxX1 - minX1) || 1, rx2 = (maxX2 - minX2) || 1;
+    raw.forEach(function(p){ p.x1 = ((p.x1 - minX1) / rx1) * 2 - 1; p.x2 = ((p.x2 - minX2) / rx2) * 2 - 1; });
+    return raw;
+  }
+
+  // ---------------- models ----------------
+  function solve3x3(A, b){
+    var M = A.map(function(r, i){ return r.concat([b[i]]); });
+    for (var col = 0; col < 3; col++){
+      var piv = col;
+      for (var r = col + 1; r < 3; r++) if (Math.abs(M[r][col]) > Math.abs(M[piv][col])) piv = r;
+      var tmp = M[col]; M[col] = M[piv]; M[piv] = tmp;
+      if (Math.abs(M[col][col]) < 1e-9) M[col][col] = 1e-9;
+      for (var r2 = 0; r2 < 3; r2++){
+        if (r2 === col) continue;
+        var f = M[r2][col] / M[col][col];
+        for (var c = col; c < 4; c++) M[r2][c] -= f * M[col][c];
+      }
+    }
+    return [M[0][3] / M[0][0], M[1][3] / M[1][1], M[2][3] / M[2][2]];
+  }
+  function trainLinReg(points){
+    var n = points.length || 1;
+    var Sx1 = 0, Sx2 = 0, Sx1x1 = 0, Sx2x2 = 0, Sx1x2 = 0, Sy = 0, Sx1y = 0, Sx2y = 0;
+    points.forEach(function(p){
+      Sx1 += p.x1; Sx2 += p.x2; Sx1x1 += p.x1 * p.x1; Sx2x2 += p.x2 * p.x2; Sx1x2 += p.x1 * p.x2;
+      Sy += p.y; Sx1y += p.x1 * p.y; Sx2y += p.x2 * p.y;
+    });
+    var A = [[n, Sx1, Sx2], [Sx1, Sx1x1, Sx1x2], [Sx2, Sx1x2, Sx2x2]];
+    var w = solve3x3(A, [Sy, Sx1y, Sx2y]);
+    return { w: w };
+  }
+  function predictLinReg(m, x1, x2){ return Math.max(0, Math.min(1, m.w[0] + m.w[1] * x1 + m.w[2] * x2)); }
+
+  function trainLogReg(points){
+    var w = [0, 0, 0], epochs = 300, lr = 0.6, n = points.length || 1;
+    for (var e = 0; e < epochs; e++){
+      var g = [0, 0, 0];
+      points.forEach(function(p){
+        var z = w[0] + w[1] * p.x1 + w[2] * p.x2;
+        var pred = 1 / (1 + Math.exp(-z));
+        var err = pred - p.y;
+        g[0] += err; g[1] += err * p.x1; g[2] += err * p.x2;
+      });
+      w[0] -= lr * g[0] / n; w[1] -= lr * g[1] / n; w[2] -= lr * g[2] / n;
+    }
+    return { w: w };
+  }
+  function predictLogReg(m, x1, x2){ return 1 / (1 + Math.exp(-(m.w[0] + m.w[1] * x1 + m.w[2] * x2))); }
+
+  function trainLinSVM(points, params){
+    var lambda = params.lambda, epochs = 200, w = [0, 0, 0], t = 0;
+    for (var e = 0; e < epochs; e++){
+      points.forEach(function(p){
+        t++;
+        var yy = p.y === 1 ? 1 : -1;
+        var eta = 1 / (lambda * t);
+        var margin = yy * (w[0] + w[1] * p.x1 + w[2] * p.x2);
+        w[1] *= (1 - eta * lambda); w[2] *= (1 - eta * lambda);
+        if (margin < 1){ w[0] += eta * yy; w[1] += eta * yy * p.x1; w[2] += eta * yy * p.x2; }
+      });
+    }
+    return { w: w };
+  }
+  function predictLinSVM(m, x1, x2){ return 1 / (1 + Math.exp(-2 * (m.w[0] + m.w[1] * x1 + m.w[2] * x2))); }
+
+  function trainKNN(points, params){ return { points: points, k: params.k }; }
+  function predictKNN(m, x1, x2){
+    var arr = m.points.map(function(p){ var dx = p.x1 - x1, dy = p.x2 - x2; return { d: dx * dx + dy * dy, y: p.y }; });
+    arr.sort(function(a, b){ return a.d - b.d; });
+    var k = Math.min(m.k, arr.length);
+    if (!k) return 0.5;
+    var sum = 0; for (var i = 0; i < k; i++) sum += arr[i].y;
+    return sum / k;
+  }
+
+  function trainNB(points){
+    function stats(pts){
+      var n = pts.length || 1;
+      var mx1 = pts.reduce(function(s, p){ return s + p.x1; }, 0) / n;
+      var mx2 = pts.reduce(function(s, p){ return s + p.x2; }, 0) / n;
+      var vx1 = pts.reduce(function(s, p){ return s + (p.x1 - mx1) * (p.x1 - mx1); }, 0) / n;
+      var vx2 = pts.reduce(function(s, p){ return s + (p.x2 - mx2) * (p.x2 - mx2); }, 0) / n;
+      return { mx1: mx1, mx2: mx2, vx1: Math.max(vx1, 1e-3), vx2: Math.max(vx2, 1e-3) };
+    }
+    var c0 = points.filter(function(p){ return p.y === 0; });
+    var c1 = points.filter(function(p){ return p.y === 1; });
+    return { s0: stats(c0), s1: stats(c1), prior1: points.length ? c1.length / points.length : 0.5 };
+  }
+  function logGauss(x, mean, v){ return -0.5 * Math.log(2 * Math.PI * v) - (x - mean) * (x - mean) / (2 * v); }
+  function predictNB(m, x1, x2){
+    var l0 = Math.log(Math.max(1e-6, 1 - m.prior1)) + logGauss(x1, m.s0.mx1, m.s0.vx1) + logGauss(x2, m.s0.mx2, m.s0.vx2);
+    var l1 = Math.log(Math.max(1e-6, m.prior1)) + logGauss(x1, m.s1.mx1, m.s1.vx1) + logGauss(x2, m.s1.mx2, m.s1.vx2);
+    var mx = Math.max(l0, l1);
+    var e0 = Math.exp(l0 - mx), e1 = Math.exp(l1 - mx);
+    return e1 / (e0 + e1);
+  }
+
+  function giniOf(pts){
+    var n = pts.length; if (!n) return 0;
+    var ones = pts.reduce(function(s, p){ return s + p.y; }, 0);
+    var p1 = ones / n;
+    return 1 - p1 * p1 - (1 - p1) * (1 - p1);
+  }
+  function buildTree(points, depth, maxDepth){
+    var n = points.length;
+    var ones = points.reduce(function(s, p){ return s + p.y; }, 0);
+    var frac = n ? ones / n : 0.5;
+    if (depth >= maxDepth || n < 4 || frac === 0 || frac === 1) return { leaf: true, p: frac };
+    var best = null;
+    ['x1', 'x2'].forEach(function(feat){
+      var vals = points.map(function(p){ return p[feat]; }).slice().sort(function(a, b){ return a - b; });
+      for (var i = 1; i < vals.length; i++){
+        var thresh = (vals[i - 1] + vals[i]) / 2;
+        if (thresh === vals[i - 1]) continue;
+        var left = [], right = [];
+        points.forEach(function(p){ (p[feat] <= thresh ? left : right).push(p); });
+        if (!left.length || !right.length) continue;
+        var gini = giniOf(left) * left.length / n + giniOf(right) * right.length / n;
+        if (!best || gini < best.gini) best = { feat: feat, thresh: thresh, gini: gini, left: left, right: right };
+      }
+    });
+    if (!best) return { leaf: true, p: frac };
+    return { leaf: false, feat: best.feat, thresh: best.thresh, left: buildTree(best.left, depth + 1, maxDepth), right: buildTree(best.right, depth + 1, maxDepth) };
+  }
+  function predictTree(tree, x1, x2){
+    while (!tree.leaf){ tree = (tree.feat === 'x1' ? x1 : x2) <= tree.thresh ? tree.left : tree.right; }
+    return tree.p;
+  }
+  function trainRF(points, params, rnd){
+    var trees = [];
+    for (var t = 0; t < params.trees; t++){
+      var boot = [];
+      for (var i = 0; i < points.length; i++) boot.push(points[Math.floor(rnd() * points.length)]);
+      trees.push(buildTree(boot, 0, params.maxDepth));
+    }
+    return { trees: trees };
+  }
+  function predictRF(m, x1, x2){
+    var sum = 0; m.trees.forEach(function(t){ sum += predictTree(t, x1, x2); });
+    return m.trees.length ? sum / m.trees.length : 0.5;
+  }
+
+  var ACTIVATIONS = ['relu', 'sigmoid', 'tanh'];
+  async function trainMLP(points, params, prevModel){
+    if (prevModel) prevModel.dispose();
+    var model = tf.sequential();
+    model.add(tf.layers.dense({ units: params.width, activation: params.activation, inputShape: [2] }));
+    for (var i = 1; i < params.layers; i++) model.add(tf.layers.dense({ units: params.width, activation: params.activation }));
+    model.add(tf.layers.dense({ units: 1, activation: 'sigmoid' }));
+    model.compile({ optimizer: tf.train.adam(0.03), loss: 'binaryCrossentropy' });
+    var xs = tf.tensor2d(points.map(function(p){ return [p.x1, p.x2]; }));
+    var ys = tf.tensor2d(points.map(function(p){ return [p.y]; }));
+    // yieldEvery:'never' -- tf.js otherwise yields between epochs via tf.nextFrame(), which is
+    // backed by requestAnimationFrame and never resolves in a backgrounded/hidden tab, silently
+    // stalling training forever. At this network's tiny size (2D input, a handful of dense
+    // layers, a few hundred points) a training run finishes in well under a second regardless,
+    // so there's no responsiveness reason to yield mid-training in the first place.
+    await model.fit(xs, ys, { epochs: params.epochs, batchSize: Math.max(8, Math.min(32, points.length)), shuffle: true, verbose: 0, yieldEvery: 'never' });
+    xs.dispose(); ys.dispose();
+    return model;
+  }
+  function predictMLPGrid(model, gridN){
+    return tf.tidy(function(){
+      var xs = [];
+      for (var j = 0; j < gridN; j++){
+        var x2 = 1 - (j / (gridN - 1)) * 2;
+        for (var i = 0; i < gridN; i++) xs.push([(i / (gridN - 1)) * 2 - 1, x2]);
+      }
+      return model.predict(tf.tensor2d(xs)).dataSync();
+    });
+  }
+  function predictMLPPoints(model, points){
+    return tf.tidy(function(){
+      return model.predict(tf.tensor2d(points.map(function(p){ return [p.x1, p.x2]; }))).dataSync();
+    });
+  }
+
+  var MODELS = ['linreg', 'logreg', 'linsvm', 'knn', 'nb', 'rf', 'mlp'];
+  var MODEL_LABELS = {
+    linreg: 'Linear Regression', logreg: 'Logistic Regression', linsvm: 'Linear (hinge loss)',
+    knn: 'k-Nearest Neighbors', nb: 'Gaussian Naive Bayes', rf: 'Random Forest', mlp: 'Neural Network'
+  };
+
+  // ---------------- state ----------------
+  var state = {
+    datasetType: 'moons', points: [], seed: (Math.random() * 4294967295) >>> 0, pointCount: 150,
+    model: 'logreg', params: { lambda: 0.05, k: 7, trees: 20, maxDepth: 5, layers: 2, width: 8, activation: 'relu', epochs: 120 },
+    drawClass: 0, mlpModel: null, trainedModel: null
+  };
+
+  function regenerateDataset(){
+    if (state.datasetType === 'points') return;
+    var rnd = mulberry32(state.seed);
+    state.points = GENERATORS[state.datasetType](rnd, state.pointCount);
+  }
+  regenerateDataset();
+
+  // ---------------- rendering ----------------
+  function hexToRgb(hex){ return [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)]; }
+  var C0_RGB = hexToRgb('#e0724c'), C1_RGB = hexToRgb('#4ec2e0');
+  function lerpRgb(a, b, t){ return [Math.round(a[0] + (b[0] - a[0]) * t), Math.round(a[1] + (b[1] - a[1]) * t), Math.round(a[2] + (b[2] - a[2]) * t)]; }
+
+  var GRID_N = 100;
+  function computeGridProbs(){
+    if (!state.points.length) return null;
+    if (state.model === 'mlp'){
+      return state.mlpModel ? predictMLPGrid(state.mlpModel, GRID_N) : null;
+    }
+    var predict = { linreg: predictLinReg, logreg: predictLogReg, linsvm: predictLinSVM, knn: predictKNN, nb: predictNB, rf: predictRF }[state.model];
+    var out = new Float32Array(GRID_N * GRID_N);
+    var idx = 0;
+    for (var j = 0; j < GRID_N; j++){
+      var x2 = 1 - (j / (GRID_N - 1)) * 2;
+      for (var i = 0; i < GRID_N; i++){
+        var x1 = (i / (GRID_N - 1)) * 2 - 1;
+        out[idx++] = predict(state.trainedModel, x1, x2);
+      }
+    }
+    return out;
+  }
+  function computeAccuracy(){
+    if (!state.points.length) return null;
+    var probs;
+    if (state.model === 'mlp'){
+      if (!state.mlpModel) return null;
+      probs = predictMLPPoints(state.mlpModel, state.points);
+    } else {
+      var predict = { linreg: predictLinReg, logreg: predictLogReg, linsvm: predictLinSVM, knn: predictKNN, nb: predictNB, rf: predictRF }[state.model];
+      probs = state.points.map(function(p){ return predict(state.trainedModel, p.x1, p.x2); });
+    }
+    var correct = 0;
+    state.points.forEach(function(p, i){ if ((probs[i] >= 0.5 ? 1 : 0) === p.y) correct++; });
+    return correct / state.points.length;
+  }
+
+  function renderPanel(ctx, w, h, probs, points){
+    if (probs){
+      var off = document.createElement('canvas'); off.width = GRID_N; off.height = GRID_N;
+      var octx = off.getContext('2d');
+      var img = octx.createImageData(GRID_N, GRID_N);
+      for (var k = 0; k < GRID_N * GRID_N; k++){
+        var rgb = lerpRgb(C0_RGB, C1_RGB, probs[k]);
+        img.data[k * 4] = rgb[0]; img.data[k * 4 + 1] = rgb[1]; img.data[k * 4 + 2] = rgb[2]; img.data[k * 4 + 3] = 255;
+      }
+      octx.putImageData(img, 0, 0);
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(off, 0, 0, GRID_N, GRID_N, 0, 0, w, h);
+    } else {
+      ctx.fillStyle = '#0c0e13'; ctx.fillRect(0, 0, w, h);
+    }
+    points.forEach(function(p){
+      var px = (p.x1 + 1) / 2 * w, py = (1 - p.x2) / 2 * h;
+      ctx.beginPath(); ctx.arc(px, py, Math.max(3, w * 0.009), 0, Math.PI * 2);
+      ctx.fillStyle = p.y === 1 ? '#4ec2e0' : '#e0724c';
+      ctx.fill();
+      ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(16,19,26,0.6)'; ctx.stroke();
+    });
+  }
+
+  var plotCanvas = $('plotCanvas'), plotCtx = plotCanvas.getContext('2d');
+  function renderPlot(){
+    var probs = computeGridProbs();
+    renderPanel(plotCtx, plotCanvas.width, plotCanvas.height, probs, state.points);
+  }
+
+  // ---------------- recompute ----------------
+  var trainSeq = 0;
+  async function recompute(){
+    var mySeq = ++trainSeq;
+    if (!state.points.length){
+      // tf.tensor2d([]) throws (no shape to infer from an empty flat array) -- and since that
+      // throw happens after trainMLP() has already disposed the previous model but before a new
+      // one replaces it, retrying on the very next recompute() would try to dispose the same
+      // already-disposed model again. Simplest correct fix: never attempt to train anything, of
+      // any kind, on zero points.
+      if (state.mlpModel){ state.mlpModel.dispose(); state.mlpModel = null; }
+      state.trainedModel = null;
+      renderPlot();
+      $('accuracyReadout').textContent = 'No points yet';
+      $('trainStatus').textContent = '';
+      refreshShare();
+      return;
+    }
+    $('trainStatus').textContent = state.model === 'mlp' ? 'training…' : '';
+    if (state.model === 'mlp'){
+      var prevModel = state.mlpModel;
+      state.mlpModel = null;
+      var m = await trainMLP(state.points, state.params, prevModel);
+      if (mySeq !== trainSeq){ m.dispose(); return; }
+      state.mlpModel = m;
+    } else {
+      var rnd = mulberry32(state.seed ^ 0x9e3779b9);
+      var trainer = { linreg: trainLinReg, logreg: trainLogReg, linsvm: trainLinSVM, knn: trainKNN, nb: trainNB, rf: trainRF }[state.model];
+      state.trainedModel = state.model === 'rf' ? trainer(state.points, state.params, rnd) : (state.model === 'knn' || state.model === 'linsvm' ? trainer(state.points, state.params) : trainer(state.points));
+    }
+    renderPlot();
+    var acc = computeAccuracy();
+    $('accuracyReadout').innerHTML = acc === null ? 'No points yet' : 'Training accuracy: <b>' + Math.round(acc * 100) + '%</b> (right call on the points shown)';
+    $('trainStatus').textContent = '';
+    refreshShare();
+  }
+
+  // ---------------- UI: dataset picker ----------------
+  var datasetGrid = $('datasetGrid');
+  DATASETS.forEach(function(d){
+    var btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'pill'; btn.textContent = DATASET_LABELS[d]; btn.dataset.ds = d;
+    btn.addEventListener('click', function(){
+      state.datasetType = d;
+      if (d === 'points'){
+        state.points = [];
+      } else {
+        regenerateDataset();
+      }
+      syncDatasetUI();
+      recompute();
+    });
+    datasetGrid.appendChild(btn);
+  });
+  function syncDatasetUI(){
+    Array.prototype.forEach.call(datasetGrid.children, function(btn){ btn.classList.toggle('selected', btn.dataset.ds === state.datasetType); });
+    var isPoints = state.datasetType === 'points';
+    $('genControls').hidden = isPoints;
+    $('drawControls').hidden = !isPoints;
+    $('csvControls').hidden = !isPoints;
+    plotCanvas.classList.toggle('drawable', isPoints);
+  }
+  syncDatasetUI();
+
+  $('pointCountRange').addEventListener('input', function(){
+    state.pointCount = parseInt(this.value, 10);
+    $('pointCountLabel').textContent = state.pointCount;
+    if (state.datasetType !== 'points'){ regenerateDataset(); recompute(); }
+  });
+  $('reseedBtn').addEventListener('click', function(){
+    state.seed = (Math.random() * 4294967295) >>> 0;
+    regenerateDataset();
+    recompute();
+  });
+
+  $('drawC0Btn').addEventListener('click', function(){ state.drawClass = 0; $('drawC0Btn').classList.add('selected'); $('drawC1Btn').classList.remove('selected'); });
+  $('drawC1Btn').addEventListener('click', function(){ state.drawClass = 1; $('drawC1Btn').classList.add('selected'); $('drawC0Btn').classList.remove('selected'); });
+  $('clearDrawBtn').addEventListener('click', function(){ state.points = []; recompute(); });
+
+  var drawing = false, lastDrawPt = null;
+  function canvasToData(clientX, clientY){
+    var rect = plotCanvas.getBoundingClientRect();
+    var px = (clientX - rect.left) / rect.width, py = (clientY - rect.top) / rect.height;
+    return { x1: clamp1(px * 2 - 1), x2: clamp1(1 - py * 2) };
+  }
+  plotCanvas.addEventListener('mousedown', function(e){
+    if (state.datasetType !== 'points') return;
+    drawing = true;
+    var d = canvasToData(e.clientX, e.clientY);
+    state.points.push({ x1: d.x1, x2: d.x2, y: state.drawClass });
+    lastDrawPt = d;
+    recompute();
+  });
+  window.addEventListener('mousemove', function(e){
+    if (!drawing) return;
+    var d = canvasToData(e.clientX, e.clientY);
+    if (lastDrawPt && Math.hypot(d.x1 - lastDrawPt.x1, d.x2 - lastDrawPt.x2) < 0.05) return;
+    state.points.push({ x1: d.x1, x2: d.x2, y: state.drawClass });
+    lastDrawPt = d;
+    renderPlot();
+  });
+  window.addEventListener('mouseup', function(){ if (drawing){ drawing = false; recompute(); } });
+
+  var csvDropzone = $('csvDropzone'), csvInput = $('csvInput');
+  csvDropzone.addEventListener('click', function(){ csvInput.click(); });
+  csvDropzone.addEventListener('dragover', function(e){ e.preventDefault(); csvDropzone.classList.add('drag'); });
+  csvDropzone.addEventListener('dragleave', function(){ csvDropzone.classList.remove('drag'); });
+  csvDropzone.addEventListener('drop', function(e){ e.preventDefault(); csvDropzone.classList.remove('drag'); if (e.dataTransfer.files[0]) handleCsv(e.dataTransfer.files[0]); });
+  csvInput.addEventListener('change', function(){ if (this.files[0]) handleCsv(this.files[0]); });
+  function handleCsv(file){
+    var reader = new FileReader();
+    reader.onload = function(){
+      var pts = parseCSV(String(reader.result));
+      if (!pts.length){ $('csvStatus').textContent = "Couldn't find any valid x1,x2,label rows in that file."; return; }
+      state.points = pts;
+      $('csvStatus').textContent = 'Loaded ' + pts.length + ' points from ' + file.name + '.';
+      recompute();
+    };
+    reader.readAsText(file);
+  }
+
+  // ---------------- UI: model picker + hyperparams ----------------
+  var modelGrid = $('modelGrid');
+  MODELS.forEach(function(mkey){
+    var btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'pill'; btn.textContent = MODEL_LABELS[mkey]; btn.dataset.model = mkey;
+    btn.addEventListener('click', function(){ state.model = mkey; syncModelUI(); recompute(); });
+    modelGrid.appendChild(btn);
+  });
+  function paramRow(label, id, min, max, step, value, fmt){
+    var wrap = document.createElement('div'); wrap.className = 'param-row';
+    var lab = document.createElement('label'); lab.className = 'field';
+    var span = document.createElement('span'); span.textContent = label;
+    var val = document.createElement('span'); val.className = 'field-value'; val.id = id + 'Label'; val.textContent = fmt ? fmt(value) : value;
+    lab.appendChild(span); lab.appendChild(val);
+    var input = document.createElement('input'); input.type = 'range'; input.id = id; input.min = min; input.max = max; input.step = step; input.value = value;
+    wrap.appendChild(lab); wrap.appendChild(input);
+    return { wrap: wrap, input: input, val: val };
+  }
+  var debounceTimer = null;
+  function debouncedRecompute(){ clearTimeout(debounceTimer); debounceTimer = setTimeout(recompute, 180); }
+  function syncModelUI(){
+    Array.prototype.forEach.call(modelGrid.children, function(btn){ btn.classList.toggle('selected', btn.dataset.model === state.model); });
+    var box = $('modelParams'); box.innerHTML = '';
+    if (state.model === 'linsvm'){
+      var lambdaPow = Math.log10(state.params.lambda);
+      var r = paramRow('Margin strength (regularization)', 'lambdaRange', -3, 0, 0.05, lambdaPow, function(){ return state.params.lambda.toFixed(3); });
+      r.input.addEventListener('input', function(){ state.params.lambda = Math.pow(10, parseFloat(this.value)); r.val.textContent = state.params.lambda.toFixed(3); debouncedRecompute(); });
+      box.appendChild(r.wrap);
+    } else if (state.model === 'knn'){
+      var rk = paramRow('k (neighbors)', 'kRange', 1, 25, 1, state.params.k);
+      rk.input.addEventListener('input', function(){ state.params.k = parseInt(this.value, 10); rk.val.textContent = state.params.k; debouncedRecompute(); });
+      box.appendChild(rk.wrap);
+    } else if (state.model === 'rf'){
+      var rt = paramRow('Number of trees', 'treesRange', 1, 50, 1, state.params.trees);
+      rt.input.addEventListener('input', function(){ state.params.trees = parseInt(this.value, 10); rt.val.textContent = state.params.trees; debouncedRecompute(); });
+      var rd = paramRow('Max depth', 'depthRange', 1, 10, 1, state.params.maxDepth);
+      rd.input.addEventListener('input', function(){ state.params.maxDepth = parseInt(this.value, 10); rd.val.textContent = state.params.maxDepth; debouncedRecompute(); });
+      box.appendChild(rt.wrap); box.appendChild(rd.wrap);
+    } else if (state.model === 'mlp'){
+      var rl = paramRow('Hidden layers', 'layersRange', 1, 4, 1, state.params.layers);
+      rl.input.addEventListener('input', function(){ state.params.layers = parseInt(this.value, 10); rl.val.textContent = state.params.layers; debouncedRecompute(); });
+      var rw = paramRow('Neurons per layer', 'widthRange', 2, 64, 1, state.params.width);
+      rw.input.addEventListener('input', function(){ state.params.width = parseInt(this.value, 10); rw.val.textContent = state.params.width; debouncedRecompute(); });
+      var re = paramRow('Training epochs', 'epochsRange', 10, 300, 10, state.params.epochs);
+      re.input.addEventListener('input', function(){ state.params.epochs = parseInt(this.value, 10); re.val.textContent = state.params.epochs; debouncedRecompute(); });
+      box.appendChild(rl.wrap); box.appendChild(rw.wrap); box.appendChild(re.wrap);
+      var actLab = document.createElement('label'); actLab.className = 'field'; actLab.textContent = 'Activation';
+      var actSel = document.createElement('select'); actSel.className = 'model-select';
+      ACTIVATIONS.forEach(function(a){ var o = document.createElement('option'); o.value = a; o.textContent = a; if (a === state.params.activation) o.selected = true; actSel.appendChild(o); });
+      actSel.addEventListener('change', function(){ state.params.activation = this.value; recompute(); });
+      box.appendChild(actLab); box.appendChild(actSel);
+    } else {
+      var note = document.createElement('p'); note.className = 'status'; note.textContent = 'No hyperparameters for this one.';
+      box.appendChild(note);
+    }
+  }
+  syncModelUI();
+
+  // ---------------- share payload ----------------
+  function toBase64Url(bytes){
+    var bin = ''; bytes.forEach(function(b){ bin += String.fromCharCode(b); });
+    return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  function fromBase64Url(str){
+    str = str.replace(/-/g, '+').replace(/_/g, '/');
+    while (str.length % 4) str += '=';
+    var bin = atob(str);
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  }
+  function lambdaToByte(lambda){ return Math.max(0, Math.min(255, Math.round(((Math.log10(lambda) + 3) / 3) * 255))); }
+  function byteToLambda(b){ return Math.pow(10, (b / 255) * 3 - 3); }
+  function buildPayload(){
+    var header = new Uint8Array(12);
+    header[0] = DATASETS.indexOf(state.datasetType);
+    header[1] = MODELS.indexOf(state.model);
+    var seed = state.seed >>> 0;
+    header[2] = (seed >>> 24) & 255; header[3] = (seed >>> 16) & 255; header[4] = (seed >>> 8) & 255; header[5] = seed & 255;
+    var n = state.pointCount; header[6] = (n >> 8) & 255; header[7] = n & 255;
+    var p = state.params;
+    if (state.model === 'linsvm') header[8] = lambdaToByte(p.lambda);
+    else if (state.model === 'knn') header[8] = p.k;
+    else if (state.model === 'rf'){ header[8] = p.trees; header[9] = p.maxDepth; }
+    else if (state.model === 'mlp'){ header[8] = p.layers; header[9] = p.width; header[10] = ACTIVATIONS.indexOf(p.activation); header[11] = Math.round(p.epochs / 2); }
+    var parts = [header];
+    if (state.datasetType === 'points'){
+      var ptBytes = new Uint8Array(state.points.length * 3);
+      state.points.forEach(function(pt, i){
+        ptBytes[i * 3] = Math.max(0, Math.min(255, Math.round(pt.x1 * 127) + 128));
+        ptBytes[i * 3 + 1] = Math.max(0, Math.min(255, Math.round(pt.x2 * 127) + 128));
+        ptBytes[i * 3 + 2] = pt.y;
+      });
+      parts.push(ptBytes);
+    }
+    var total = parts.reduce(function(s, a){ return s + a.length; }, 0);
+    var out = new Uint8Array(total); var off = 0;
+    parts.forEach(function(a){ out.set(a, off); off += a.length; });
+    return out;
+  }
+  function decodePayload(bytes){
+    if (bytes.length < 12) return null;
+    var dsIdx = bytes[0], modelIdx = bytes[1];
+    if (dsIdx < 0 || dsIdx >= DATASETS.length || modelIdx < 0 || modelIdx >= MODELS.length) return null;
+    var seed = ((bytes[2] << 24) | (bytes[3] << 16) | (bytes[4] << 8) | bytes[5]) >>> 0;
+    var n = (bytes[6] << 8) | bytes[7];
+    var params = { lambda: 0.05, k: 7, trees: 20, maxDepth: 5, layers: 2, width: 8, activation: 'relu', epochs: 120 };
+    var modelKey = MODELS[modelIdx];
+    if (modelKey === 'linsvm') params.lambda = byteToLambda(bytes[8]);
+    else if (modelKey === 'knn') params.k = bytes[8] || 7;
+    else if (modelKey === 'rf'){ params.trees = bytes[8] || 20; params.maxDepth = bytes[9] || 5; }
+    else if (modelKey === 'mlp'){ params.layers = bytes[8] || 2; params.width = bytes[9] || 8; params.activation = ACTIVATIONS[bytes[10]] || 'relu'; params.epochs = (bytes[11] || 60) * 2; }
+    var datasetType = DATASETS[dsIdx], points = null;
+    if (datasetType === 'points'){
+      points = [];
+      for (var i = 12; i + 2 < bytes.length; i += 3){
+        points.push({ x1: (bytes[i] - 128) / 127, x2: (bytes[i + 1] - 128) / 127, y: bytes[i + 2] ? 1 : 0 });
+      }
+    }
+    return { datasetType: datasetType, model: modelKey, seed: seed, pointCount: n, params: params, points: points };
+  }
+
+  var qrRendered = false;
+  function refreshShare(){
+    var bytes = buildPayload();
+    var url = location.origin + location.pathname + '?d=' + toBase64Url(bytes);
+    $('shareUrlBox').textContent = url;
+    var holder = $('qrHolder'); holder.innerHTML = '';
+    if (window.QRCode){
+      try { new QRCode(holder, { text: url, width: 140, height: 140, correctLevel: QRCode.CorrectLevel.M }); qrRendered = true; }
+      catch (e){ holder.textContent = 'QR code too large for this dataset size.'; qrRendered = false; }
+    }
+  }
+  $('copyUrlBtn').addEventListener('click', function(){
+    var text = $('shareUrlBox').textContent;
+    if (navigator.clipboard) navigator.clipboard.writeText(text);
+  });
+  $('downloadQrBtn').addEventListener('click', function(){
+    var img = document.querySelector('#qrHolder img') || document.querySelector('#qrHolder canvas');
+    if (!img) return;
+    var dataUrl = img.tagName === 'IMG' ? img.src : img.toDataURL('image/png');
+    var a = document.createElement('a'); a.href = dataUrl; a.download = 'tonus-share-qr.png'; a.click();
+  });
+
+  // ---------------- export comparison grid ----------------
+  var EXPORT_MODELS = ['logreg', 'rf', 'knn', 'mlp'];
+  $('exportGridBtn').addEventListener('click', async function(){
+    $('exportStatus').textContent = 'rendering…';
+    var canvas = $('exportCanvas'); canvas.hidden = false;
+    var ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#10131a'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#e9e7de'; ctx.font = '600 22px Inter, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('Tonus — ' + DATASET_LABELS[state.datasetType] + ' dataset', canvas.width / 2, 34);
+    var panelW = canvas.width / EXPORT_MODELS.length, panelH = canvas.height - 60, top = 50;
+    for (var i = 0; i < EXPORT_MODELS.length; i++){
+      var mkey = EXPORT_MODELS[i];
+      var probs;
+      if (mkey === 'mlp'){
+        var m = await trainMLP(state.points, state.params, null);
+        probs = predictMLPGrid(m, GRID_N);
+        m.dispose();
+      } else {
+        var rnd = mulberry32(state.seed ^ 0x9e3779b9);
+        var trainer = { logreg: trainLogReg, rf: trainRF, knn: trainKNN }[mkey];
+        var trained = mkey === 'rf' ? trainer(state.points, state.params, rnd) : mkey === 'knn' ? trainer(state.points, state.params) : trainer(state.points);
+        var predict = { logreg: predictLogReg, rf: predictRF, knn: predictKNN }[mkey];
+        probs = new Float32Array(GRID_N * GRID_N); var idx = 0;
+        for (var j = 0; j < GRID_N; j++){ var x2 = 1 - (j / (GRID_N - 1)) * 2; for (var k = 0; k < GRID_N; k++){ probs[idx++] = predict(trained, (k / (GRID_N - 1)) * 2 - 1, x2); } }
+      }
+      ctx.save();
+      ctx.translate(i * panelW, top);
+      ctx.beginPath(); ctx.rect(0, 0, panelW, panelH); ctx.clip();
+      var pad = 6;
+      ctx.translate(pad, pad);
+      renderPanel(ctx, panelW - pad * 2, panelH - pad * 2, probs, state.points);
+      ctx.restore();
+      ctx.fillStyle = '#9aa0ae'; ctx.font = '500 14px Inter, sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(MODEL_LABELS[mkey], (i + 0.5) * panelW, canvas.height - 14);
+    }
+    if (window.QRCode){
+      var qrDiv = document.createElement('div'); qrDiv.style.position = 'absolute'; qrDiv.style.left = '-9999px'; document.body.appendChild(qrDiv);
+      try {
+        new QRCode(qrDiv, { text: location.origin + location.pathname + '?d=' + toBase64Url(buildPayload()), width: 70, height: 70, correctLevel: QRCode.CorrectLevel.M });
+        await new Promise(function(res){ setTimeout(res, 60); });
+        var qimg = qrDiv.querySelector('img') || qrDiv.querySelector('canvas');
+        if (qimg){
+          ctx.fillStyle = '#fff'; ctx.fillRect(canvas.width - 84, canvas.height - 84, 74, 74);
+          ctx.drawImage(qimg, canvas.width - 80, canvas.height - 80, 66, 66);
+        }
+      } catch (e){}
+      document.body.removeChild(qrDiv);
+    }
+    $('exportStatus').textContent = '';
+    $('downloadExportRow').style.display = 'flex';
+  });
+  $('downloadExportBtn').addEventListener('click', function(){
+    var a = document.createElement('a'); a.href = $('exportCanvas').toDataURL('image/png'); a.download = 'tonus-comparison.png'; a.click();
+  });
+
+  // ---------------- hero canvas (decorative, but real: a tiny fixed demo fit live) ----------------
+  function drawHero(){
+    var c = $('heroCanvas');
+    var dpr = window.devicePixelRatio || 1;
+    var w = c.clientWidth, h = c.clientHeight;
+    c.width = w * dpr; c.height = h * dpr;
+    var ctx = c.getContext('2d'); ctx.scale(dpr, dpr);
+    var rnd = mulberry32(12345);
+    var pts = genMoons(rnd, 60);
+    var m = trainLogReg(pts);
+    var probs = new Float32Array(60 * 60); var idx = 0;
+    for (var j = 0; j < 60; j++){ var x2 = 1 - (j / 59) * 2; for (var i = 0; i < 60; i++) probs[idx++] = predictLogReg(m, (i / 59) * 2 - 1, x2); }
+    var off = document.createElement('canvas'); off.width = 60; off.height = 60;
+    var octx = off.getContext('2d'); var img = octx.createImageData(60, 60);
+    for (var k = 0; k < 3600; k++){ var rgb = lerpRgb(C0_RGB, C1_RGB, probs[k]); img.data[k*4]=rgb[0]; img.data[k*4+1]=rgb[1]; img.data[k*4+2]=rgb[2]; img.data[k*4+3]=255; }
+    octx.putImageData(img, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(off, 0, 0, 60, 60, 0, 0, w, h);
+    pts.forEach(function(p){
+      var px = (p.x1 + 1) / 2 * w, py = (1 - p.x2) / 2 * h;
+      ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2);
+      ctx.fillStyle = p.y === 1 ? '#4ec2e0' : '#e0724c'; ctx.fill();
+    });
+  }
+  drawHero();
+  window.addEventListener('resize', drawHero);
+
+  // ---------------- init from URL ----------------
+  (function initFromUrl(){
+    var params = new URLSearchParams(location.search);
+    var d = params.get('d');
+    if (!d) { recompute(); return; }
+    var decoded;
+    try { decoded = decodePayload(fromBase64Url(d)); } catch (e){ decoded = null; }
+    if (!decoded){ recompute(); return; }
+    state.datasetType = decoded.datasetType;
+    state.model = decoded.model;
+    state.seed = decoded.seed;
+    state.pointCount = decoded.pointCount || 150;
+    state.params = decoded.params;
+    if (decoded.points) state.points = decoded.points;
+    else regenerateDataset();
+    $('pointCountRange').value = state.pointCount; $('pointCountLabel').textContent = state.pointCount;
+    syncDatasetUI(); syncModelUI(); recompute();
+  })();
+})();
+</script>
+</body>
+</html>
