@@ -175,6 +175,7 @@
     <div class="legend-row">
       <span><span class="legend-dot" style="background:var(--c0);"></span>Class 0</span>
       <span><span class="legend-dot" style="background:var(--c1);"></span>Class 1</span>
+      <span><span class="legend-dot" style="background:transparent; border:2px solid #e5484d;"></span>Model got this one wrong</span>
     </div>
     <div class="metric-row">
       <span class="metric" id="accuracyReadout">—</span>
@@ -813,22 +814,31 @@
     }
     return out;
   }
-  function computeAccuracy(){
-    if (!state.points.length) return null;
-    var probs;
+  // Shared by the accuracy readout and the misclassified-point markers below -- both need "what
+  // does the current model predict for each of these points," and computing it twice (once per
+  // consumer) would risk the two silently drifting out of sync with each other.
+  function predictCurrentPoints(points){
     if (state.model === 'mlp'){
       if (!state.mlpModel) return null;
-      probs = predictMLPPoints(state.mlpModel, state.points);
-    } else {
-      var predict = { linreg: predictLinReg, logreg: predictLogReg, linsvm: predictLinSVM, svm: predictSVM, knn: predictKNN, nb: predictNB, rf: predictRF }[state.model];
-      probs = state.points.map(function(p){ return predict(state.trainedModel, p.x1, p.x2); });
+      return predictMLPPoints(state.mlpModel, points);
     }
+    if (!state.trainedModel) return null;
+    var predict = { linreg: predictLinReg, logreg: predictLogReg, linsvm: predictLinSVM, svm: predictSVM, knn: predictKNN, nb: predictNB, rf: predictRF }[state.model];
+    return points.map(function(p){ return predict(state.trainedModel, p.x1, p.x2); });
+  }
+  function computeAccuracy(){
+    if (!state.points.length) return null;
+    var probs = predictCurrentPoints(state.points);
+    if (!probs) return null;
     var correct = 0;
     state.points.forEach(function(p, i){ if ((probs[i] >= 0.5 ? 1 : 0) === p.y) correct++; });
     return correct / state.points.length;
   }
 
-  function renderPanel(ctx, w, h, probs, points){
+  // `predictions`, when given, marks any point the model currently gets wrong with a red ring --
+  // direct feedback that an abstract accuracy percentage is much less informative than seeing
+  // exactly *which* points are still tripping the model up.
+  function renderPanel(ctx, w, h, probs, points, predictions){
     if (probs){
       var off = document.createElement('canvas'); off.width = GRID_N; off.height = GRID_N;
       var octx = off.getContext('2d');
@@ -843,7 +853,7 @@
     } else {
       ctx.fillStyle = '#0c0e13'; ctx.fillRect(0, 0, w, h);
     }
-    points.forEach(function(p){
+    points.forEach(function(p, i){
       var px = (p.x1 + 1) / 2 * w, py = (1 - p.x2) / 2 * h;
       var r = Math.max(3, w * 0.009);
       ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2);
@@ -852,13 +862,21 @@
       // A dark stroke nearly disappeared against the heatmap's own dark-ish mid-tones -- a light
       // border reads clearly against both fill colors and the page background alike.
       ctx.lineWidth = Math.max(1, r * 0.28); ctx.strokeStyle = '#e9e7de'; ctx.stroke();
+      if (predictions){
+        var predicted = predictions[i] >= 0.5 ? 1 : 0;
+        if (predicted !== p.y){
+          ctx.beginPath(); ctx.arc(px, py, r + Math.max(2, r * 0.6), 0, Math.PI * 2);
+          ctx.lineWidth = Math.max(1.5, r * 0.35); ctx.strokeStyle = '#e5484d'; ctx.stroke();
+        }
+      }
     });
   }
 
   var plotCanvas = $('plotCanvas'), plotCtx = plotCanvas.getContext('2d');
   function renderPlot(){
     var probs = computeGridProbs();
-    renderPanel(plotCtx, plotCanvas.width, plotCanvas.height, probs, state.points);
+    var predictions = predictCurrentPoints(state.points);
+    renderPanel(plotCtx, plotCanvas.width, plotCanvas.height, probs, state.points, predictions);
   }
 
   // ---------------- recompute ----------------

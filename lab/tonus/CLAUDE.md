@@ -470,6 +470,23 @@ click via `.toast`/`.toast.show`'s opacity transition, and only a second click w
 actually clears `state.points`. Also guarded against clearing an already-empty pad (`if
 (!state.points.length) return;`) — no reason to make someone confirm erasing nothing.
 
+## Showing which points the model got wrong, not just the percentage
+
+UX review finding: "Training accuracy: 87%" is honest, but abstract — it doesn't say *which*
+points are still tripping the model up, and that's a much more concrete, inspectable thing to
+look at than a number. `predictCurrentPoints()` was factored out of `computeAccuracy()` (it used
+to compute this inline, once) specifically so `renderPlot()` could call the exact same function
+for the exact same purpose — the accuracy percentage and the red rings marking wrong points are
+now guaranteed to agree with each other, since they're reading the same predictions, not two
+separately-computed ones that could silently drift apart. `renderPanel()`'s new `predictions`
+parameter draws a red ring (`#e5484d`, distinct from both class colors) around any point whose
+predicted class doesn't match its real label — verified directly: a genuinely 100%-accurate
+render (k-NN on the default dataset) produces zero red pixels, and an 87%-accurate one produces a
+real, non-zero ring count matching roughly the expected number of missed points. Deliberately
+**not** carried into the export/comparison-grid panels — those are meant to be a clean image worth
+printing, not a live debugging view, and a print covered in red error rings isn't what someone
+wants on a mug.
+
 ## Testing changes
 
 No test suite — static page. Verify via a local static server (root-relative `/nav.js` and
