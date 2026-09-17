@@ -447,6 +447,19 @@ about *why* you'd move it, leaving a first-time visitor to guess-and-check with 
 build on. Deliberately the opposite direction from a "how it works" deep-dive: one sentence, right
 where the decision is actually being made, not a paragraph to go read elsewhere.
 
+## The drawing instructions were disconnected from the drawing surface
+
+UX review finding: "Custom points" mode's instructions and class toggle live in step 1 (where
+every other dataset choice lives), but the canvas you actually draw on is down in step 3 — a
+first-time visitor following "draw on the plot below" literally would click empty space right
+where they're standing, a scroll away from where anything happens. Rather than duplicating the
+drawing surface into two places (step 1 would need its own canvas, kept in sync with step 3's —
+a real source of drift risk for no good reason), a `#jumpToDrawBtn` ("↓ Start drawing") smooth-
+scrolls to `.canvas-wrap` and adds a brief accent-colored pulse (`jump-highlight`, 1.5s) so the
+canvas is unmistakable the moment it comes into view. Deliberately a manual button, not an
+automatic scroll-on-select — jumping the page out from under someone the instant they click a
+pill would be a worse surprise than leaving them to click one more button.
+
 ## Testing changes
 
 No test suite — static page. Verify via a local static server (root-relative `/nav.js` and

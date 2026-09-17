@@ -71,7 +71,9 @@
   .spinner-inline[hidden]{ display:none; }
   @keyframes spinner-rotate{ to{ transform:rotate(360deg); } }
 
-  .canvas-wrap{ position:relative; }
+  .canvas-wrap{ position:relative; border-radius:6px; }
+  .canvas-wrap.jump-highlight{ animation:jump-pulse 1.5s ease-out; }
+  @keyframes jump-pulse{ 0%{ box-shadow:0 0 0 4px var(--accent); } 100%{ box-shadow:0 0 0 4px transparent; } }
   .canvas-overlay{
     position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
     background:rgba(12,14,19,0.55); border-radius:6px;
@@ -125,12 +127,13 @@
     </div>
 
     <div id="drawControls" hidden>
-      <p class="status">Click (or drag) on the plot below to add points.</p>
+      <p class="status">Pick a class below, then draw on the plot in step 3 — click or drag to add points.</p>
       <div class="class-toggle">
         <button type="button" class="secondary c0 selected" id="drawC0Btn">Class 0 (orange)</button>
         <button type="button" class="secondary c1" id="drawC1Btn">Class 1 (blue)</button>
       </div>
       <div class="actions" style="margin-top:14px;">
+        <button type="button" class="primary" id="jumpToDrawBtn">↓ Start drawing</button>
         <button type="button" class="secondary" id="clearDrawBtn">Clear points</button>
       </div>
     </div>
@@ -962,6 +965,16 @@
   $('drawC0Btn').addEventListener('click', function(){ state.drawClass = 0; $('drawC0Btn').classList.add('selected'); $('drawC1Btn').classList.remove('selected'); });
   $('drawC1Btn').addEventListener('click', function(){ state.drawClass = 1; $('drawC1Btn').classList.add('selected'); $('drawC0Btn').classList.remove('selected'); });
   $('clearDrawBtn').addEventListener('click', function(){ state.points = []; recompute(); });
+  // The drawing controls live in step 1 (where dataset choices belong), but the actual canvas you
+  // draw on is down in step 3 -- a first-time visitor following "draw on the plot below" literally
+  // would click empty space right where they're standing. This jump plus a brief highlight closes
+  // that gap without duplicating the drawing surface itself into two places.
+  $('jumpToDrawBtn').addEventListener('click', function(){
+    var wrap = document.querySelector('.canvas-wrap');
+    wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    wrap.classList.add('jump-highlight');
+    setTimeout(function(){ wrap.classList.remove('jump-highlight'); }, 1500);
+  });
 
   var drawing = false, lastDrawPt = null;
   function canvasToData(clientX, clientY){
