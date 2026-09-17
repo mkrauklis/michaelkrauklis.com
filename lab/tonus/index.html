@@ -105,6 +105,9 @@
       small forest of decision trees. A real neural network, trained live by backpropagation.
       Pick a dataset (or draw your own), pick a model, and watch it actually compute its own
       boundary over your points — nothing here is a canned illustration.</p>
+      <div class="actions">
+        <button type="button" class="primary" id="surpriseMeBtn">🎲 Surprise me</button>
+      </div>
     </div>
     <canvas id="heroCanvas"></canvas>
   </div>
@@ -168,6 +171,7 @@
   <p>The background shading is the model's own confidence at every point in the space — computed
   on a real 100×100 grid, not interpolated between a handful of samples.</p>
   <div class="panel">
+    <p class="status" id="surpriseCallout" hidden style="margin-top:0; margin-bottom:16px;"></p>
     <div class="canvas-wrap">
       <canvas class="stage" id="plotCanvas" width="600" height="600"></canvas>
       <div class="canvas-overlay" id="plotOverlay" hidden><span class="spinner-big"></span></div>
@@ -960,6 +964,7 @@
       }
       syncDatasetUI();
       recompute();
+      $('surpriseCallout').hidden = true;
     });
     datasetGrid.appendChild(btn);
   });
@@ -1058,7 +1063,7 @@
   MODELS.forEach(function(mkey){
     var btn = document.createElement('button');
     btn.type = 'button'; btn.className = 'pill'; btn.textContent = MODEL_LABELS[mkey]; btn.dataset.model = mkey;
-    btn.addEventListener('click', function(){ state.model = mkey; syncModelUI(); recompute(); });
+    btn.addEventListener('click', function(){ state.model = mkey; syncModelUI(); recompute(); $('surpriseCallout').hidden = true; });
     modelGrid.appendChild(btn);
   });
   // `hint` is a short, plain-language tradeoff sentence shown under the slider -- direct feedback
@@ -1135,6 +1140,34 @@
     }
   }
   syncModelUI();
+
+  // A first-time visitor lands on Moons + Logistic Regression, a real but unremarkable ~85% --
+  // nothing about that says "here's why this tool is interesting." Each of these curated pairs is
+  // a genuinely dramatic, honest failure (a straight-line model against a dataset no straight
+  // line can separate), not a staged one -- the callout names real alternatives that actually fix
+  // it, verified against this file's own model roster.
+  var SURPRISES = [
+    { dataset: 'xor', model: 'linreg', tip: 'A straight line can’t solve this — try Random Forest, the SVM, or the Neural Network instead.' },
+    { dataset: 'circles', model: 'logreg', tip: 'A straight line can’t wrap around a ring — try k-Nearest Neighbors or the Neural Network instead.' },
+    { dataset: 'spirals', model: 'linsvm', tip: 'Even a max-margin straight line can’t untangle a spiral — try turning up the SVM’s gamma, or the Neural Network.' }
+  ];
+  $('surpriseMeBtn').addEventListener('click', function(){
+    var pick = SURPRISES[Math.floor(Math.random() * SURPRISES.length)];
+    state.datasetType = pick.dataset;
+    state.seed = (Math.random() * 4294967295) >>> 0;
+    regenerateDataset();
+    state.model = pick.model;
+    syncDatasetUI();
+    syncModelUI();
+    recompute();
+    var callout = $('surpriseCallout');
+    callout.textContent = pick.tip;
+    callout.hidden = false;
+    var wrap = document.querySelector('.canvas-wrap');
+    wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    wrap.classList.add('jump-highlight');
+    setTimeout(function(){ wrap.classList.remove('jump-highlight'); }, 1500);
+  });
 
   // ---------------- share payload ----------------
   function toBase64Url(bytes){

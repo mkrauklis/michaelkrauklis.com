@@ -487,6 +487,20 @@ real, non-zero ring count matching roughly the expected number of missed points.
 printing, not a live debugging view, and a print covered in red error rings isn't what someone
 wants on a mug.
 
+## "Surprise me" — a first-time visitor's default landing state has no obvious payoff
+
+UX review finding: a fresh page load is Moons + Logistic Regression, a real but unremarkable
+~85% — nothing in that default state hints at why this tool is worth playing with. `#surpriseMeBtn`
+(in the hero, right under the intro paragraph) jumps to one of three curated `SURPRISES` pairings
+— a straight-line model against a dataset no straight line can separate (XOR/Linear Regression,
+concentric rings/Logistic Regression, spirals/the linear hinge-loss model) — each a genuinely
+dramatic, honest failure, not a staged one, verified directly (concentric rings + Logistic
+Regression landed at 65% in testing, XOR-style failures land near 50%). The callout underneath the
+plot names real alternatives that actually fix it for that specific pairing, and clears itself the
+moment the visitor picks anything themselves (a normal dataset or model pill click) so it can never
+sit there as stale advice for a boundary it no longer describes. Reuses the same scroll-and-
+highlight mechanism `#jumpToDrawBtn` already established, rather than inventing a second one.
+
 ## Testing changes
 
 No test suite — static page. Verify via a local static server (root-relative `/nav.js` and
