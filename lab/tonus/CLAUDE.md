@@ -422,6 +422,23 @@ Copy is written to point specifically at the exported comparison grid (the thing
 actually produces worth printing), not a generic "make it a gift" line. Replace with a real,
 verified Tonus-specific product link once one exists — don't fabricate one in the meantime.
 
+## UX pass: less math on the page, more math in the implementation
+
+A UX review plus direct follow-up ("too mathy in many regards") both landed on the same finding:
+"How this actually works" opened by default and led with four literal formula blocks (`(XᵀX) w =
+Xᵀy`, `K(a,b) = exp(−γ‖a−b‖²)`, etc.) — accurate, but exactly the kind of thing that makes a
+casual visitor bounce before ever touching the actual tool. Two changes, not one: the disclosure
+now starts **collapsed** (matching every other tool on this site whose deep-dive isn't itself the
+main draw), and every `.math-block` formula was removed in favor of plain-language explanation —
+"fits the single straight line that best fits the points, solved directly in one step" instead of
+the normal-equations formula it's describing. This is a **content** decision, not a rigor one:
+the actual implementation didn't change at all, and the real math is still exactly as correct and
+inspectable in the source as it ever was (see the model-by-model breakdown earlier in this file)
+— this section just stopped trying to also be that file's replacement for a general audience.
+`Multi-Layer Perceptron` was also renamed to `Neural Network` in this pass, matching
+`MODEL_LABELS.mlp` — the deep-dive heading and the pill label had quietly drifted to two different
+names for the same model.
+
 ## Testing changes
 
 No test suite — static page. Verify via a local static server (root-relative `/nav.js` and

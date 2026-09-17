@@ -61,7 +61,6 @@
   #qrHolder canvas, #qrHolder img{ display:block; border-radius:6px; }
   #shareUrlBox{ font-family:'JetBrains Mono', ui-monospace, monospace; font-size:0.78rem; color:var(--ink-dim); word-break:break-all; background:var(--bg-panel-2); border:1px solid var(--line); border-radius:6px; padding:10px 12px; max-width:420px; }
 
-  .math-block{ font-family:'JetBrains Mono', ui-monospace, monospace; color:var(--ink); background:var(--bg-panel-2); border:1px solid var(--line); border-radius:6px; padding:10px 14px; margin: 10px 0; display:inline-block; }
 
   .spinner-inline{
     display:inline-block; width:13px; height:13px; margin-right:.4em; vertical-align:-2px;
@@ -202,104 +201,72 @@
   <p class="status" style="margin-top:18px;">Want this on a mug? <a href="https://www.zazzle.com/create_your_own_coffee_mug-256341063966297810?rf=238054754631086278" target="_blank" rel="noopener">Here's a blank template</a> to upload the exported comparison grid onto — no verified Tonus-specific design exists yet, so this is the same generic upload-your-own-image mug template used as a placeholder elsewhere on this site.</p>
 </section>
 
-<details class="disclosure advanced" open>
-  <summary>How this actually works <span class="adv-sub">— the real math behind each model</span></summary>
+<details class="disclosure advanced">
+  <summary>How this actually works <span class="adv-sub">— for anyone curious, no math background needed</span></summary>
   <div class="disclosure-body">
-    <p>Every dataset here starts from a seeded pseudorandom generator (mulberry32) — the same
-    number in, the same points out, every time, which is what makes the seed alone enough to
-    reproduce a dataset in a shareable link without ever sending the points themselves. Every
-    model is evaluated across the same real 100×100 grid spanning <code>[-1, 1]</code> on both
-    axes to paint the background — 10,000 real predictions per render, not an interpolation.</p>
+    <p>Every dataset here starts from a seeded random-number generator — the same "random" numbers
+    come out every time for a given seed, which is what makes a short seed alone enough to
+    reproduce a whole dataset in a shareable link, without ever sending the actual points. Every
+    model is evaluated across a real 100×100 grid to paint the background — 10,000 real
+    predictions per render, not a guess filled in between a handful of samples.</p>
 
     <h3 style="margin-top:24px;">Linear Regression, as a classifier</h3>
-    <p>Ordinary least squares fit directly, in closed form — no gradient descent, no iteration.
-    Three unknowns (a bias and one weight per axis) means the normal equations are just a 3×3
-    linear system, solved exactly with Gaussian elimination:</p>
-    <div class="math-block">(XᵀX) w = Xᵀy</div>
-    <p>The fitted line <code>w₀ + w₁x₁ + w₂x₂</code> is thresholded at 0.5 for a hard class call,
-    but it was never trained to produce probabilities — this is the one model here that's
-    solving a different problem (minimize squared error) and only being repurposed as a
-    classifier, which is exactly why it tends to fail hardest on anything non-linear.</p>
+    <p>Fits the single straight line that best fits the points, solved directly in one step — no
+    trial and error. It was actually built to minimize distance-to-the-line, not to sort two
+    classes apart, and is only being repurposed here as a classifier — which is exactly why it
+    tends to fail hardest on anything that isn't already close to a straight line.</p>
 
     <h3 style="margin-top:24px;">Logistic Regression</h3>
-    <p>The same linear score, this time passed through a sigmoid and actually trained to
-    minimize cross-entropy loss — real gradient descent, one step per epoch, average gradient
-    over every point:</p>
-    <div class="math-block">ŷ = σ(w₀ + w₁x₁ + w₂x₂)</div>
-    <p>Because the gradient of cross-entropy loss with a sigmoid output collapses to the same
-    clean <code>(ŷ − y)</code> form Inkling's own network uses for its output layer, the update
-    rule here is genuinely the same piece of math, just for a 3-parameter model instead of a
-    64→18→26 network.</p>
+    <p>The same idea as above — a straight-line score — but this time actually trained, step by
+    step, specifically to separate the two classes, and squashed into a 0-100% confidence instead
+    of a raw number. Still fundamentally a straight line underneath, just a properly-trained one.</p>
 
     <h3 style="margin-top:24px;">Linear classifier, hinge loss</h3>
-    <p>Trained with the Pegasos algorithm (Shalev-Shwartz, Singer &amp; Srebro) — stochastic
-    subgradient descent on the hinge loss with L2 regularization, one point at a time, learning
-    rate <code>1/(λt)</code> shrinking as training proceeds. Deliberately <b>not</b> called
-    "SVM" outright — a true support vector machine is defined by its dual formulation and
-    support vectors; this is a linearly-parameterized model trained to the same max-margin
-    objective, which produces a similar-looking boundary without being the same algorithm.</p>
+    <p>Another straight-line model, trained a different way (the Pegasos algorithm) that pushes
+    the line to sit with as much breathing room as possible between the two classes, not just
+    anywhere that separates them. Deliberately <b>not</b> called "SVM" — a true support vector
+    machine works in a fundamentally different way (see below); this is a similar-looking
+    straight line trained toward a similar goal, not the same algorithm.</p>
 
     <h3 style="margin-top:24px;">SVM (RBF kernel)</h3>
-    <p>The model above earns "SVM" specifically by <i>not</i> having a fixed-size weight vector —
-    it trains in the dual, via kernelized Pegasos, keeping one running coefficient per training
-    point rather than one weight per axis. Two points' similarity is measured by a radial basis
-    function kernel instead of a plain dot product:</p>
-    <div class="math-block">K(a, b) = exp(−γ·‖a − b‖²)</div>
-    <p>A point only ever influences the boundary if it violated the margin at least once during
-    training — every other point's coefficient stays exactly zero — which is the literal meaning
-    of "support vector": only some of the training points end up mattering to the final decision.
-    <code>γ</code> (gamma) controls how local that influence is — a high gamma means each point
-    only "reaches" a small neighborhood around itself, letting the boundary bend tightly around
-    individual points; a low gamma lets influence spread further, producing smoother, more global
-    curves. This is a real, hand-rolled approximation of what a full SMO/quadratic-programming
-    solver converges to, not a reimplementation of SMO itself.</p>
+    <p>The model above earns the name "SVM" this one deliberately avoids. Instead of one straight
+    line, it measures how "similar" a new point is to every point it was trained on, and only a
+    subset of those training points — the ones that were genuinely hard to classify — end up
+    mattering to the final answer at all (that subset is the literal "support vectors"). The
+    <b>gamma</b> slider controls how local that similarity is: turn it up and the boundary can
+    bend tightly around individual points; turn it down and it smooths out into broader curves.</p>
 
     <h3 style="margin-top:24px;">k-Nearest Neighbors</h3>
-    <p>No training step at all — the "model" is just the stored points. To classify anywhere,
-    find the <code>k</code> closest real data points by plain Euclidean distance and take the
-    fraction of them in class 1 as the confidence. It's the one model on this page that
+    <p>No training step at all — the "model" is just the stored points. To classify anywhere, find
+    the <code>k</code> closest real data points and take a vote. It's the one model here that
     genuinely never generalizes past its own data — turn <code>k</code> down to 1 and watch the
     boundary trace every single point's own tiny neighborhood.</p>
 
     <h3 style="margin-top:24px;">Gaussian Naive Bayes</h3>
-    <p>The one properly probabilistic model here — everything else either fits a boundary
-    directly or votes; this one models each class's own distribution and applies Bayes' rule.
-    Each axis, within each class, is treated as an independent Gaussian (mean and variance
-    estimated directly from that class's points); a new point's class probability comes from
-    the ratio of the two classes' likelihoods, weighted by how common each class actually is in
-    the data:</p>
-    <div class="math-block">P(y=1∣x) ∝ P(x∣y=1)·P(y=1)</div>
-    <p>Because both classes are Gaussian, this ratio collapses into the same sigmoid shape
-    logistic regression produces — but arrived at from a completely different starting
-    assumption (model the data, not the boundary), which is why its boundary bends where
-    logistic regression's stays straight whenever the two classes' spreads differ.</p>
+    <p>The one properly probabilistic model here — everything else either draws a boundary
+    directly or votes; this one instead learns roughly what a "typical" point in each class looks
+    like (its average position and how spread out it is), then asks a new point which typical
+    shape it resembles more. Its boundary curves in a different way than logistic regression's
+    whenever the two classes are spread out differently — a real consequence of it modeling the
+    data itself, not just the line between the two groups.</p>
 
     <h3 style="margin-top:24px;">Random Forest</h3>
-    <p>A real bootstrap-aggregated ensemble — each of the configurable number of trees is grown
-    from a fresh random resample (with replacement) of the actual dataset, and each tree is
-    built greedily: at every node, try every possible axis-aligned split on both <code>x1</code>
-    and <code>x2</code>, keep whichever split most reduces Gini impurity, and recurse until the
-    max depth or a pure/tiny node stops it. A point's final confidence is the plain average
-    across every tree's vote — which is exactly why the boundary is stepped and orthogonal
-    rather than smooth: every individual tree can only ever cut the space with straight
-    horizontal or vertical lines.</p>
+    <p>Grows a whole crowd of simple decision trees, each shown a slightly different random slice
+    of the same data, and lets them vote. Each individual tree can only ever cut the space with
+    straight horizontal or vertical lines — which is exactly why the final boundary looks stepped
+    and blocky rather than smooth, even though the crowd's combined vote is a real, more nuanced
+    result than any one tree could give alone.</p>
 
-    <h3 style="margin-top:24px;">Multi-Layer Perceptron</h3>
-    <p>The one model here trained with real backpropagation through more than one layer, via
-    TensorFlow.js so the actual matrix math runs accelerated in your browser (WebGL where it's
-    available) rather than in a hand-written loop. 1-4 hidden layers, 2-64 neurons each (ReLU
-    activation — the standard modern default, and the one knob here that genuinely didn't change
-    the story enough to earn a slider), trained with the Adam optimizer against binary
-    cross-entropy loss — one real epoch at a time, stopping automatically once loss stops
-    meaningfully improving over the last 10 epochs (or at a hard cap of 250, whichever comes
-    first), rather than asking you to guess a good epoch count up front. The architecture diagram
-    next to the sliders redraws instantly as you change layers/width, structurally at first, then
-    colored by the actual trained weights (blue positive, rust negative) once training finishes.
-    <b>Known simplification:</b> unlike
-    Afterimage's decoder (see that tool's write-up for why), this doesn't check for or fall back
-    from low-precision WebGL — at this network's tiny size a precision issue hasn't shown up in
-    testing, but if a training result ever looks visibly wrong, that's the first thing to
-    suspect.</p>
+    <h3 style="margin-top:24px;">Neural Network</h3>
+    <p>The one model here that actually learns in layers — your points feed into a first layer of
+    small units, whose output feeds into the next layer, and so on, each layer combining what the
+    one before it found into something a bit more refined, until a final layer turns that into a
+    class call. Trained live via real backpropagation, accelerated in your browser through
+    TensorFlow.js, running for as many passes over the data as it takes to stop improving (capped
+    at 250, so it can't run forever). The diagram next to the sliders redraws instantly when you
+    change the layer count or width, and lights up with the network's real trained connections
+    (blue vs. rust) once a training run finishes — that's not decorative, it's the actual numbers
+    the network learned.</p>
 
     <h3 style="margin-top:24px;">The share link and QR code</h3>
     <p>The dataset type, PRNG seed, point count, selected model, and every one of its
