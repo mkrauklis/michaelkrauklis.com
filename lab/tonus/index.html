@@ -46,6 +46,9 @@
   .param-row{ margin-top: 4px; }
   .param-row label.field{ margin: 14px 0 6px; display:flex; justify-content:space-between; }
   .param-hint{ font-size:0.8rem; color:var(--ink-dim); margin-top:6px; font-style:italic; }
+
+  .toast{ display:inline-block; font-family:'JetBrains Mono', ui-monospace, monospace; font-size:0.78rem; color:var(--accent); opacity:0; transition:opacity .2s ease; }
+  .toast.show{ opacity:1; }
   select.model-select{ margin-top:6px; }
 
   #plotCanvas{ aspect-ratio: 1 / 1; cursor: default; }
@@ -135,6 +138,7 @@
       <div class="actions" style="margin-top:14px;">
         <button type="button" class="primary" id="jumpToDrawBtn">↓ Start drawing</button>
         <button type="button" class="secondary" id="clearDrawBtn">Clear points</button>
+        <span class="toast" id="clearDrawToast">click again to confirm</span>
       </div>
     </div>
 
@@ -964,7 +968,20 @@
 
   $('drawC0Btn').addEventListener('click', function(){ state.drawClass = 0; $('drawC0Btn').classList.add('selected'); $('drawC1Btn').classList.remove('selected'); });
   $('drawC1Btn').addEventListener('click', function(){ state.drawClass = 1; $('drawC1Btn').classList.add('selected'); $('drawC0Btn').classList.remove('selected'); });
-  $('clearDrawBtn').addEventListener('click', function(){ state.points = []; recompute(); });
+  // Drawing is a slower, more invested action than picking a preset dataset -- a single misclick
+  // shouldn't be able to erase a couple of minutes of freehand work with no way back. Same
+  // arm-then-confirm pattern Inkling's "Reset network" button already uses.
+  var clearDrawArmed = false, clearDrawTimer = null;
+  $('clearDrawBtn').addEventListener('click', function(){
+    if (!state.points.length) return;
+    if (!clearDrawArmed){
+      clearDrawArmed = true; $('clearDrawToast').classList.add('show');
+      clearDrawTimer = setTimeout(function(){ clearDrawArmed = false; $('clearDrawToast').classList.remove('show'); }, 2600);
+      return;
+    }
+    clearTimeout(clearDrawTimer); clearDrawArmed = false; $('clearDrawToast').classList.remove('show');
+    state.points = []; recompute();
+  });
   // The drawing controls live in step 1 (where dataset choices belong), but the actual canvas you
   // draw on is down in step 3 -- a first-time visitor following "draw on the plot below" literally
   // would click empty space right where they're standing. This jump plus a brief highlight closes

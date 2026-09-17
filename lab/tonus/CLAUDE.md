@@ -460,6 +460,16 @@ canvas is unmistakable the moment it comes into view. Deliberately a manual butt
 automatic scroll-on-select — jumping the page out from under someone the instant they click a
 pill would be a worse surprise than leaving them to click one more button.
 
+## "Clear points" needed a confirm — drawing is a slower, more invested action
+
+UX review finding: unlike picking a different preset dataset (an instant, freely-reversible
+choice), freehand drawing can represent real invested time, and `#clearDrawBtn` erased it in one
+click with no way back. Fixed with the exact same arm-then-confirm pattern Inkling's own "Reset
+network" button already uses — `#clearDrawToast` ("click again to confirm") fades in on the first
+click via `.toast`/`.toast.show`'s opacity transition, and only a second click within 2.6 seconds
+actually clears `state.points`. Also guarded against clearing an already-empty pad (`if
+(!state.points.length) return;`) — no reason to make someone confirm erasing nothing.
+
 ## Testing changes
 
 No test suite — static page. Verify via a local static server (root-relative `/nav.js` and
