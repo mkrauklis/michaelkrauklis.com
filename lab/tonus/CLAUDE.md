@@ -517,6 +517,24 @@ model earned it — k-NN hitting 100% by memorizing its own points is a less imp
 an SVM genuinely solving a hard boundary, but singling out specific models to exclude felt more
 arbitrary than just trusting the same honest number the accuracy readout itself already shows.
 
+## The export grid ignored whatever model you'd actually just gotten excited about
+
+UX review finding: `EXPORT_MODELS` was a hardcoded `['logreg', 'rf', 'knn', 'mlp']` regardless of
+what was selected — if a visitor had just tuned the SVM's gamma to solve their own hand-drawn
+spiral, the export retrained four completely different models from scratch and never showed the
+result they were actually proud of. `computeExportModelList()` now always puts `state.model` in
+the first slot, filling the rest from the same `DEFAULT_EXPORT_MODELS` list minus whichever entry
+is now redundant with it — so the current model is always represented, the panel count stays at
+a fixed 4, and if the current model already *is* one of the defaults (e.g. Random Forest), nothing
+changes from before other than which slot it's ordered into. This required generalizing the
+export loop's training dispatch (`trainForExport()`) from the three hardcoded models it used to
+know about (`logreg`/`rf`/`knn`, plus a separate `mlp` special case) to the same full
+trainer/predictor maps `recompute()` and `computeGridProbs()` already use — every non-MLP model in
+this file's roster can now legitimately appear in an export panel, not just three of them.
+Verified directly: exporting with SVM selected produced a real, non-erroring 4-panel render with
+SVM included; exporting with Random Forest selected (already one of the defaults) still produced
+exactly 4 distinct panels with no duplicate.
+
 ## Testing changes
 
 No test suite — static page. Verify via a local static server (root-relative `/nav.js` and

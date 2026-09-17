@@ -1282,7 +1282,22 @@
   });
 
   // ---------------- export comparison grid ----------------
-  var EXPORT_MODELS = ['logreg', 'rf', 'knn', 'mlp'];
+  // The four panels used to be a hardcoded set that never reflected whatever model the visitor
+  // actually had selected and tuned -- if you'd just gotten the SVM to solve your own hand-drawn
+  // spiral, the export still trained four *different* models from scratch instead of celebrating
+  // that result. The current model now always claims the first slot; the fixed defaults fill the
+  // rest, minus whichever one is now redundant with it.
+  var DEFAULT_EXPORT_MODELS = ['logreg', 'rf', 'knn', 'mlp'];
+  function computeExportModelList(){
+    var rest = DEFAULT_EXPORT_MODELS.filter(function(m){ return m !== state.model; });
+    return [state.model].concat(rest).slice(0, 4);
+  }
+  function trainForExport(mkey, rnd){
+    var trainer = { linreg: trainLinReg, logreg: trainLogReg, linsvm: trainLinSVM, svm: trainSVM, knn: trainKNN, nb: trainNB, rf: trainRF }[mkey];
+    if (mkey === 'rf') return trainer(state.points, state.params, rnd);
+    if (mkey === 'knn' || mkey === 'linsvm' || mkey === 'svm') return trainer(state.points, state.params);
+    return trainer(state.points);
+  }
   $('exportGridBtn').addEventListener('click', async function(){
     var exportSpinner = $('exportSpinner'); exportSpinner.hidden = false;
     $('exportStatus').textContent = 'rendering…';
@@ -1297,6 +1312,7 @@
     // over (canvas drawing leaves permanent pixels; a clip/translate reset by ctx.restore() only
     // affects what's drawn *during* that scope, not what already landed there), so the label text
     // sat directly on top of the heatmap's own colors and was frequently unreadable.
+    var EXPORT_MODELS = computeExportModelList();
     var panelW = canvas.width / EXPORT_MODELS.length, panelH = canvas.height - 100, top = 58;
     for (var i = 0; i < EXPORT_MODELS.length; i++){
       var mkey = EXPORT_MODELS[i];
@@ -1310,9 +1326,8 @@
         $('exportStatus').textContent = 'rendering…';
       } else {
         var rnd = mulberry32(state.seed ^ 0x9e3779b9);
-        var trainer = { logreg: trainLogReg, rf: trainRF, knn: trainKNN }[mkey];
-        var trained = mkey === 'rf' ? trainer(state.points, state.params, rnd) : mkey === 'knn' ? trainer(state.points, state.params) : trainer(state.points);
-        var predict = { logreg: predictLogReg, rf: predictRF, knn: predictKNN }[mkey];
+        var trained = trainForExport(mkey, rnd);
+        var predict = { linreg: predictLinReg, logreg: predictLogReg, linsvm: predictLinSVM, svm: predictSVM, knn: predictKNN, nb: predictNB, rf: predictRF }[mkey];
         probs = new Float32Array(GRID_N * GRID_N); var idx = 0;
         for (var j = 0; j < GRID_N; j++){ var x2 = 1 - (j / (GRID_N - 1)) * 2; for (var k = 0; k < GRID_N; k++){ probs[idx++] = predict(trained, (k / (GRID_N - 1)) * 2 - 1, x2); } }
       }
