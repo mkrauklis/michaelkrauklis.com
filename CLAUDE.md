@@ -40,21 +40,29 @@ Two root-level files are included, unmodified, by every page on the site (root `
   paragraph genuinely wants to be a narrow, short teaser, give it an explicit class (see
   `p.lede` on the two content pages) rather than reintroducing a blanket cap.
 
-## The homepage's LinkedIn / Concept Lab cards
+## The homepage's LinkedIn / GitHub / Concept Lab cards
 
 Direct request: give both of root `index.html`'s `.links` cards a real icon, "whatever you have
-permission to use" for LinkedIn. Both cards became a single clickable `<a class="card">` (icon +
-heading + description all one link target, matching the `.writing-item` pattern already used
-further down this same page) rather than just the `<h2>` text being a link — `.card:hover`'s
-amber border and `.card h2`'s explicit `color:var(--ink)` mirror `.writing-item`/`.writing-item
-h3` exactly, for the same reason: once the *whole* card is the link, the heading shouldn't look
-like a separate, differently-styled link floating inside it.
+permission to use" for LinkedIn (a third, GitHub, was added later the same way). Every card is a
+single clickable `<a class="card">` (icon + heading + description all one link target, matching
+the `.writing-item` pattern already used further down this same page) rather than just the `<h2>`
+text being a link — `.card:hover`'s amber border and `.card h2`'s explicit `color:var(--ink)`
+mirror `.writing-item`/`.writing-item h3` exactly, for the same reason: once the *whole* card is
+the link, the heading shouldn't look like a separate, differently-styled link floating inside it.
+`.links` is a plain wrapping flexbox (`flex:1; min-width:220px` per card) specifically so a third
+card could be added later without needing any layout changes — it wasn't built assuming exactly
+two cards.
 
 - **LinkedIn**: a plain inline SVG — a rounded `#0A66C2` (LinkedIn's own brand blue) square with
   a bold white "in" wordmark — rather than an external icon font or a fetched brand-asset file.
   Simple enough to hand-draw exactly, keeps the site's zero-runtime-icon-dependency posture, and
   LinkedIn's own brand guidelines permit using their mark to link to a real profile, which this
   is.
+- **GitHub**: same convention, a rounded `#181717` (GitHub's own brand black) square with the
+  real, widely-reproduced Octocat mark path (the same path data used by, e.g., the simple-icons
+  project) traced as a single inline `<path>`, not a screenshot or a fetched asset. Links to
+  `https://github.com/mkrauklis` — verified live (page title read "mkrauklis (Michael Krauklis) ·
+  GitHub") before linking it, same discipline as every other external link added to this site.
 - **The Concept Lab**: `/lab-mosaic.jpg`, a 2×2 composite built from four of the *actual* tool
   thumbnails already living under `lab/*/thumbnail.jpg` (Inkling, Echo State, Afterimage,
   Ridgeline — picked for visual variety at small size, not the newest four; Neural Viaduct's
