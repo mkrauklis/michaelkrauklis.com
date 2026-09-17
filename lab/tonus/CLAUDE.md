@@ -415,12 +415,34 @@ that could silently drift out of sync with it.
 
 ## Zazzle link is a placeholder, not a verified template
 
-Same situation every other tool's first ship starts from: `#shareSection`'s mug-template link
-reuses the same generic "upload your own image" mug template ID and the site's standard
-`?rf=238054754631086278` ambassador param, since no Tonus-specific curated product exists yet.
-Copy is written to point specifically at the exported comparison grid (the thing this tool
-actually produces worth printing), not a generic "make it a gift" line. Replace with a real,
+Same situation every other tool's first ship starts from: the mug-template link reuses the same
+generic "upload your own image" mug template ID and the site's standard `?rf=238054754631086278`
+ambassador param, since no Tonus-specific curated product exists yet. Replace with a real,
 verified Tonus-specific product link once one exists — don't fabricate one in the meantime.
+
+**The user-facing copy doesn't say any of that, on purpose.** An earlier version's visible text
+read "...no verified Tonus-specific design exists yet, so this is the same generic upload-your-
+own-image mug template used as a placeholder elsewhere on this site" — accurate, and exactly the
+kind of thing that talks a visitor out of clicking before they've even seen what they'd be
+buying. UX review caught this directly: that sentence belongs in this file, for whoever picks up
+this code next, not in front of someone deciding whether to make a purchase. The current copy
+("Whatever's on the canvas above is worth putting on something...") says only what's true and
+relevant to the visitor — that the link goes to a real, working mug template — without either
+lying about a curated product existing or talking the CTA down before it gets a chance.
+
+## The mug CTA had no way to see the product before clicking
+
+Direct follow-up: exporting, downloading a PNG, and then manually uploading it to a blank Zazzle
+template with zero preview of the result along the way was too many disconnected steps before a
+visitor had any idea what they'd end up with. `.mug-mockup` is a small live preview — a CSS-drawn
+mug body and handle, no image assets — whose body's `background-image` is set directly from
+`plotCanvas.toDataURL()` every time `renderPlot()` runs, so it always shows *this exact* boundary,
+live, with no separate export step required to see it. This is deliberately a lightweight
+illustration (a rounded rect with an inset shadow suggesting a ceramic curve, not a photorealistic
+product render) — the goal was "you can see roughly what this would look like" before deciding to
+export and upload, not a pixel-perfect mockup. `a.primary` is a new page-local rule (theme.css
+scopes `.primary`/`.secondary` to `<button>` only) since the actual "Make it a mug" CTA has to be
+a real outbound `<a>`, not a button faking a link.
 
 ## UX pass: less math on the page, more math in the implementation
 

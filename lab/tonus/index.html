@@ -58,6 +58,29 @@
     font-size:0.88rem;
   }
   .export-nudge a{ font-weight:600; white-space:nowrap; }
+
+  /* theme.css scopes .primary/.secondary to <button>; this is the one <a> on the page styled to
+     match, since an outbound Zazzle link can't be a <button>. */
+  a.primary{
+    background: var(--accent); color: #10131a; border: none; padding: 12px 22px;
+    border-radius: 6px; font-weight: 600; font-size: 0.95rem; font-family: 'Inter', sans-serif;
+  }
+  a.primary:hover{ text-decoration:none; filter:brightness(1.08); }
+
+  .mug-cta{ display:flex; align-items:center; gap:28px; flex-wrap:wrap; margin-top:28px; padding-top:24px; border-top:1px solid var(--line); }
+  .mug-cta > div:last-child{ flex:1 1 240px; min-width:220px; }
+  .mug-mockup{ position:relative; width:170px; height:150px; flex:0 0 auto; }
+  .mug-body{
+    position:absolute; left:0; top:8px; width:132px; height:126px; border-radius:10px;
+    background-color:#0c0e13; background-size:cover; background-position:center;
+    border:2px solid rgba(233,231,222,0.15);
+    box-shadow: inset -16px 0 26px rgba(0,0,0,.4), inset 12px 0 22px rgba(255,255,255,.06);
+  }
+  .mug-handle{
+    position:absolute; right:2px; top:32px; width:44px; height:70px;
+    border:11px solid rgba(233,231,222,0.38); border-left-color:transparent;
+    border-radius:0 50% 50% 0; box-sizing:border-box;
+  }
   select.model-select{ margin-top:6px; }
 
   #plotCanvas{ aspect-ratio: 1 / 1; cursor: default; }
@@ -224,7 +247,20 @@
   <div class="actions" id="downloadExportRow" style="display:none;">
     <button type="button" class="secondary" id="downloadExportBtn">Download comparison as PNG</button>
   </div>
-  <p class="status" style="margin-top:18px;">Want this on a mug? <a href="https://www.zazzle.com/create_your_own_coffee_mug-256341063966297810?rf=238054754631086278" target="_blank" rel="noopener">Here's a blank template</a> to upload the exported comparison grid onto — no verified Tonus-specific design exists yet, so this is the same generic upload-your-own-image mug template used as a placeholder elsewhere on this site.</p>
+
+  <div class="mug-cta">
+    <div class="mug-mockup" aria-hidden="true">
+      <div class="mug-handle"></div>
+      <div class="mug-body" id="mugBody"></div>
+    </div>
+    <div>
+      <p style="margin:0 0 10px;">Whatever's on the canvas above is worth putting on something —
+      export the comparison grid, then upload it here to make it real.</p>
+      <div class="actions">
+        <a class="primary" href="https://www.zazzle.com/create_your_own_coffee_mug-256341063966297810?rf=238054754631086278" target="_blank" rel="noopener" style="display:inline-block; text-decoration:none;">Make it a mug →</a>
+      </div>
+    </div>
+  </div>
 </section>
 
 <details class="disclosure advanced">
@@ -894,6 +930,11 @@
     var probs = computeGridProbs();
     var predictions = predictCurrentPoints(state.points);
     renderPanel(plotCtx, plotCanvas.width, plotCanvas.height, probs, state.points, predictions);
+    // The mug mockup shows the *current* boundary live, not just a static illustration -- so the
+    // "make it a mug" pitch is never one screen removed from whatever the visitor is actually
+    // looking at right now.
+    var mugBody = $('mugBody');
+    if (mugBody) mugBody.style.backgroundImage = 'url(' + plotCanvas.toDataURL('image/png') + ')';
   }
 
   // ---------------- recompute ----------------
