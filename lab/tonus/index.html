@@ -287,8 +287,9 @@
     <h3 style="margin-top:24px;">Multi-Layer Perceptron</h3>
     <p>The one model here trained with real backpropagation through more than one layer, via
     TensorFlow.js so the actual matrix math runs accelerated in your browser (WebGL where it's
-    available) rather than in a hand-written loop. 1-4 hidden layers, 2-64 neurons each, your
-    choice of ReLU/sigmoid/tanh activation, trained with the Adam optimizer against binary
+    available) rather than in a hand-written loop. 1-4 hidden layers, 2-64 neurons each (ReLU
+    activation — the standard modern default, and the one knob here that genuinely didn't change
+    the story enough to earn a slider), trained with the Adam optimizer against binary
     cross-entropy loss — one real epoch at a time, stopping automatically once loss stops
     meaningfully improving over the last 10 epochs (or at a hard cap of 250, whichever comes
     first), rather than asking you to guess a good epoch count up front. The architecture diagram
@@ -637,7 +638,6 @@
     return m.trees.length ? sum / m.trees.length : 0.5;
   }
 
-  var ACTIVATIONS = ['relu', 'sigmoid', 'tanh'];
   var MAX_EPOCHS = 250;
   // One single model.fit() call for up to MAX_EPOCHS, stopped early via the real tf.js mechanism
   // for it (`model.stopTraining = true` inside a callback) once loss stops meaningfully improving.
@@ -1088,11 +1088,6 @@
       var rw = paramRow('Neurons per layer', 'widthRange', 2, 64, 1, state.params.width);
       rw.input.addEventListener('input', function(){ state.params.width = parseInt(this.value, 10); rw.val.textContent = state.params.width; renderMLPArchIfCurrent(); debouncedRecompute(); });
       box.appendChild(rl.wrap); box.appendChild(rw.wrap);
-      var actLab = document.createElement('label'); actLab.className = 'field'; actLab.textContent = 'Activation';
-      var actSel = document.createElement('select'); actSel.className = 'model-select';
-      ACTIVATIONS.forEach(function(a){ var o = document.createElement('option'); o.value = a; o.textContent = a; if (a === state.params.activation) o.selected = true; actSel.appendChild(o); });
-      actSel.addEventListener('change', function(){ state.params.activation = this.value; renderMLPArchIfCurrent(); recompute(); });
-      box.appendChild(actLab); box.appendChild(actSel);
       var archLab = document.createElement('label'); archLab.className = 'field'; archLab.style.marginTop = '18px';
       archLab.textContent = 'Network architecture';
       var archNote = document.createElement('div'); archNote.className = 'status'; archNote.id = 'mlpArchNote';
@@ -1137,7 +1132,7 @@
     else if (state.model === 'svm'){ header[8] = lambdaToByte(p.lambda); header[9] = gammaToByte(p.gamma); }
     else if (state.model === 'knn') header[8] = p.k;
     else if (state.model === 'rf'){ header[8] = p.trees; header[9] = p.maxDepth; }
-    else if (state.model === 'mlp'){ header[8] = p.layers; header[9] = p.width; header[10] = ACTIVATIONS.indexOf(p.activation); }
+    else if (state.model === 'mlp'){ header[8] = p.layers; header[9] = p.width; }
     var parts = [header];
     if (state.datasetType === 'points'){
       var ptBytes = new Uint8Array(state.points.length * 3);
@@ -1165,7 +1160,7 @@
     else if (modelKey === 'svm'){ params.lambda = byteToLambda(bytes[8]); params.gamma = byteToGamma(bytes[9]); }
     else if (modelKey === 'knn') params.k = bytes[8] || 7;
     else if (modelKey === 'rf'){ params.trees = bytes[8] || 20; params.maxDepth = bytes[9] || 5; }
-    else if (modelKey === 'mlp'){ params.layers = bytes[8] || 2; params.width = bytes[9] || 8; params.activation = ACTIVATIONS[bytes[10]] || 'relu'; }
+    else if (modelKey === 'mlp'){ params.layers = bytes[8] || 2; params.width = bytes[9] || 8; }
     var datasetType = DATASETS[dsIdx], points = null;
     if (datasetType === 'points'){
       points = [];

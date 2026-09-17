@@ -154,8 +154,16 @@ see below.
   horizontal/vertical lines.
 - **Multi-Layer Perceptron** (`trainMLP`/`predictMLPGrid`) is the one model trained with real
   backpropagation through more than one layer, via TensorFlow.js (`tf.sequential`, 1-4 configurable
-  dense layers, 2-64 neurons each, ReLU/sigmoid/tanh, Adam optimizer, binary cross-entropy loss).
-  Trains to real convergence rather than a fixed, user-chosen epoch count (see "The actual fix"
+  dense layers, 2-64 neurons each, Adam optimizer, binary cross-entropy loss). The activation
+  function was originally a third slider (ReLU/sigmoid/tanh) — removed on direct feedback ("even
+  the activation function doesn't show us much. Just use ReLU and call it a day"): unlike layer
+  count and width, which visibly change the boundary's shape and complexity, swapping activation
+  functions on a network this shallow didn't produce a difference worth a whole control for it.
+  `params.activation` still exists internally (permanently `'relu'`) rather than being ripped out
+  of `trainMLP`/`renderMLPArch`'s signatures — the two functions that use it don't need to know it
+  can no longer vary, and hardcoding the value at the one place it's set is simpler than threading
+  a literal through every call site. Trains to real convergence rather than a fixed, user-chosen
+  epoch count (see "The actual fix"
   section below for why, and for the real bugs that section's whole design went through), and gets
   its own live architecture diagram right under its sliders (see "Architecture diagram" below).
   **Known simplification, not yet hit as a real bug**: unlike Afterimage's decoder, this doesn't
@@ -270,7 +278,7 @@ layer array (`[2, width, width, ..., 1]`) straight from the same `params` object
 sliders, so it's structurally impossible for the diagram to drift out of sync with what's actually
 configured.
 
-**Two states, not one.** Moving a layers/width/activation slider calls `renderMLPArchIfCurrent()`
+**Two states, not one.** Moving a layers/width slider calls `renderMLPArchIfCurrent()`
 immediately — before the debounced retrain even fires — redrawing the diagram's *shape* right
 away (neutral gray edges, since there's no trained model matching this shape yet). Once training
 actually completes, the same function redraws it colored by the network's real weights (blue
@@ -379,7 +387,7 @@ A 12-byte header — dataset index, model index, a 4-byte seed, a 2-byte point c
 of model-specific hyperparameters (meaning depends on which model is selected: regularization
 strength for the hinge-loss classifier on a log scale, regularization *and* kernel width for the
 RBF SVM (both log-scale, via the same `lambdaToByte`/`gammaToByte` pair), `k` for k-NN, tree count
-and max depth for Random Forest, or layer count/width/activation for the neural network — training
+and max depth for Random Forest, or layer count/width for the neural network — training
 itself always runs to real convergence rather than a chosen epoch count, so there's nothing to
 encode for it) — covers every
 built-in dataset in just those 12 bytes, since the seed alone is enough to regenerate the exact
