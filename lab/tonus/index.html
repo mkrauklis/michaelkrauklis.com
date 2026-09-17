@@ -45,6 +45,7 @@
 
   .param-row{ margin-top: 4px; }
   .param-row label.field{ margin: 14px 0 6px; display:flex; justify-content:space-between; }
+  .param-hint{ font-size:0.8rem; color:var(--ink-dim); margin-top:6px; font-style:italic; }
   select.model-select{ margin-top:6px; }
 
   #plotCanvas{ aspect-ratio: 1 / 1; cursor: default; }
@@ -1012,7 +1013,12 @@
     btn.addEventListener('click', function(){ state.model = mkey; syncModelUI(); recompute(); });
     modelGrid.appendChild(btn);
   });
-  function paramRow(label, id, min, max, step, value, fmt){
+  // `hint` is a short, plain-language tradeoff sentence shown under the slider -- direct feedback
+  // was that a slider's technical name and current number don't say anything about *why* you'd
+  // move it, leaving a first-time visitor to guess-and-check. Deliberately not another dive into
+  // the math (see "How this actually works" above, and the site-wide push to cut that down) --
+  // just the one sentence a visitor actually needs to build intuition while dragging.
+  function paramRow(label, id, min, max, step, value, fmt, hint){
     var wrap = document.createElement('div'); wrap.className = 'param-row';
     var lab = document.createElement('label'); lab.className = 'field';
     var span = document.createElement('span'); span.textContent = label;
@@ -1020,6 +1026,10 @@
     lab.appendChild(span); lab.appendChild(val);
     var input = document.createElement('input'); input.type = 'range'; input.id = id; input.min = min; input.max = max; input.step = step; input.value = value;
     wrap.appendChild(lab); wrap.appendChild(input);
+    if (hint){
+      var hintEl = document.createElement('div'); hintEl.className = 'param-hint'; hintEl.textContent = hint;
+      wrap.appendChild(hintEl);
+    }
     return { wrap: wrap, input: input, val: val };
   }
   var debounceTimer = null;
@@ -1030,29 +1040,37 @@
     var box = $('modelParams'); box.innerHTML = ''; mlpArchCanvas = null;
     if (state.model === 'linsvm'){
       var lambdaPow = Math.log10(state.params.lambda);
-      var r = paramRow('Margin strength (regularization)', 'lambdaRange', -3, 0, 0.05, lambdaPow, function(){ return state.params.lambda.toFixed(3); });
+      var r = paramRow('Margin strength (regularization)', 'lambdaRange', -3, 0, 0.05, lambdaPow, function(){ return state.params.lambda.toFixed(3); },
+        'Lower = hugs the training points tightly; higher = a simpler, more cautious line.');
       r.input.addEventListener('input', function(){ state.params.lambda = Math.pow(10, parseFloat(this.value)); r.val.textContent = state.params.lambda.toFixed(3); debouncedRecompute(); });
       box.appendChild(r.wrap);
     } else if (state.model === 'svm'){
-      var rg = paramRow('Kernel width (gamma)', 'gammaRange', -1, 1, 0.05, Math.log10(state.params.gamma), function(){ return state.params.gamma.toFixed(2); });
+      var rg = paramRow('Kernel width (gamma)', 'gammaRange', -1, 1, 0.05, Math.log10(state.params.gamma), function(){ return state.params.gamma.toFixed(2); },
+        'Higher = the boundary can bend tightly around individual points; lower = smoother, broader curves.');
       rg.input.addEventListener('input', function(){ state.params.gamma = Math.pow(10, parseFloat(this.value)); rg.val.textContent = state.params.gamma.toFixed(2); debouncedRecompute(); });
-      var rs = paramRow('Margin strength (regularization)', 'svmLambdaRange', -3, 0, 0.05, Math.log10(state.params.lambda), function(){ return state.params.lambda.toFixed(3); });
+      var rs = paramRow('Margin strength (regularization)', 'svmLambdaRange', -3, 0, 0.05, Math.log10(state.params.lambda), function(){ return state.params.lambda.toFixed(3); },
+        'Lower = hugs the training points tightly; higher = a simpler, more cautious boundary.');
       rs.input.addEventListener('input', function(){ state.params.lambda = Math.pow(10, parseFloat(this.value)); rs.val.textContent = state.params.lambda.toFixed(3); debouncedRecompute(); });
       box.appendChild(rg.wrap); box.appendChild(rs.wrap);
     } else if (state.model === 'knn'){
-      var rk = paramRow('k (neighbors)', 'kRange', 1, 25, 1, state.params.k);
+      var rk = paramRow('k (neighbors)', 'kRange', 1, 25, 1, state.params.k, null,
+        'Lower = follows the data closely and can look noisy; higher = smoother, more averaged-out.');
       rk.input.addEventListener('input', function(){ state.params.k = parseInt(this.value, 10); rk.val.textContent = state.params.k; debouncedRecompute(); });
       box.appendChild(rk.wrap);
     } else if (state.model === 'rf'){
-      var rt = paramRow('Number of trees', 'treesRange', 1, 50, 1, state.params.trees);
+      var rt = paramRow('Number of trees', 'treesRange', 1, 50, 1, state.params.trees, null,
+        'More trees = a smoother, more reliable vote (and a little slower to compute).');
       rt.input.addEventListener('input', function(){ state.params.trees = parseInt(this.value, 10); rt.val.textContent = state.params.trees; debouncedRecompute(); });
-      var rd = paramRow('Max depth', 'depthRange', 1, 10, 1, state.params.maxDepth);
+      var rd = paramRow('Max depth', 'depthRange', 1, 10, 1, state.params.maxDepth, null,
+        'Deeper trees carve out more detailed shapes, but can also start memorizing noise.');
       rd.input.addEventListener('input', function(){ state.params.maxDepth = parseInt(this.value, 10); rd.val.textContent = state.params.maxDepth; debouncedRecompute(); });
       box.appendChild(rt.wrap); box.appendChild(rd.wrap);
     } else if (state.model === 'mlp'){
-      var rl = paramRow('Hidden layers', 'layersRange', 1, 4, 1, state.params.layers);
+      var rl = paramRow('Hidden layers', 'layersRange', 1, 4, 1, state.params.layers, null,
+        'More layers let the network build more complex shapes out of simpler ones.');
       rl.input.addEventListener('input', function(){ state.params.layers = parseInt(this.value, 10); rl.val.textContent = state.params.layers; renderMLPArchIfCurrent(); debouncedRecompute(); });
-      var rw = paramRow('Neurons per layer', 'widthRange', 2, 64, 1, state.params.width);
+      var rw = paramRow('Neurons per layer', 'widthRange', 2, 64, 1, state.params.width, null,
+        'More neurons per layer give the network more room to represent detail.');
       rw.input.addEventListener('input', function(){ state.params.width = parseInt(this.value, 10); rw.val.textContent = state.params.width; renderMLPArchIfCurrent(); debouncedRecompute(); });
       box.appendChild(rl.wrap); box.appendChild(rw.wrap);
       var archLab = document.createElement('label'); archLab.className = 'field'; archLab.style.marginTop = '18px';

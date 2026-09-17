@@ -439,6 +439,14 @@ inspectable in the source as it ever was (see the model-by-model breakdown earli
 `MODEL_LABELS.mlp` — the deep-dive heading and the pill label had quietly drifted to two different
 names for the same model.
 
+**Same UX review, a smaller companion fix**: every hyperparameter slider (`paramRow`'s new
+optional `hint` argument) now shows one short, italic, plain-language sentence underneath it —
+"lower = hugs the training points tightly; higher = a simpler, more cautious line," not another
+formula. Direct feedback was that a slider's technical name and current number don't say anything
+about *why* you'd move it, leaving a first-time visitor to guess-and-check with no intuition to
+build on. Deliberately the opposite direction from a "how it works" deep-dive: one sentence, right
+where the decision is actually being made, not a paragraph to go read elsewhere.
+
 ## Testing changes
 
 No test suite — static page. Verify via a local static server (root-relative `/nav.js` and
