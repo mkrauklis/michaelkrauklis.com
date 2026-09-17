@@ -49,6 +49,15 @@
 
   .toast{ display:inline-block; font-family:'JetBrains Mono', ui-monospace, monospace; font-size:0.78rem; color:var(--accent); opacity:0; transition:opacity .2s ease; }
   .toast.show{ opacity:1; }
+
+  .export-nudge{
+    margin-top:16px; padding:12px 16px; border-radius:8px;
+    background:color-mix(in srgb, #5fd88a 12%, var(--bg-panel-2));
+    border:1px solid color-mix(in srgb, #5fd88a 40%, var(--line));
+    display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;
+    font-size:0.88rem;
+  }
+  .export-nudge a{ font-weight:600; white-space:nowrap; }
   select.model-select{ margin-top:6px; }
 
   #plotCanvas{ aspect-ratio: 1 / 1; cursor: default; }
@@ -184,6 +193,10 @@
     <div class="metric-row">
       <span class="metric" id="accuracyReadout">—</span>
       <span class="status"><span class="spinner-inline" id="computeSpinner" hidden></span><span id="trainStatus"></span></span>
+    </div>
+    <div class="export-nudge" id="exportNudge" hidden>
+      <span>🎉 That's a great fit — worth taking with you.</span>
+      <a href="#shareSection" id="exportNudgeLink">Save &amp; export it ↓</a>
     </div>
   </div>
 </section>
@@ -946,6 +959,11 @@
     var acc = computeAccuracy();
     $('accuracyReadout').innerHTML = acc === null ? 'No points yet' : 'Training accuracy: <b>' + Math.round(acc * 100) + '%</b> (right call on the points shown)';
     $('trainStatus').textContent = '';
+    // Surfaces the export CTA right at the moment it's actually earned -- a genuinely high-scoring
+    // fit -- rather than leaving it as a static line at the bottom of the page a visitor has to
+    // already know exists. Keyed purely off the current accuracy, so it naturally disappears again
+    // the moment a change (a harder dataset, a worse hyperparameter) drops back below the bar.
+    $('exportNudge').hidden = acc === null || acc < 0.95;
     await hideSpinner();
     refreshShare();
   }
@@ -1014,6 +1032,10 @@
     wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
     wrap.classList.add('jump-highlight');
     setTimeout(function(){ wrap.classList.remove('jump-highlight'); }, 1500);
+  });
+  $('exportNudgeLink').addEventListener('click', function(e){
+    e.preventDefault();
+    $('shareSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
 
   var drawing = false, lastDrawPt = null;

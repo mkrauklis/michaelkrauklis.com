@@ -501,6 +501,22 @@ moment the visitor picks anything themselves (a normal dataset or model pill cli
 sit there as stale advice for a boundary it no longer describes. Reuses the same scroll-and-
 highlight mechanism `#jumpToDrawBtn` already established, rather than inventing a second one.
 
+## The export CTA never fired at the moment it was actually earned
+
+UX review finding: the mug/export call to action sat as a static line at the very bottom of the
+page regardless of what the visitor had just accomplished — genuinely great moments (an SVM just
+solving a spiral, k-NN nailing a hand-drawn shape) never got connected to "you should save this."
+`#exportNudge` appears directly under the accuracy readout the moment `computeAccuracy()` returns
+0.95 or higher, and disappears again the instant it doesn't (recomputed fresh every `recompute()`
+call, not a one-time trigger that could go stale) — a harder dataset or a worse hyperparameter
+correctly makes it vanish again. Its link smooth-scrolls to `#shareSection` using the same
+`scrollIntoView` pattern `#jumpToDrawBtn` already established, rather than a plain `<a href="#...">`
+anchor jump, which would have been an abrupt instant cut with no `scroll-behavior:smooth` set
+anywhere on this page. Deliberately threshold-based on the number alone, not filtered by which
+model earned it — k-NN hitting 100% by memorizing its own points is a less impressive "win" than
+an SVM genuinely solving a hard boundary, but singling out specific models to exclude felt more
+arbitrary than just trusting the same honest number the accuracy readout itself already shows.
+
 ## Testing changes
 
 No test suite — static page. Verify via a local static server (root-relative `/nav.js` and
