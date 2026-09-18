@@ -80,6 +80,14 @@ two cards.
   `lab/index.html`'s own `.tool-thumb` handling — a missing file collapses back to a clean
   icon-less card rather than a broken-image glyph.
 
+The Concept Lab card's own description used to name a specific example tool ("for example,
+Ridgeline, a Fourier-transform mountain silhouette reconstructor") — caught in a UX review as a
+staleness trap: it named the *oldest* tool, not the newest or most representative, and would need
+a manual update every time a new tool shipped if left as a specific example at all. Reworded to
+describe the collection generically ("real backpropagation, real Fourier transforms, real
+embeddings, running entirely in your browser") so it stays accurate without needing to change
+every time `lab/index.html`'s own list grows.
+
 When adding a new lab tool, link both files and rely on `theme.css`'s defaults before writing
 new CSS — copying a whole `<style>` block from an existing tool page (the old pattern) is how
 the palette and the paragraph-width bug drifted out of sync across pages in the first place.
@@ -105,9 +113,10 @@ Echo State trace of the text "MKConceptLab" (default reservoir: seed 42, H=8, sp
 0.9), not a hand-drawn icon. Every page's `<head>` links it directly (`<link rel="icon"
 type="image/png" href="/echo-state-trace-mkconceptlab.png">`, placed right before the
 `theme.css` link) rather than relying on the browser's automatic `/favicon.ico` fallback. If the
-site ever gets a different mascot/favicon, update all 7 pages' `<link>` tags together in one
-commit — there's no shared head-include mechanism, so this one tag is duplicated per page the
-same way the SEO meta block below is.
+site ever gets a different mascot/favicon, update all 9 pages' `<link>` tags together in one
+commit (root, `lab/index.html`, and 7 tools as of this writing — check `lab/index.html`'s own
+newest-first list for the current count) — there's no shared head-include mechanism, so this one
+tag is duplicated per page the same way the SEO meta block below is.
 
 # SEO
 
@@ -117,12 +126,32 @@ canonical URLs, `og:url`, and the sitemap; don't assume the domain from the repo
 
 Every page (root `index.html`, `lab/index.html`, every tool) carries the same block of tags right
 after `<title>`, before the `theme.css` link: `<meta name="description">`, `<link
-rel="canonical">`, `og:type`/`og:site_name`/`og:title`/`og:description`/`og:url`, and
-`twitter:card` (`summary`, not `summary_large_image` — there's no `og:image` anywhere on the site
-yet, no logo or screenshot asset exists to use for one; add real `og:image` tags site-wide
-together, in one pass, if that ever gets made, rather than letting pages drift inconsistent one at
-a time). `og:title`/`og:description` duplicate the meta description and `<title>` rather than
-being written separately — there's no reason for them to diverge on a site this size.
+rel="canonical">`, `og:type`/`og:site_name`/`og:title`/`og:description`/`og:url`/`og:image`, and
+`twitter:card`/`twitter:title`/`twitter:description`/`twitter:image`. `og:title`/`og:description`
+duplicate the meta description and `<title>` rather than being written separately — there's no
+reason for them to diverge on a site this size.
+
+**`og:image`/`twitter:image` were added site-wide, in one pass, across all 9 pages** — this was
+deliberately held off on until it could be done consistently everywhere at once, not one page at
+a time (see git history for the earlier, longer-standing version of this note). Every image used
+is a **real, already-existing asset already vetted for another purpose on this site** — no new
+image was created or generated for this:
+- Every tool page uses its own `/lab/<tool>/thumbnail.jpg` (the same real, tightly-cropped tool
+  output already used as that tool's card icon on `lab/index.html`).
+- `lab/index.html` uses `/lab-mosaic.jpg` (the real 2×2 composite of four tool thumbnails already
+  used as the homepage's own Concept Lab card icon).
+- Root `index.html` uses `/echo-state-trace-mkconceptlab.png` — the site's own favicon (a real
+  Echo State trace of the text "MKConceptLab"), reused here as the one page's own image rather
+  than duplicating `lab-mosaic.jpg` on both root and `lab/index.html`; it's already the visual
+  mark visitors associate with this site from the browser tab, and it's a genuine artifact of the
+  site's own real work, not stock art.
+`twitter:card` stays `summary` (not `summary_large_image`) even now that every page has an image
+— all of these source images are square (480×480, 512×512, or 600×600), and `summary_large_image`
+expects/crops toward a roughly 2:1 landscape aspect, which would crop a square image awkwardly on
+platforms that enforce it. `summary`'s smaller, uncropped thumbnail treatment suits a square image
+better. If a real landscape hero image is ever made for a specific page, revisit `twitter:card`
+for that page only — there's no need to change every page's card type just because one page's
+image happens to be a better fit for the wider format.
 
 `sitemap.xml` and `robots.txt` live at the repo root (served at `/sitemap.xml` and `/robots.txt`
 automatically, no config needed). **A new lab tool needs a `<url>` entry added to `sitemap.xml`**
