@@ -88,6 +88,36 @@ describe the collection generically ("real backpropagation, real Fourier transfo
 embeddings, running entirely in your browser") so it stays accurate without needing to change
 every time `lab/index.html`'s own list grows.
 
+## The homepage's certification badges link to real, verified individual pages
+
+The six `.cert-badge` icons used to be plain `<div>`s with no link at all — everything rolled up
+to one generic "See all certifications on LinkedIn" line below the grid. UX review flagged this:
+a recruiter or client wanting to verify one *specific* cert had no faster path than the LinkedIn
+aggregate page. Each badge is now its own `<a class="cert-badge">` pointing at that exact
+certification's real Credly verification page (`https://www.credly.com/badges/<id>`) — fetched
+directly from the real badge wallet at `https://www.credly.com/users/michael-krauklis.05da83e9`
+and spot-verified (loaded one badge page and confirmed it publicly shows "This badge was issued
+to Michael Krauklis" with the matching issue/expiry dates, no login required) before wiring any
+of them in, not guessed from a naming pattern. The six IDs, in the order they appear on the page:
+
+| Badge | Credly badge ID |
+|---|---|
+| Machine Learning – Specialty | `10dc1565-9938-4a4e-a2b9-199023cec16c` |
+| Machine Learning Engineer – Associate | `f537964d-1c37-41ba-930a-2f9fd47fceb4` |
+| AI Practitioner | `224fe209-6e83-41a5-9a1e-1dd6607e76bf` |
+| Data Engineer – Associate | `84e87661-b3d1-4a4d-b1e2-02cd156d8018` |
+| Solutions Architect – Associate | `b9493f91-0740-4290-a410-44d0e83cba6c` |
+| SysOps Administrator – Associate | `df3b27f7-9c81-44fe-aa1d-328955b041c6` |
+
+The Credly wallet has more badges than these six (an early-adopter variant of two of these, an
+expired older Solutions Architect and Machine Learning Specialty, plus DevOps Engineer
+Professional, Developer Associate, Cloud Practitioner, and Data Analytics Specialty) — the
+homepage only ever showed this curated set of six, and this change didn't expand that; it just
+made the six already shown individually verifiable instead of only reachable in aggregate. If the
+curated set ever changes, re-fetch the wallet rather than assuming an ID is still current — early-
+adopter and expired badges sit right next to the current ones in the same list and are easy to
+grab by mistake if you're not checking each one's own issue/expiry dates against the wallet page.
+
 When adding a new lab tool, link both files and rely on `theme.css`'s defaults before writing
 new CSS — copying a whole `<style>` block from an existing tool page (the old pattern) is how
 the palette and the paragraph-width bug drifted out of sync across pages in the first place.
