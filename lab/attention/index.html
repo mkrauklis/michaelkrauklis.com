@@ -58,6 +58,28 @@
 
   /* ---- token / QKV cards (Stage 1 + Stage 2 share this) ---- */
   .tok-row{ display:flex; flex-wrap:wrap; gap:14px; margin-top:18px; }
+  /* ---- the pipeline flow map: one small diagram, reused at the top of every stage with the
+     current one highlighted, so "what becomes what" is always visible, not just implied by
+     scrolling past a sequence of otherwise-disconnected widgets. ---- */
+  .flow-map{ display:flex; align-items:center; flex-wrap:wrap; gap:4px 2px; margin:14px 0 22px; }
+  .flow-node{
+    background: var(--bg-panel-2); border:1px solid var(--line); border-radius:6px;
+    padding:7px 11px; font-size:0.78rem; color:var(--ink-dim); cursor:pointer;
+    white-space:nowrap; transition:border-color .12s ease, color .12s ease;
+    font-family:'Inter', sans-serif;
+  }
+  .flow-node:hover{ border-color: var(--accent-dim); color:var(--ink); }
+  .flow-node.current{
+    border-color: var(--accent); color:var(--accent); font-weight:600;
+    background: color-mix(in srgb, var(--accent) 12%, var(--bg-panel-2));
+  }
+  .flow-arrow{ color:var(--ink-dim); font-size:0.85rem; padding:0 2px; }
+
+  /* Sub-headings inside "Turning words into numbers" -- Inter, not the h2/h3 default Fraunces
+     serif, so a "Step A/B/C" label reads as a smaller beat within the section, not a rival to
+     the section's own <h2>. */
+  .stage-sub{ font-family:'Inter', sans-serif; font-weight:600; font-size:1rem; color:var(--ink); margin:0 0 8px; }
+
   .tok-card{
     background: var(--bg-panel-2); border:1px solid var(--line); border-radius:8px;
     padding:10px 12px; display:flex; flex-direction:column; gap:6px; min-width:76px;
@@ -179,7 +201,7 @@
 <main class="wrap" style="padding-top:40px;">
 
 <section id="step-hook">
-  <span class="step-tag">1 — the hook</span>
+  <span class="step-tag">1 — your sentence</span>
   <h2>Type anything</h2>
   <p>No button to click — attention runs on every keystroke, live, on this page's own default
   example or on whatever you type instead.</p>
@@ -192,83 +214,132 @@
       same math that powers ChatGPT.
     </div>
   </div>
+  <p class="status" style="margin-top:20px;">Here's the whole journey your sentence just took,
+  start to finish. The rest of this page walks through each arrow, one at a time:</p>
+  <div class="flow-map-holder" data-current="hook"></div>
 </section>
 
 <section id="step-tokens">
   <span class="step-tag">2 — tokens &amp; embeddings</span>
-  <h2>Every word becomes a list of numbers</h2>
-  <p class="lead">Your sentence splits into tokens — usually a whole word, sometimes a
-  word-piece when it's long enough (marked with a leading <code>##</code>, the same convention
-  real subword tokenizers use). Each token gets an <b>embedding</b>: a short fingerprint of
-  numbers, rendered here as a small colored strip. Click any token to see what that means.</p>
+  <h2>Turning words into numbers</h2>
+  <div class="flow-map-holder" data-current="tokens"></div>
+  <p class="lead">Three things have to happen to your sentence before any model can do anything
+  with it. Here's each one, in order — the idea first, then the actual thing happening to your
+  words.</p>
+
   <div class="panel">
+    <h3 class="stage-sub">Step A: break the sentence into tokens</h3>
+    <p class="tooltip">A model can't read letters. So the first move is chopping your sentence
+    into <b>tokens</b> — usually one per word. A long word occasionally gets cut into two tokens
+    instead of one (you'll see the second piece marked with a leading <code>##</code>) — real
+    models do exactly this, just with a much bigger rulebook than this toy version uses.</p>
+    <p class="status" id="tokenCountNote" style="margin-top:0;"></p>
+
+    <h3 class="stage-sub" style="margin-top:28px;">Step B: turn each token into a fingerprint of numbers</h3>
+    <p class="tooltip">A word means nothing to a math equation, so every token gets converted
+    into an <b>embedding</b> — a fingerprint made of 16 numbers instead of letters. Below, each
+    token's fingerprint is drawn as a strip of 16 colored cells: green = a positive number,
+    red = negative, brighter = bigger. Click any token to see what tokenization did to it and
+    its actual numbers.</p>
     <div class="tok-row" id="stage1Cards"></div>
+    <div class="hook-caption" id="tok1Detail" style="margin-top:16px;">
+      👆 Click any token above to see what's really behind its strip.
+    </div>
+
+    <h3 class="stage-sub" style="margin-top:28px;">Step C: but a fingerprint alone can't say where a word sits</h3>
+    <p class="tooltip">Here's the problem: "the dog chased the cat" and "the cat chased the dog"
+    would give "dog" and "cat" the exact same fingerprints either way — a fingerprint only
+    captures <i>which</i> word it is, never <i>where</i> it falls in the sentence, even though
+    that's often the entire difference in meaning. The fix is to add a second, position-based set
+    of numbers directly on top of each fingerprint. Try it:</p>
     <div class="toggle-group" id="posToggle">
-      <button type="button" data-pos="off" class="active">No position</button>
+      <button type="button" data-pos="off" class="active">No position added</button>
       <button type="button" data-pos="on">Add position</button>
     </div>
-    <p class="tooltip" id="tok1Tooltip">The model has no innate sense of word order — flip
-    this to see a position vector get added directly on top of every embedding.</p>
+    <p class="tooltip">Flip it and watch the strips above actually change — that's a real
+    position vector landing on top of the fingerprints you just looked at.</p>
   </div>
 </section>
 
 <section id="step-qkv">
   <span class="step-tag">3 — query, key, value</span>
   <h2>The step almost every explainer skips</h2>
-  <p class="lead">Each token's embedding gets projected three different ways — three learned
-  lenses on the same fingerprint, called <b>Query</b>, <b>Key</b>, and <b>Value</b>. Think of a
-  library: your <b>Query</b> is what you type into the search bar, every book's <b>Key</b> is
-  its catalog listing, and the <b>Value</b> is what's actually inside once you pick it up.</p>
+  <div class="flow-map-holder" data-current="qkv"></div>
+  <p class="lead">Each embedding vector now gets multiplied by three different fixed matrices —
+  three separate linear maps of the same 16-number vector — producing three shorter, 8-number
+  vectors called <b>Query</b>, <b>Key</b>, and <b>Value</b>. A useful handle for what each one is
+  <i>for</i>: think of a library. Your <b>Query</b> is what you type into the search bar, every
+  book's <b>Key</b> is its catalog entry, and its <b>Value</b> is what's actually inside once you
+  pick it up.</p>
   <div class="panel">
     <div class="tok-row" id="stage2Cards"></div>
-    <p class="tooltip">📚 <b style="color:var(--q-color);">Query</b> — what this word is
-    looking for. <b style="color:var(--k-color);">Key</b> — what this word has to offer, to
-    anyone looking. <b style="color:var(--v-color);">Value</b> — what it actually contributes,
-    once picked. Real models run several of these lenses in parallel, called <b>heads</b> —
-    see "Go deeper" below.</p>
+    <p class="tooltip">📚 <b style="color:var(--q-color);">Query</b> — what this token is
+    looking for. <b style="color:var(--k-color);">Key</b> — what this token offers, to anything
+    comparing itself against it. <b style="color:var(--v-color);">Value</b> — what it actually
+    contributes once a match is found. Real models compute several independent Query/Key/Value
+    triples side by side, called <b>heads</b> — see "Go deeper" below.</p>
   </div>
 </section>
 
 <section id="step-attention">
   <span class="step-tag">4 — attention itself</span>
   <h2>Who's looking at whom</h2>
-  <p class="lead">Every word's Query asks every word's Key how relevant it is. Those raw scores
-  get squeezed through <b>softmax</b> into weights that sum to exactly 1 — the model is forced
-  to spend its full attention budget across the sentence, it just chooses how to split it.
-  Those weights then blend the Values into each word's new, context-aware output. Click a word
-  to spotlight what it's attending to.</p>
+  <div class="flow-map-holder" data-current="attention"></div>
+  <p class="lead">For every pair of tokens, take the <b>dot product</b> of one token's Query
+  vector with the other's Key vector, then divide by √8 (the vectors' own dimension) to keep the
+  scale steady — one real number per pair, measuring how aligned the two vectors are. Collect one
+  token's numbers against every token in the sentence (including itself) into a list, then turn
+  that list into a genuine probability distribution with <b>softmax</b>: raise <i>e</i> to the
+  power of each number, then divide every result by their total, so the whole list becomes
+  non-negative and sums to exactly 1. Finally, take a weighted average of every token's Value
+  vector using those probabilities as the weights — that weighted average <i>is</i> this token's
+  new, context-dependent vector. Click a word below to see its own weights.</p>
   <div class="panel">
     <div class="attn-wrap">
       <svg id="attnSvg" viewBox="0 0 700 260" width="100%" height="260"></svg>
     </div>
     <div class="legend-row">
-      <span><span class="legend-dot" style="background:var(--accent);"></span>thicker / brighter = more attention</span>
+      <span><span class="legend-dot" style="background:var(--accent);"></span>thicker / brighter = higher probability</span>
       <span>click a word to spotlight its attention</span>
     </div>
     <p class="tooltip" id="attnNote"></p>
     <p class="tooltip" id="attnHonesty" style="margin-top:14px; border-top:1px solid var(--line); padding-top:12px;">
-    ⚠ <b>What's real here, and what isn't:</b> the dot products, the softmax, and the blending
-    are exactly the real operation. What's <i>not</i> real is which words end up mattering to
-    which — these Query/Key lenses are fixed, untrained numbers, not weights learned from
-    billions of real sentences. In an actual trained model, that's what makes "bank" attend
-    differently near "river" than near "loan." Here, the mechanism is authentic; the judgment
-    behind it isn't. See "How this actually works" below for why that trade was made on purpose.</p>
+    ⚠ <b>What's real here, and what isn't:</b> the dot products, the softmax normalization, and
+    the weighted averaging are exactly the real computation. What's <i>not</i> real is which
+    words end up mattering to which — the Query/Key matrices are fixed, untrained numbers, not
+    weights learned from billions of real sentences. In an actual trained model, learning those
+    matrices is what makes "bank" attend differently near "river" than near "loan." Here, the
+    mechanism is authentic; the judgment behind it isn't. See "How this actually works" below for
+    why that trade was made on purpose.</p>
   </div>
 </section>
 
 <section id="step-kv">
-  <span class="step-tag">5 — the kv cache</span>
-  <h2>Now watch it generate, one token at a time</h2>
-  <p class="lead">Everything above treated your sentence as fully typed and analyzed at once.
-  A real chatbot writes its reply one token at a time instead — and that's the only situation
-  where a <b>KV cache</b> makes sense. Once a token's Key and Value are computed, they never
-  change (they only depend on that token and the ones before it) — only a fresh Query gets
-  computed at each new step. Click "Generate next token" below and watch this table grow.</p>
+  <span class="step-tag">5 — reusing what's already computed</span>
+  <h2>Do you redo the math, or reuse it?</h2>
+  <div class="flow-map-holder" data-current="kv"></div>
+  <p class="lead">Everything above treated your sentence as fully typed out already. A real model
+  instead writes one word at a time, re-running this whole computation after every new word. Here's
+  a fact worth noticing first: token <i>i</i>'s Key and Value vectors depend only on token
+  <i>i</i> itself and the ones before it — <i>never</i> on anything that comes later. So once
+  they're computed, they never change again as more tokens get appended; only a new Query vector
+  is ever needed for the newest token.</p>
+  <p class="lead"><b>Reusing numbers you've already computed, instead of recomputing them from
+  scratch, is what "caching" means</b> — here, and in software generally. The table below holds
+  every token's Key and Value vector so far. The toggle controls which of two equivalent
+  strategies fills it in as new tokens get generated (the button that actually generates one
+  lives in the next section, since that's also where you'll see what gets predicted):</p>
   <div class="panel">
     <div class="toggle-group" id="cacheToggle">
-      <button type="button" data-cache="on" class="active">Cache on</button>
-      <button type="button" data-cache="off">Cache off</button>
+      <button type="button" data-cache="on" class="active">Reuse old rows</button>
+      <button type="button" data-cache="off">Recompute every row</button>
     </div>
+    <p class="tooltip">"Reuse old rows" only computes the Key/Value vectors for the <i>newest</i>
+    token, and leaves every earlier row exactly as it was. "Recompute every row" throws all of it
+    away and redoes every token's Key/Value vectors from zero, even the ones that didn't need
+    it — watch the whole table flash on the next generation step instead of just the new row.
+    <b>Both strategies produce the exact same numbers</b> — this toggle only changes how much
+    repeated work happens to get there, never the result.</p>
     <div class="kv-table-wrap">
       <table class="kv-table">
         <thead><tr><th>token</th><th>Key</th><th>Value</th></tr></thead>
@@ -276,20 +347,22 @@
       </table>
     </div>
     <p class="kv-counter" id="kvCounter"></p>
-    <p class="tooltip">With the cache <b>off</b>, every new token forces a full recomputation of
-    every row so far (watch the whole table flash) — wasteful, since nothing about the earlier
-    rows actually changed. With it <b>on</b>, only the new row lights up. Either way the output
-    is identical — this is a real speed/redundancy difference, never a correctness one.</p>
   </div>
 </section>
 
 <section id="step-predict">
   <span class="step-tag">6 — prediction</span>
   <h2>What comes next?</h2>
-  <p class="lead">The last token's context-aware output gets projected once more and compared
-  against a list of candidate next words — the closer the match, the higher the probability.
-  Pick one yourself, or let the top pick auto-select, and the whole pipeline — tokenize, embed,
-  attend, cache — visibly reruns for one more step.</p>
+  <div class="flow-map-holder" data-current="predict"></div>
+  <p class="lead">Take the last token's context-dependent vector from Stage 4 and apply one more
+  fixed linear map, bringing it back into the same 16-dimensional space the embeddings started
+  in. Then take its dot product against every candidate word's own embedding — the same kind of
+  comparison Stage 4 already used, just against a list of candidate next words instead of other
+  tokens in your sentence — and run the results through that same softmax normalization to get a
+  real probability for each candidate. Pick a word yourself below, or click "Generate next token"
+  and let the choice be made for you (highest probability, or a probability-weighted random pick
+  — your call), and the whole computation — tokens, embeddings, Query/Key/Value, attention, the
+  table above — visibly reruns for one more step.</p>
   <div class="panel">
     <div id="predBars"></div>
     <div class="actions">
@@ -297,7 +370,7 @@
       <button type="button" class="secondary" id="resetGenBtn">Reset generation</button>
       <label style="display:flex; align-items:center; gap:6px; font-size:0.85rem; color:var(--ink-dim); cursor:pointer;">
         <input type="checkbox" id="autoPickCheck" style="accent-color:var(--accent);">
-        always take the top pick (unchecked = sample from the odds — real randomness, not fake)
+        always take the highest-probability word (unchecked = pick randomly, weighted by these probabilities)
       </label>
     </div>
     <div class="done-banner" id="genDoneBanner" hidden>
@@ -392,9 +465,11 @@
 
     <div class="deeper-block">
       <h3>🔒 Causal masking</h3>
-      <p class="lead">A model generating text one token at a time can't peek at words it hasn't
-      written yet. Masking blacks out every connection to a future token before softmax runs —
-      compare the same sentence with and without it.</p>
+      <p class="lead">A model generating text one token at a time never has later tokens to
+      compare against — they don't exist yet. This simulates that on a fully-typed sentence: for
+      every pair where token <i>j</i> comes after token <i>i</i>, that dot-product score is set
+      to −∞ before softmax runs, so its probability becomes exactly 0. Compare the same sentence
+      with and without it:</p>
       <div class="toggle-group" id="causalToggle">
         <button type="button" data-causal="off" class="active">No mask (sees everything)</button>
         <button type="button" data-causal="on">Causal mask (can't see ahead)</button>
@@ -406,10 +481,11 @@
 
     <div class="deeper-block">
       <h3>🌡️ Temperature &amp; sampling</h3>
-      <p class="lead">The same next-word ranking from Stage 6, now with a dial. Low temperature
-      sharpens the model's confidence toward its single top pick; high temperature flattens the
-      odds so long-shot words get a real chance — the same knob every real chat model exposes as
-      "creativity."</p>
+      <p class="lead">The same next-word probabilities from the prediction step, now with a
+      dial. Before softmax runs, every score gets divided by this number first: a small value
+      exaggerates the gap between the best score and the rest, producing a sharply peaked
+      distribution; a large value shrinks that gap toward a flatter, closer-to-uniform one. This
+      one number is what chat products expose as "creativity."</p>
       <label class="field">Temperature — <span class="field-value" id="tempVal">1.00</span></label>
       <input type="range" class="temp-slider" id="tempSlider" min="0.3" max="2" step="0.05" value="1">
       <div id="tempBars" style="margin-top:12px;"></div>
@@ -418,7 +494,7 @@
 </details>
 
 <details class="disclosure advanced">
-  <summary>How this actually works <span class="adv-sub">— for anyone curious, no math background needed</span></summary>
+  <summary>How this actually works <span class="adv-sub">— the precise version, if you want every detail</span></summary>
   <div class="disclosure-body">
     <p>Every real computation on this page runs on your own words, live, entirely in your
     browser — nothing you type is sent anywhere. The one thing that's <i>not</i> real is the
@@ -464,25 +540,27 @@
     token's Value, using those exact weights — also real, also exactly what a trained model
     does with its own (trained) numbers.</p>
 
-    <h3 style="margin-top:24px;">The KV cache</h3>
+    <h3 style="margin-top:24px;">Reusing Key/Value vectors (the "cache")</h3>
     <p>Keys and Values only ever depend on a token and the ones before it, which is why they
     never need to be recomputed once they exist — a fact that's true in any real model,
     trained or not, since it's a property of the causal generation setup, not of what the
-    numbers happen to be. The "redundant computations avoided" counter is a real count of how
-    many rows a naive from-scratch implementation would have recomputed at each step that this
-    page's cache-on path skipped — it's not measuring actual wall-clock time (everything here
-    is small enough to be instant either way), just the real structural redundancy the cache
-    exists to eliminate.</p>
+    numbers happen to be. The "reused instead of recomputed" counter is a real count of how
+    many rows a from-scratch recomputation would have redone at each step that the "reuse old
+    rows" path skipped — it's not measuring actual wall-clock time (everything here is small
+    enough to be instant either way), just the real structural redundancy caching exists to
+    eliminate.</p>
 
     <h3 style="margin-top:24px;">Predicting the next token</h3>
     <p>A real language model's final layer projects its last hidden state back into vocabulary
-    space and picks a probability for literally every word it knows. This page does the same
+    space and computes a probability for literally every word it knows. This page does the same
     kind of projection — one more fixed matrix maps the attention output back into embedding
     space, then compares that against a candidate word list using the exact same dot-product
     similarity attention itself uses — but the candidate list is a few hundred common English
     words, not a real vocabulary, and the matrix is untrained. That's why generated continuations
     read as plausible-looking word soup rather than fluent language: the mechanism (project,
-    compare, softmax, sample) is real; the fluency a trained model has learned is not.</p>
+    compare, normalize with softmax, then either take the top probability or draw a
+    probability-weighted random word) is real; the fluency a trained model has learned on top of
+    it is not.</p>
 
     <h3 style="margin-top:24px;">The sentence portrait and share link</h3>
     <p>The portrait canvas redraws the same attention geometry, embedding strips, and a slice
@@ -781,19 +859,62 @@
 
   function currentTokens(){ return tokenize(sentenceInput.value); }
 
+  // A word count vs. token count comparison, always visible -- so "tokenization sometimes
+  // splits a word" is a concrete, current fact about *this* sentence before anyone clicks
+  // anything, not something only discoverable by accident.
+  function tokenCountNote(tokens){
+    var words = sentenceInput.value.trim().split(/\s+/).filter(Boolean).length;
+    if (tokens.length === words) return 'Your ' + words + '-word sentence became exactly ' + tokens.length + ' tokens — no word needed splitting this time.';
+    return 'Your ' + words + '-word sentence became ' + tokens.length + ' tokens — at least one word got split into pieces. Look for a token starting with "##" below.';
+  }
+  // Direct feedback: clicking a token used to just say "a fixed fingerprint," with no real
+  // payoff. This says three concrete things instead: what tokenization actually did to *this*
+  // token, the real numbers behind its strip (not just a picture of them), and what "fixed
+  // fingerprint" is actually for -- consistency, not meaning.
+  function tokenDetailHtml(tokens, i, vec){
+    var tok = tokens[i];
+    var isPiece = tok.indexOf('##') === 0;
+    var nextIsPiece = (i + 1 < tokens.length) && tokens[i + 1].indexOf('##') === 0;
+    var whatHtml;
+    if (isPiece){
+      var stem = tokens[i - 1] || '';
+      whatHtml = 'This piece is the tail end of <b>"' + escapeHtml(stem + tok.slice(2)) + '"</b> — split off because this tool\'s simplified tokenizer treats a short list of common suffixes as their own piece (real subword tokenizers do the same thing, just with a much bigger, learned vocabulary instead of a hand-picked list).';
+    } else if (nextIsPiece){
+      whatHtml = 'A whole token by itself — but the <i>next</i> one ("' + escapeHtml(tokens[i + 1]) + '") is actually the tail end of this same word. Together, "' + escapeHtml(tok) + '" + "' + escapeHtml(tokens[i + 1].slice(2)) + '" is one original word split into two tokens.';
+    } else {
+      whatHtml = 'A whole word, kept as one token — either too short, or without a suffix this tool\'s simplified splitter recognizes.';
+    }
+    var nums = vec.map(function(v){ return v.toFixed(2); }).join(', ');
+    // The fingerprint is keyed to the *exact* token string, "##" prefix included -- a piece
+    // like "##ing" and the bare standalone word "ing" hash to different fingerprints (correctly:
+    // this tool treats a mid-word continuation as a different thing from the whole word "ing"),
+    // so the reusability claim has to be phrased around what's actually true for each case.
+    var reuseHtml = isPiece
+      ? 'Type any other word that splits before this same suffix (like "jumping" or "walking" before "##ing") and this exact tail piece gets these same 16 numbers back every time.'
+      : 'Type "' + escapeHtml(tok) + '" anywhere, in any sentence, and you get these same 16 numbers back every time.';
+    return '<b>"' + escapeHtml(tok) + '"</b> — ' + whatHtml +
+      '<br><br>The strip above it is its <b>embedding</b> — the real ' + EMB_DIM + ' numbers are ' +
+      '<span style="font-family:\'JetBrains Mono\',monospace; font-size:0.8rem;">[' + nums + ']</span>. ' +
+      'Green cells are the positive ones, red the negative, and brightness tracks size.' +
+      '<br><br>This exact fingerprint is <b>fixed and repeatable</b> — ' + reuseHtml + ' What it\'s <i>not</i>: ' +
+      'learned from real language — it\'s generated from a hash of the letters, so don\'t read meaning into which ' +
+      'numbers are big. The only thing that matters here is that it\'s <i>consistent</i>, which is what lets Stage ' +
+      '4\'s Query/Key math compare two tokens at all.';
+  }
+
   function render(){
     var tokens = currentTokens();
     if (state.activeIdx !== null && state.activeIdx >= tokens.length) state.activeIdx = null;
     var p = computePipeline(tokens, { headIdx: 0, posOn: state.posOn });
 
+    $('tokenCountNote').textContent = tokenCountNote(tokens);
+    $('tok1Detail').innerHTML = state.activeIdx !== null
+      ? tokenDetailHtml(tokens, state.activeIdx, p.finalEmb[state.activeIdx])
+      : '👆 Click any token below — you\'ll see exactly what tokenization did to it, and the real numbers behind its strip, not just a picture of them.';
+
     renderTokenCards($('stage1Cards'), p, {
-      onClick: function(i){
-        state.activeIdx = (state.activeIdx === i) ? null : i;
-        $('tok1Tooltip').textContent = state.activeIdx === i
-          ? '"' + tokens[i] + '" — a ' + EMB_DIM + '-number fingerprint. Fixed for this demo, not learned live.'
-          : 'The model has no innate sense of word order — flip this to see a position vector get added directly on top of every embedding.';
-        render();
-      }
+      activeIdx: state.activeIdx,
+      onClick: function(i){ state.activeIdx = (state.activeIdx === i) ? null : i; render(); }
     });
     renderTokenCards($('stage2Cards'), p, { showQKV: true, activeIdx: state.activeIdx, onClick: function(i){ state.activeIdx = (state.activeIdx === i) ? null : i; render(); } });
 
@@ -902,7 +1023,7 @@
       renderStrip(kStrip, row.K, 'k');
       renderStrip(vStrip, row.V, 'v');
     });
-    $('kvCounter').innerHTML = 'Redundant K/V computations avoided so far: <b>' + gen.avoided + '</b>';
+    $('kvCounter').innerHTML = 'Key/Value vectors reused instead of recomputed so far: <b>' + gen.avoided + '</b>';
   }
   function renderPrediction(){
     var candidates = candidateVocab(gen.tokens);
@@ -1181,6 +1302,45 @@
   }
   drawHero();
   window.addEventListener('resize', drawHero);
+
+  // ---------------- pipeline flow map ----------------
+  // Direct feedback: with no visible map of the whole pipeline, each stage's widgets read as
+  // disconnected "color-coded fingerprints" rather than steps in one computation. This renders
+  // the same six-node diagram at the top of every stage (and once, unhighlighted, right after
+  // the opening sentence box) with the current stage picked out, so the architecture is always
+  // on screen, not something you have to reconstruct from six separate section headings.
+  var FLOW_STAGES = [
+    { key: 'hook', label: 'Your sentence', target: 'step-hook' },
+    { key: 'tokens', label: 'Tokens & embeddings', target: 'step-tokens' },
+    { key: 'qkv', label: 'Query · Key · Value', target: 'step-qkv' },
+    { key: 'attention', label: 'Attention', target: 'step-attention' },
+    { key: 'kv', label: 'Reuse or recompute', target: 'step-kv' },
+    { key: 'predict', label: 'Prediction', target: 'step-predict' }
+  ];
+  function buildFlowMap(currentKey){
+    var wrap = document.createElement('div');
+    wrap.className = 'flow-map';
+    FLOW_STAGES.forEach(function(s, i){
+      var node = document.createElement('span');
+      node.className = 'flow-node' + (s.key === currentKey ? ' current' : '');
+      node.textContent = s.label;
+      node.addEventListener('click', function(){
+        var target = $(s.target);
+        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+      wrap.appendChild(node);
+      if (i < FLOW_STAGES.length - 1){
+        var arrow = document.createElement('span');
+        arrow.className = 'flow-arrow';
+        arrow.textContent = '→';
+        wrap.appendChild(arrow);
+      }
+    });
+    return wrap;
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('.flow-map-holder'), function(holder){
+    holder.appendChild(buildFlowMap(holder.dataset.current));
+  });
 
   // ---------------- init from URL ----------------
   (function initFromUrl(){

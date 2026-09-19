@@ -38,6 +38,93 @@ visualization) was sound and carried over; every visual convention was rebuilt a
   Deeper's own design constraint ("a light re-skin of a mechanic already built," which requires
   the main pipeline to have already established the single-head mechanic Go Deeper then extends).
 
+## First-review feedback pass: calibrate the audience, show the architecture
+
+The first shipped version got six pieces of direct feedback in quick succession, all pointing at
+the same underlying gap: the page explained individual *mechanisms* reasonably well but never
+established the *shape of the whole pipeline*, and it guessed wrong about who it was explaining
+to. Each is recorded here because the fix in each case was a real design change, not a wording
+tweak.
+
+**"Click on any token... it just says it's a fixed fingerprint. lol. That's useless."** The
+original Stage 1 click handler set one line of tooltip text — literally `"<token>" — a
+16-number fingerprint. Fixed for this demo, not learned live.` — and nothing else. Replaced with
+`tokenDetailHtml()`: a real per-token explanation covering three concrete things every time — (1)
+what tokenization actually did to *this* token (whole word, the stem half of a split, or the
+`##`-marked tail half, each phrased differently and correctly), (2) the token's real 16 numbers,
+not just a picture of them, and (3) what "fixed fingerprint" is actually *for* (consistency, not
+meaning) — the exact fix for a feature that visibly had a real point but shipped with zero
+payoff behind it. One correctness bug caught while writing this: the reusability claim for a
+split piece originally said "type 'ing' anywhere and you get this back," which is false — the
+fingerprint hashes the literal token string including its `##` prefix, so `"##ing"` and a
+standalone `"ing"` hash to two different vectors. Fixed to describe what's actually true for a
+piece (`"type any other word that splits before this same suffix..."`) instead of a plausible-
+sounding but wrong generalization.
+
+**"I have no idea what the tokenization is doing... I still don't know what's going on."** Two
+separate, compounding problems, both fixed: nothing stated *how many* tokens the current sentence
+actually produced until you happened to click one (`tokenCountNote()` now always says "your
+9-word sentence became 9 tokens" or flags a split up front, unprompted), and Stage 1 tried to
+teach tokenization, embeddings, and positional encoding all in one paragraph before showing any
+control for any of them. Restructured into three explicit, labeled sub-steps ("Step A: break the
+sentence into tokens," "Step B: turn each token into a fingerprint of numbers," "Step C: but a
+fingerprint alone can't say where a word sits") — each one states the idea and, for position, the
+actual *problem* it solves ("the dog chased the cat" vs. "the cat chased the dog" — identical
+per-word vectors either way) *before* the toggle that demonstrates it appears. Motivate, then
+show — never the reverse.
+
+**"Why would you call 01 the hook, lol. That's supposed to be our little secret."** `<span
+class="step-tag">1 — the hook</span>` was internal UX vocabulary (the copywriting term for a
+page's opening move) that had leaked straight into visitor-facing text. Renamed to "1 — your
+sentence." Worth remembering as a general check before shipping any step-tag or label: would this
+read as a design term to someone who's never thought about how the page itself was written?
+
+**"I don't see any architecture. Any mapping of what becomes what. I just see a bunch of
+color-coded fingerprints."** The single biggest structural gap, and the reason the fixes above
+still weren't enough on their own: every stage was a well-explained *island* — nothing on the
+page ever showed the six stages as one connected pipeline. Added `FLOW_STAGES`/`buildFlowMap()`:
+a compact, six-node "Your sentence → Tokens & embeddings → Query · Key · Value → Attention →
+Reuse or recompute → Prediction" diagram, injected into every `.flow-map-holder` placeholder —
+once, unhighlighted, right after the opening sentence box as a preview of the whole journey, then
+again at the top of *every* stage section with that stage's own node highlighted and every node
+clickable (`scrollIntoView` to the matching section). This is deliberately not fancy — plain
+boxes and arrows, reusing the same visual language (`.toggle-group`-style buttons) already
+established elsewhere on the page — the goal was orientation, not decoration. Any time a new
+stage is added or reordered, `FLOW_STAGES` and the section it's inserted into both need updating
+together, or the map will silently point at the wrong place.
+
+**"You're throwing in things like softmax like the user knows what they mean... would a math
+major without a CS background understand this?"** A real, specific audience recalibration, not
+just "simplify everything." A math major already has vectors, dot products, matrices as linear
+maps, and probability distributions — those got used *more* precisely afterward, not less
+(Stage 4's lead paragraph now spells out the actual scaled-dot-product-then-softmax-then-
+weighted-average computation in full, rather than hiding behind "squeezed through softmax" as if
+that phrase were self-explanatory). What changed was never using a term of art without defining
+it at first use in the same terms a math major already has: "softmax" is introduced as "raise *e*
+to the power of each number, then divide by their total, so the list becomes non-negative and
+sums to exactly 1" the *first* time it's named, and every later mention leans on that definition
+rather than repeating or re-explaining it. "Projected" became "multiplied by a fixed matrix — a
+linear map." A cache — the term itself, not just this page's cache — got one plain sentence
+("reusing numbers you've already computed, instead of recomputing them, is what 'caching' means
+— here, and in software generally") before ever being used unexplained. The "How this actually
+works" disclosure's own subtitle changed from "for anyone curious, no math background needed" to
+"the precise version, if you want every detail," since the first version was flatly describing
+the wrong audience.
+
+**"What the heck does cache on, cache off, mean. This needs a much better UX."** Renaming the
+term wasn't enough by itself — the toggle itself needed to stop assuming the visitor already knew
+what a cache was *before* offering a two-word choice about one. Three real changes, together: (1)
+the buttons themselves now describe the behavior directly — "Reuse old rows" / "Recompute every
+row" — rather than naming the CS concept ("Cache on" / "Cache off") and leaving the visitor to
+infer what it does; (2) two full paragraphs precede the toggle now, establishing the mathematical
+fact that makes reuse valid (token *i*'s Key/Value never depend on anything after it) and only
+*then* defining "caching" in one plain sentence, instead of dropping the word cold; (3) the
+explanation of what each button actually does moved from *after* the table (where it read as a
+footnote) to directly under the toggle, before the table, so the choice is understood before its
+effect is watched. The counter's own label changed to match ("Redundant K/V computations avoided"
+→ "Key/Value vectors reused instead of recomputed") for the same reason — "redundant" and
+"avoided" both assume a framing the visitor may not have yet.
+
 ## Architecture
 
 `index.html` plus a vendored `qrcode.min.js` (the identical file already vendored in Tonus's,
@@ -288,18 +375,30 @@ No test suite — static page. Verify via a local static server (root-relative `
 `/theme.css` mean `file://` won't pick them up). Golden path: confirm the page opens with the
 default sentence ("the river bank was steep near the old bridge") and the hero canvas, Stage 1
 token strips, Stage 2 Q/K/V strips, and Stage 4's attention diagram all render with no console
-errors → type a new sentence and confirm every stage updates live within the debounce window, no
-button required → click an example pill and confirm the sentence, every stage, and the pill's own
-`.selected` state all update together → flip Stage 1's position toggle and confirm the strip
-colors visibly shift (position vectors are additive, so this should never be a no-op for a
-non-trivial sentence) → click a word in Stage 4's diagram and confirm the spotlight dims every
-other connection and the "attending most to" note names real, correctly-ranked neighbors →
-confirm the inline honesty note (`#attnHonesty`) is visible without expanding anything → click
-"Generate next token" repeatedly and confirm the KV table grows by exactly one row per click,
-Stage 6's bar chart re-ranks against the new last token each time, and the done banner appears
-at exactly 5 steps, not before → toggle cache off and confirm *every* row gets the `.flash` class
-on the next generate; toggle back on and confirm only the newest row does; confirm the "redundant
-computations avoided" counter only increments while cache is on → click "Reset generation" and
+errors → confirm a `.flow-map` renders both right after the opening sentence box (no node
+highlighted... actually "Your sentence" highlighted, since that's the stage you're on) and at the
+top of every one of the six stage sections, with exactly that section's own node marked
+`.current` each time — a stage added, removed, or reordered without updating `FLOW_STAGES` to
+match is the one regression this component can silently develop → click a non-current node in any
+flow map and confirm the page actually scrolls to the matching section (verify via
+`document.getElementById(<target>).getBoundingClientRect()` or scroll position, not just that a
+click handler exists) → type a new sentence and confirm every stage updates live within the
+debounce window, no button required → click an example pill and confirm the sentence, every
+stage, and the pill's own `.selected` state all update together → click a token in Stage 1 and
+confirm `#tok1Detail` names what tokenization actually did to *that* token (whole word vs. stem
+vs. `##`-piece, phrased correctly for each), shows its real numeric values, and — if it's a split
+piece — never claims that typing the bare suffix alone reproduces its fingerprint (only "another
+word that splits before this same suffix" does, since the hash includes the literal `##` prefix)
+→ flip Stage 1's position toggle and confirm the strip colors visibly shift (position vectors are
+additive, so this should never be a no-op for a non-trivial sentence) → click a word in Stage 4's
+diagram and confirm the spotlight dims every other connection and the "attending most to" note
+names real, correctly-ranked neighbors → confirm the inline honesty note (`#attnHonesty`) is
+visible without expanding anything → click "Generate next token" repeatedly and confirm the KV
+table grows by exactly one row per click, Stage 6's bar chart re-ranks against the new last token
+each time, and the done banner appears at exactly 5 steps, not before → select "Recompute every
+row" and confirm *every* row gets the `.flash` class on the next generate; select "Reuse old
+rows" and confirm only the newest row does; confirm the "Key/Value vectors reused" counter only
+increments while "Reuse old rows" is selected → click "Reset generation" and
 confirm the table collapses back to the current sentence's own tokens → open "Go deeper" and
 confirm the multi-head grid changes panel count when the toggle changes, the positional-encoding
 comparison shows two genuinely different strip patterns for the same tokens, the causal-mask
