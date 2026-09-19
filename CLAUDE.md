@@ -74,11 +74,23 @@ two cards.
   canvas with a 12px gap between tiles so two adjacent near-black thumbnails don't visually merge
   into one) — not regenerated automatically, so if `lab/index.html`'s own thumbnail set changes
   meaningfully, regenerate this file by hand rather than assuming it stays representative forever.
-  `.card-icon` (64×64, `object-fit:cover`) is the shared sizing/shape class for both cards'
-  icons; the mosaic `<img>` additionally carries an `onerror="this.remove()"` fallback (the
+  `.card-icon` (40×40, `object-fit:cover`) is the shared sizing/shape class for every card's
+  icon; the mosaic `<img>` additionally carries an `onerror="this.remove()"` fallback (the
   inline LinkedIn SVG can't fail to load, so it doesn't need one), identical in spirit to
   `lab/index.html`'s own `.tool-thumb` handling — a missing file collapses back to a clean
   icon-less card rather than a broken-image glyph.
+
+**Layout: icon sits inline with the heading, not beside the whole card.** The original layout put
+each card's icon in a 64×64 side column next to a `.card-body` holding both heading and
+description, row-flex, vertically centered. That worked with two cards but broke once a third
+(GitHub) landed in the same row — the icon column ate enough width from the text column that
+"The Concept Lab" wrapped into three cramped lines (direct report: "the text on the main links...
+is way too big and is throwing off the layout"). Fixed by restructuring `.card` to a column-flex
+layout with a `.card-head` row (icon + `<h2>` together, `align-items:center`, shrunk to 40×40)
+followed by the `<p>` description as a full-width sibling below it — the description no longer
+has to share horizontal space with the icon at all, and the icon only ever competes with one
+short heading line instead of the whole card's text. `.card-body` (the old text-column wrapper)
+was removed entirely once nothing needed it.
 
 The Concept Lab card's own description used to name a specific example tool ("for example,
 Ridgeline, a Fourier-transform mountain silhouette reconstructor") — caught in a UX review as a
