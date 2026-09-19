@@ -112,6 +112,36 @@ and spot-verified (loaded one badge page and confirmed it publicly shows "This b
 to Michael Krauklis" with the matching issue/expiry dates, no login required) before wiring any
 of them in, not guessed from a naming pattern. The six IDs, in the order they appear on the page:
 
+**Icons are the real, official Credly/AWS badge artwork, not hand-drawn placeholders.** An
+earlier version drew six lookalike hexagon icons in inline SVG (a `theme.css`-colored hexagon
+outline plus a small hand-drawn glyph per cert) — a reasonable placeholder before any real asset
+existed, but visually generic and not what a recruiter actually recognizes as "an AWS cert
+badge." Direct request ("can we use the icons from credly instead of those svgs") replaced them
+with the genuine badge images. Each cert's own Credly page embeds several badge images (the
+cert's own, plus a few "related certifications" suggestions) — the real one is always the `<img>`
+whose `alt` text exactly matches that page's own badge title; grabbed via
+`images.credly.com/size/220x220/images/<image-uuid>/image.png` for each of the six, confirmed
+against each badge's own page individually rather than assumed from the suggestions shown on a
+different badge's page. Downloaded once and committed to `/cert-badges/*.png` (self-hosted, same
+"real asset, not a hotlink to a third party" discipline as every other image on this site) rather
+than referencing `images.credly.com` directly from `index.html` — this site doesn't otherwise
+depend on any third-party host staying up or keeping a URL stable. The six image UUIDs (distinct
+from the badge IDs in the table below, which identify the *earned credential*, not the *artwork*):
+
+| Badge | Credly image UUID | Local file |
+|---|---|---|
+| Machine Learning – Specialty | `778bde6c-ad1c-4312-ac33-2fa40d50a147` | `cert-badges/ml-specialty.png` |
+| Machine Learning Engineer – Associate | `1a634b4e-3d6b-4a74-b118-c0dcb429e8d2` | `cert-badges/ml-engineer-associate.png` |
+| AI Practitioner | `4d4693bb-530e-4bca-9327-de07f3aa2348` | `cert-badges/ai-practitioner.png` |
+| Data Engineer – Associate | `e5c85d7f-4e50-431e-b5af-fa9d9b0596e7` | `cert-badges/data-engineer-associate.png` |
+| Solutions Architect – Associate | `0e284c3f-5164-4b21-8660-0d84737941bc` | `cert-badges/solutions-architect-associate.png` |
+| SysOps Administrator – Associate | `f0d3fbb9-bfa7-4017-9989-7bde8eaf42b1` | `cert-badges/sysops-administrator-associate.png` |
+
+If a badge is ever renewed or replaced (a new cert with a new badge ID and, likely, new artwork),
+re-fetch its image UUID from that specific badge's own Credly page the same way — don't assume
+the artwork UUID is stable across a renewal, and don't reuse an image spotted on a *different*
+badge's "related certifications" row without confirming it against its own page first.
+
 | Badge | Credly badge ID |
 |---|---|
 | Machine Learning – Specialty | `10dc1565-9938-4a4e-a2b9-199023cec16c` |
