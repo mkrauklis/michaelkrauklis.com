@@ -183,7 +183,7 @@ Afterimage's crop-box dragger.
 - Color tokens are CSS custom properties in `:root` (`--amber`, `--teal`, `--danger`,
   etc.) — reuse these rather than hardcoding new hex values so the palette stays
   coherent if it's ever retuned.
-- **Stack style's row count** (`merchState.stackRows`, default 8) is a slider
+- **The stack's row count** (`merchState.stackRows`, default 8) is a slider
   (`#merchStackRowsRange`, min 3, max 20 — kept in sync with `MERCH_STACK_MIN_ROWS`/
   `MERCH_STACK_MAX_ROWS` in `drawMerchStack()`) threaded through `currentMerchOpts()`
   like every other merch option. This went through a real redesign, not just a wider
@@ -220,6 +220,44 @@ Afterimage's crop-box dragger.
   If either of `MERCH_STACK_MIN_ROWS`/`MAX_ROWS` or the slider's own `min`/`max`
   attributes change, update both together — the fidelity ramp's `t` calculation
   reads the constants, not the DOM element.
+
+## The "Line" merch style was removed — Stack is the only design now
+
+Direct request: "get rid of the line option. We don't pick a style. The only style is Stack (and
+as such you don't need to reference it as such)." Step 3 used to open with a `.style-cards` picker
+(two live-preview thumbnails, "Line" and "Stack") before showing the actual color/row/caption
+controls — with only one option left, that whole picker is gone, not just hidden, and so is
+everything that only existed to support two designs:
+
+- `drawMerchLine()` (the flat single-silhouette renderer) and `drawComponentGhosts()` (the faint
+  individual sine-wave overlay it alone used — `drawMerchStack()` never called it) are both
+  deleted outright, not dead-code-flagged. There's no plan to bring "Line" back; if one is ever
+  wanted again, it's in git history, not worth keeping half-wired here in the meantime.
+- `drawDesign(ctx, w, h, style, opts)`, the dispatcher that picked between the two renderers by
+  `style` string, is gone — call sites now call `drawMerchStack()` directly, since there's nothing
+  left to dispatch between.
+- `MERCH_SIZES` (a `{line, stack}` lookup table, even though both entries were already identically
+  `1800×2200`) collapsed into two plain constants, `MERCH_W`/`MERCH_H`.
+- `merchState.style` and `merchState.fill` (the latter was "Line"'s own filled/outline/photo
+  toggle, meaningless to the stack renderer) are gone from state entirely, along with the
+  `#merchFillLabel`/`#merchFillToggle` controls and their click handler, and `renderMerchThumbnails()`
+  (the per-style-card live preview function — with no cards, nothing to preview into).
+- The stack-specific controls (`#merchStackRowsLabel`/`#merchStackRowsRange`/
+  `#merchStackFillLabel`) no longer need show/hide toggling on style change — they're just always
+  there now, so the `style="display:none"` that used to gate `#merchFillLabel`/`#merchFillToggle`
+  was the only conditional visibility left to remove.
+- The exported filename dropped its style suffix — `ridgeline-stack.png` (there was never a
+  `ridgeline-line.png` moment worth preserving symmetry with) became plain `ridgeline.png`.
+
+**The section's own copy changed too, per the same instruction ("you don't need to reference it as
+such")**: the heading went from "Pick a style" (a choice that no longer exists) to "Make it yours".
+The intro paragraph went through two trims in quick succession — first dropping "pick a look" from
+"pick a look, pick some colors, and you're done," then dropping the trailing "no settings
+required" too, on direct follow-up ("Pick some colors and you're done. is enough of an
+explanation.") — down to just "This is what gets downloaded. Pick some colors and you're done."
+Don't reintroduce "Stack" as a visible label anywhere in this section's copy — it's an
+implementation detail now, not something a visitor picks or needs to know the name of — and don't
+pad this sentence back out; it was trimmed twice on purpose.
 
 ## Background: Dark/Light presets, plus a real custom color picker
 
@@ -285,12 +323,14 @@ No test suite — this is a static page. Verify changes via a local static serve
 `/nav.js` and `/theme.css` links mean opening `index.html` directly over `file://` won't pick
 them up — serve the repo root, e.g. `python -m http.server`, and browse to `/lab/ridgeline/`).
 Run the golden path: upload a photo → check the auto-extracted outline looks right → render
-steps/video → download. Check both the "Line" and "Stack" merch styles, and both video styles
-(sequential summation, epicycle arms), since they share the reconstruction math but have
-separate drawing code paths. For "Stack" specifically, drag the "Number of lines" slider to both
-ends (3 and 20) and confirm: the count of faint lines actually shown matches the slider (not one
-fewer), the photo panel's size stays constant across the whole range (only the line spacing
-should change), and — using a photo with real jagged detail, not a smooth test silhouette — the
+steps/video → download. Step 3 ("Make it yours") should go straight to the color/row/caption
+controls with no style picker above them — there's only one design now (see "The 'Line' merch
+style was removed" above). Check both video styles (sequential summation, epicycle arms), since
+they share the reconstruction math but have separate drawing code paths. Drag the "Number of
+lines" slider to both ends (3 and 20) and confirm: the count of faint lines actually shown matches
+the slider (not one fewer), the photo panel's size stays constant across the whole range (only the
+line spacing should change), and — using a photo with real jagged detail, not a smooth test
+silhouette — the
 bold final line visibly sharpens as the slider goes up rather than looking the same at every
 position (see "Conventions specific to this file" above for the exact formula and why a
 low-detail test image won't show this last one). For the background toggle, click "Custom" and

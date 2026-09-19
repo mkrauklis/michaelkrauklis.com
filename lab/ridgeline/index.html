@@ -96,38 +96,6 @@
     align-self: center;
   }
 
-  .style-cards{
-    display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
-    margin-top: 6px;
-  }
-  .style-card{
-    background: var(--bg-panel-2);
-    border: 1.5px solid var(--line);
-    border-radius: 8px;
-    padding: 8px 8px 10px;
-    cursor: pointer;
-    flex: 1 1 120px;
-    max-width: 150px;
-    text-align: center;
-    transition: border-color .12s ease;
-  }
-  .style-card:hover{ border-color: var(--amber-dim); }
-  .style-card.active{ border-color: var(--amber); }
-  .style-card canvas{
-    width: 100%;
-    display: block;
-    border-radius: 4px;
-    margin-bottom: 8px;
-    background: #0c0e13;
-  }
-  .style-card span{
-    color: var(--ink);
-    font-size: 0.85rem;
-    font-weight: 500;
-  }
-
   .swatch-row{
     display: flex;
     gap: 10px;
@@ -218,20 +186,8 @@
 
   <section id="merchSection" style="display:none;">
     <span class="step-tag">03 — your print</span>
-    <h2>Pick a style</h2>
-    <p>This is what gets downloaded. Pick a look, pick some colors, and you're done —
-    no settings required.</p>
-
-    <div class="style-cards" id="merchStyleCards">
-      <button class="style-card" data-style="line">
-        <canvas data-thumb="line"></canvas>
-        <span>Line</span>
-      </button>
-      <button class="style-card active" data-style="stack">
-        <canvas data-thumb="stack"></canvas>
-        <span>Stack</span>
-      </button>
-    </div>
+    <h2>Make it yours</h2>
+    <p>This is what gets downloaded. Pick some colors and you're done.</p>
 
     <div class="panel row" style="margin-top:18px;">
       <div class="col">
@@ -240,13 +196,6 @@
       <div class="col">
         <label class="field">Colors</label>
         <div class="swatch-row" id="merchSwatches"></div>
-
-        <label class="field" id="merchFillLabel" style="display:none;">Style</label>
-        <div class="toggle-group" id="merchFillToggle" style="display:none;">
-          <button data-fill="filled" class="active">Filled silhouette</button>
-          <button data-fill="outline">Outline only</button>
-          <button data-fill="photo">Outline on photo</button>
-        </div>
 
         <label class="field" id="merchStackRowsLabel">Number of lines — <span class="field-value" id="merchStackRowsVal">8</span></label>
         <input type="range" id="merchStackRowsRange" min="3" max="20" step="1" value="8">
@@ -1500,12 +1449,9 @@
   // Must stay in sync with #merchStackRowsRange's min/max attributes -- used to normalize the
   // slider's position for the final line's fidelity ramp in drawMerchStack().
   const MERCH_STACK_MIN_ROWS = 3, MERCH_STACK_MAX_ROWS = 20;
-  const merchState = { style: 'stack', accent: '#e0a54c', bg: 'dark', customBg: '#ffffff', fill: 'filled', stackPhotoFill: true, stackRows: 8, padding: true };
+  const merchState = { accent: '#e0a54c', bg: 'dark', customBg: '#ffffff', stackPhotoFill: true, stackRows: 8, padding: true };
   const MERCH_DARK_BG = '#10131a', MERCH_LIGHT_BG = '#f5f0e6';
-  const MERCH_SIZES = {
-    line:  { w: 1800, h: 2200 },
-    stack: { w: 1800, h: 2200 }
-  };
+  const MERCH_W = 1800, MERCH_H = 2200;
 
   // manual letter-spacing — canvas text doesn't support tracking natively
   function drawTrackedText(ctx, text, cx, y, spacing){
@@ -1519,88 +1465,6 @@
       x += widths[i] + spacing;
     }
     ctx.textAlign = prevAlign;
-  }
-
-  // draws the `count` most significant frequency components as faint individual sine
-  // curves oscillating around the mean elevation — the literal "waves" that sum to the ridge
-  function drawComponentGhosts(ctx, w, N, M, baselineY, fitScale, xAt, accent, count){
-    const K = Math.min(count, state.comps.length);
-    for (let i = 0; i < K; i++){
-      const c = state.comps[i];
-      ctx.beginPath();
-      for (let n = 0; n < N; n++){
-        const y = baselineY + c.amplitude*Math.cos(2*Math.PI*c.k*n/M + c.phase)*fitScale;
-        const x = xAt(n);
-        if (n===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-      }
-      ctx.strokeStyle = accent;
-      ctx.globalAlpha = 0.4 - i*0.045;
-      ctx.lineWidth = Math.max(1, w*0.0012);
-      ctx.stroke();
-    }
-    ctx.globalAlpha = 1;
-  }
-
-  function drawMerchLine(ctx, w, h, opts){
-    ctx.fillStyle = opts.bgColor;
-    ctx.fillRect(0, 0, w, h);
-
-    const N = state.N, M = state.M;
-    const marginX = w*(opts.padding ? 0.12 : 0.03);
-    const showPhoto = opts.fill === 'photo' && state.img;
-    // same band for every fill mode, so filled/outline/photo only differ in what fills the
-    // shape — not in where or how big the ridge sits on the page
-    const bandTop = h*(opts.padding ? 0.30 : 0.20), bandBottom = h*(opts.padding ? 0.62 : 0.75);
-    const bandH = bandBottom - bandTop;
-
-    if (showPhoto){
-      ctx.drawImage(state.img, marginX, bandTop, w-2*marginX, bandH);
-    }
-
-    const vals = new Array(N);
-    for (let n = 0; n < N; n++){
-      vals[n] = reconstructAt(state.dc, state.comps, M, state.comps.length, n);
-    }
-    // true-to-photo scale: elevations are pixel rows sampled straight from the source photo
-    // (0 = top of frame, sourceCanvas.height = bottom), so mapping them directly into the band
-    // — instead of auto-centering to fill it — keeps every peak and valley where it actually
-    // sits in the original image
-    const fitScale = bandH / sourceCanvas.height;
-    const xAt = n => marginX + n*((w-2*marginX)/(N-1));
-    const yAt = n => bandTop + vals[n]*fitScale;
-
-    // faint individual sine components behind the final ridge, so every style keeps the
-    // "many waves sum to one silhouette" idea instead of just showing the finished shape —
-    // drawn before the fill/stroke so a filled silhouette still shows them poking above the ridge
-    const baselineY = bandTop + (state.dc/M)*fitScale;
-    drawComponentGhosts(ctx, w, N, M, baselineY, fitScale, xAt, opts.accent, 6);
-
-    ctx.beginPath();
-    for (let n = 0; n < N; n++){
-      const x = xAt(n), y = yAt(n);
-      if (n===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-    }
-
-    if (opts.fill === 'filled'){
-      ctx.lineTo(xAt(N-1), bandBottom + bandH*0.2);
-      ctx.lineTo(xAt(0), bandBottom + bandH*0.2);
-      ctx.closePath();
-      ctx.fillStyle = opts.accent;
-      ctx.fill();
-    } else {
-      ctx.strokeStyle = opts.accent;
-      ctx.lineWidth = w*0.005;
-      ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-      ctx.stroke();
-    }
-
-    if (opts.caption){
-      ctx.fillStyle = opts.accent;
-      ctx.font = `600 ${Math.round(w*0.024)}px 'Inter', sans-serif`;
-      ctx.textBaseline = 'alphabetic';
-      const capY = Math.min(bandBottom + bandH*0.55, h*0.965);
-      drawTrackedText(ctx, opts.caption.toUpperCase(), w/2, capY, w*0.012);
-    }
   }
 
   function drawMerchStack(ctx, w, h, opts){
@@ -1761,16 +1625,10 @@
     { accent: '#e0a54c', bg: 'light', label: 'Amber on cream' }
   ];
 
-  function drawDesign(ctx, w, h, style, opts){
-    if (style === 'line') drawMerchLine(ctx, w, h, opts);
-    else drawMerchStack(ctx, w, h, opts);
-  }
-
   function currentMerchOpts(){
     return {
       accent: merchState.accent,
       bgColor: merchState.bg === 'dark' ? MERCH_DARK_BG : merchState.bg === 'light' ? MERCH_LIGHT_BG : merchState.customBg,
-      fill: merchState.fill,
       stackPhotoFill: merchState.stackPhotoFill,
       stackRows: merchState.stackRows,
       padding: merchState.padding,
@@ -1780,25 +1638,10 @@
 
   function renderMerch(){
     if (!state.comps) return;
-    const size = MERCH_SIZES[merchState.style];
     const canvas = document.getElementById('merchCanvas');
-    canvas.width = size.w; canvas.height = size.h;
-    drawDesign(canvas.getContext('2d'), size.w, size.h, merchState.style, currentMerchOpts());
-    document.getElementById('merchStatus').textContent = `${size.w}×${size.h}px — print-ready`;
-    renderMerchThumbnails();
-  }
-
-  // small live previews on each style card, so picking a look doesn't require reading any words
-  function renderMerchThumbnails(){
-    if (!state.comps) return;
-    const opts = currentMerchOpts();
-    document.querySelectorAll('#merchStyleCards canvas[data-thumb]').forEach(cv=>{
-      const style = cv.dataset.thumb;
-      const size = MERCH_SIZES[style];
-      const thumbW = 220, thumbH = Math.round(220*size.h/size.w);
-      cv.width = thumbW; cv.height = thumbH;
-      drawDesign(cv.getContext('2d'), thumbW, thumbH, style, Object.assign({}, opts, { caption: '' }));
-    });
+    canvas.width = MERCH_W; canvas.height = MERCH_H;
+    drawMerchStack(canvas.getContext('2d'), MERCH_W, MERCH_H, currentMerchOpts());
+    document.getElementById('merchStatus').textContent = `${MERCH_W}×${MERCH_H}px — print-ready`;
   }
 
   function renderSwatches(){
@@ -1825,19 +1668,6 @@
   }
   renderSwatches();
 
-  document.getElementById('merchStyleCards').addEventListener('click', e=>{
-    const btn = e.target.closest('.style-card'); if (!btn) return;
-    document.querySelectorAll('#merchStyleCards .style-card').forEach(b=>b.classList.remove('active'));
-    btn.classList.add('active');
-    merchState.style = btn.dataset.style;
-    document.getElementById('merchFillLabel').style.display = merchState.style==='line' ? 'block' : 'none';
-    document.getElementById('merchFillToggle').style.display = merchState.style==='line' ? 'flex' : 'none';
-    document.getElementById('merchStackFillLabel').style.display = merchState.style==='stack' ? 'block' : 'none';
-    document.getElementById('merchStackRowsLabel').style.display = merchState.style==='stack' ? 'block' : 'none';
-    document.getElementById('merchStackRowsRange').style.display = merchState.style==='stack' ? 'block' : 'none';
-    renderMerch();
-  });
-
   function updateMerchBgCustomVisibility(){
     const isCustom = merchState.bg === 'custom';
     document.getElementById('merchBgColorPicker').style.display = isCustom ? 'block' : 'none';
@@ -1856,14 +1686,6 @@
 
   document.getElementById('merchBgColorPicker').addEventListener('input', e=>{
     merchState.customBg = e.target.value;
-    renderMerch();
-  });
-
-  document.getElementById('merchFillToggle').addEventListener('click', e=>{
-    const btn = e.target.closest('button'); if (!btn) return;
-    document.querySelectorAll('#merchFillToggle button').forEach(b=>b.classList.remove('active'));
-    btn.classList.add('active');
-    merchState.fill = btn.dataset.fill;
     renderMerch();
   });
 
@@ -1898,7 +1720,7 @@
   document.getElementById('downloadMerchBtn').addEventListener('click', ()=>{
     const canvas = document.getElementById('merchCanvas');
     const link = document.createElement('a');
-    link.download = `ridgeline-${merchState.style}.png`;
+    link.download = 'ridgeline.png';
     link.href = canvas.toDataURL('image/png');
     link.click();
   });
