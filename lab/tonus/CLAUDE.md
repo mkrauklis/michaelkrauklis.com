@@ -414,6 +414,56 @@ superseded by someone clearing all custom points mid-training could leave the ar
 spinner stuck spinning forever, a real latent bug caught while wiring this up rather than one
 that had already been reported.
 
+## Progress bars for Neural Network training (`.progress-track`, `.progress-fill`)
+
+Direct request: "when the neural network is training can you show a progress bar." A spinner (the
+`#plotOverlay`/`#mlpArchOverlay` pair above) only ever says "something is happening" — the Neural
+Network is the one model here where real, known progress actually exists (`epoch`/`MAX_EPOCHS`,
+already flowing through `trainMLP()`'s `onProgress` callback for the "training… epoch N/250" text),
+so it's the one case that earns an actual fill bar instead of just motion. `.progress-track` is a
+plain hand-rolled div pair (an 8px rounded track plus an inner `.progress-fill` whose `width` is
+set directly in JS as a `%` string) rather than a native `<progress>` element — consistent with
+this site's general preference for CSS it fully controls over relying on a browser's own default
+widget styling, and it reuses `var(--accent)` the same way every other Tonus indicator does.
+
+**Three separate bars, not one, because there are three separate places training is visible**,
+each already established by an earlier fix in this same file:
+- `#mlpProgressTrack`, under the main accuracy/status row in step 3 — the primary, always-visible
+  location.
+- `#mlpArchProgressTrack`, under the architecture diagram in step 2 — the same "this is what a
+  mobile visitor is actually looking at while dragging a layers/width slider" reasoning that
+  justified `#mlpArchOverlay` above applies equally here; a lone bar down in step 3 would be just
+  as easy to miss as the original single spinner was.
+- `#exportProgressTrack`, under the "Export comparison grid" button — the export loop trains a
+  fresh Neural Network from scratch for its own panel (see "Export: the comparison grid" below),
+  and that one retrain is by far the slowest part of an otherwise-fast multi-model export.
+
+All three read from the same underlying numbers, via a single `setMLPProgress(pct)` helper
+(defined once, inside `recompute()`, closed over that call's own DOM lookups) that updates the two
+main-page bars together — the export bar is updated separately, inline in the export loop, since
+that code path doesn't go through `recompute()` at all and trains its own standalone `trainMLP()`
+call. **Percent is computed as `epoch / MAX_EPOCHS`, not epoch count against however many epochs
+this particular run happens to take** — since training can (and often does) stop early once loss
+converges, a bar normalized against "epochs actually run" would jump to 100% at an unpredictable,
+inconsistent point every time; normalizing against the fixed 250-epoch ceiling means the bar's
+speed is at least consistent run to run, even though it will frequently stop short of full on a
+run that converges early. That's an accepted, expected trade — a progress bar for a process with
+no fixed known length is inherently approximate, and "consistent but sometimes incomplete" reads
+better than "reaches 100% every time by a different, arbitrary definition of 100%."
+
+**Visibility is wired into the exact same `showSpinner()`/`hideSpinner()` bracket the spinners
+already use**, guarded by `state.model === 'mlp'` at show time (unlike the spinner overlays, which
+guard by DOM presence — the progress tracks are static HTML, always in the document, so presence
+alone can't distinguish "Neural Network selected" the way it does for the arch overlay) — a
+classical model's near-instant `recompute()` never shows these bars at all, matching the "spinner
+without meaningful progress data" reasoning that keeps them Neural-Network-specific. The zero-
+points early-return branch (see "A real bug" below) hides both main-page tracks explicitly for the
+same reason it already explicitly hides `#mlpArchOverlay` — that branch returns before the shared
+`hideSpinner()` ever runs. The export bar is shown/hidden locally within its own `if (mkey ===
+'mlp')` block in the export loop, immediately before that panel's `trainMLP()` call and immediately
+after it resolves — it never stays visible while the other three (fast, synchronous) panels
+render, since there's nothing left for it to represent once the Neural Network panel is done.
+
 ## A real bug: switching to an empty custom dataset while the Neural Network is selected
 
 **Also found directly during testing**, right after fixing the hang above. Selecting "Custom
@@ -677,14 +727,25 @@ switches to real-weight coloring with the "colored by this network's real traine
 once a training run completes, and confirm the diagram's own overlay spinner (`#mlpArchOverlay`)
 is visible while that training run is in progress and gone once it completes — separately from,
 not instead of, the plot's own overlay — since this is the one model whose relevant spinner sits
-somewhere other than the plot canvas → switch to "Custom points"
+somewhere other than the plot canvas → for that same run, confirm both `#mlpProgressTrack` (under
+the accuracy readout) and `#mlpArchProgressTrack` (under the architecture diagram) become visible,
+their fill widths climb together in lockstep with the "epoch N/250" text (not just once at the
+end), and both disappear the moment training finishes — pick a network large enough (4 layers, 64
+neurons) to actually stay mid-training long enough to sample more than one frame of progress, since
+a small/fast network can finish before a poll even catches it once → confirm neither progress bar
+ever appears for a classical model (there's no meaningful "progress" for a synchronous compute) →
+switch to "Custom points"
 with **zero points already present** while the Neural Network is selected and confirm no console
 errors and a clean "No points yet" message (the exact regression documented above) → draw a small
 shape, confirm points are added continuously while dragging and the boundary retrains after
 release → upload a small CSV with `x1,x2,label` columns at an arbitrary scale (not already in
 `[-1,1]`) and confirm the points land inside the plot, correctly rescaled → copy the share link,
 open it in a fresh tab/session, and confirm the dataset, model, every hyperparameter, and (for a
-custom dataset) every point round-trip correctly → click "Export comparison grid," confirm all
+custom dataset) every point round-trip correctly → with the Neural Network selected (so it claims
+the export's first panel — see "The export grid ignored whatever model" below), click "Export
+comparison grid" and confirm `#exportProgressTrack` appears and its fill climbs while that one
+panel trains, then disappears again before the remaining three (fast, synchronous) panels
+render — it shouldn't still be sitting there through the rest of the export → confirm all
 four panels render with visibly different boundaries for the same underlying points, every panel
 label and the title are cleanly legible against the plain dark background (not overlapping any
 panel's own heatmap colors — the exact bug documented above), a QR code appears in the bottom-right

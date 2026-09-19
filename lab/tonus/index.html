@@ -121,6 +121,19 @@
     border:4px solid var(--line); border-top-color:var(--accent);
     animation:spinner-rotate .7s linear infinite;
   }
+
+  /* Neural network training progress -- epoch/MAX_EPOCHS is real, known progress (unlike a
+     classical model's near-instant compute), so this gets an actual fill bar rather than just
+     a spinner. Hidden by default; shown only while the Neural Network is actually training. */
+  .progress-track{
+    width:100%; height:8px; background:var(--bg-panel-2); border:1px solid var(--line);
+    border-radius:4px; overflow:hidden; margin-top:8px;
+  }
+  .progress-track[hidden]{ display:none; }
+  .progress-fill{
+    height:100%; width:0%; background:var(--accent);
+    transition:width .15s ease;
+  }
 </style>
 <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5936916546458743"
      crossorigin="anonymous"></script>
@@ -217,6 +230,7 @@
       <span class="metric" id="accuracyReadout">—</span>
       <span class="status"><span class="spinner-inline" id="computeSpinner" hidden></span><span id="trainStatus"></span></span>
     </div>
+    <div class="progress-track" id="mlpProgressTrack" hidden><div class="progress-fill" id="mlpProgressFill"></div></div>
     <div class="export-nudge" id="exportNudge" hidden>
       <span>🎉 That's a great fit — worth taking with you.</span>
       <a href="#shareSection" id="exportNudgeLink">Save &amp; export it ↓</a>
@@ -243,6 +257,7 @@
     <button type="button" class="primary" id="exportGridBtn">Export comparison grid</button>
     <span class="status"><span class="spinner-inline" id="exportSpinner" hidden></span><span id="exportStatus"></span></span>
   </div>
+  <div class="progress-track" id="exportProgressTrack" hidden><div class="progress-fill" id="exportProgressFill"></div></div>
   <p class="status" id="exportStaleNote" hidden style="color:var(--danger); margin-top:8px;">⚠ The dataset, model, or a hyperparameter changed since this was exported — export again to bring it up to date.</p>
   <canvas id="exportCanvas" width="1500" height="500" hidden></canvas>
   <div class="actions" id="downloadExportRow" style="display:none;">
@@ -972,9 +987,18 @@
     // #mlpArchOverlay only exists in the DOM while the Neural Network's params are showing (see
     // syncModelUI's mlp branch) -- guarded rather than assumed present, since every other model
     // recomputes through this same function with no architecture diagram to spin.
+    function setMLPProgress(pct){
+      var fill = $('mlpProgressFill'); if (fill) fill.style.width = pct + '%';
+      var archFill = $('mlpArchProgressFill'); if (archFill) archFill.style.width = pct + '%';
+    }
     function showSpinner(){
       spinner.hidden = false; overlay.hidden = false;
       var archOverlay = $('mlpArchOverlay'); if (archOverlay) archOverlay.hidden = false;
+      if (state.model === 'mlp'){
+        setMLPProgress(0);
+        var track = $('mlpProgressTrack'); if (track) track.hidden = false;
+        var archTrack = $('mlpArchProgressTrack'); if (archTrack) archTrack.hidden = false;
+      }
       shownAt = performance.now();
     }
     async function hideSpinner(){
@@ -982,6 +1006,8 @@
       if (elapsed < MIN_SPINNER_MS) await new Promise(function(res){ setTimeout(res, MIN_SPINNER_MS - elapsed); });
       spinner.hidden = true; overlay.hidden = true;
       var archOverlay = $('mlpArchOverlay'); if (archOverlay) archOverlay.hidden = true;
+      var track = $('mlpProgressTrack'); if (track) track.hidden = true;
+      var archTrack = $('mlpArchProgressTrack'); if (archTrack) archTrack.hidden = true;
     }
     if (!state.points.length){
       // tf.tensor2d([]) throws (no shape to infer from an empty flat array) -- and since that
@@ -996,6 +1022,8 @@
       $('trainStatus').textContent = '';
       spinner.hidden = true; overlay.hidden = true;
       var zpArchOverlay = $('mlpArchOverlay'); if (zpArchOverlay) zpArchOverlay.hidden = true;
+      var zpTrack = $('mlpProgressTrack'); if (zpTrack) zpTrack.hidden = true;
+      var zpArchTrack = $('mlpArchProgressTrack'); if (zpArchTrack) zpArchTrack.hidden = true;
       refreshShare();
       return;
     }
@@ -1012,6 +1040,7 @@
       state.mlpModel = null;
       var m = await trainMLP(state.points, state.params, prevModel, function(epoch, maxEpoch){
         $('trainStatus').textContent = 'training… epoch ' + epoch + '/' + maxEpoch;
+        setMLPProgress(Math.min(100, Math.round((epoch / maxEpoch) * 100)));
       }, function(){ return mySeq !== trainSeq; });
       if (mySeq !== trainSeq){ m.dispose(); return; }
       state.mlpModel = m;
@@ -1213,7 +1242,10 @@
       var archSpinner = document.createElement('span'); archSpinner.className = 'spinner-big';
       archOverlay.appendChild(archSpinner);
       archWrap.appendChild(mlpArchCanvas); archWrap.appendChild(archOverlay);
-      box.appendChild(archLab); box.appendChild(archWrap); box.appendChild(archNote);
+      var archProgressTrack = document.createElement('div'); archProgressTrack.className = 'progress-track'; archProgressTrack.id = 'mlpArchProgressTrack'; archProgressTrack.hidden = true;
+      var archProgressFill = document.createElement('div'); archProgressFill.className = 'progress-fill'; archProgressFill.id = 'mlpArchProgressFill';
+      archProgressTrack.appendChild(archProgressFill);
+      box.appendChild(archLab); box.appendChild(archWrap); box.appendChild(archProgressTrack); box.appendChild(archNote);
       renderMLPArchIfCurrent();
     } else {
       var note = document.createElement('p'); note.className = 'status'; note.textContent = 'No hyperparameters for this one.';
@@ -1370,11 +1402,15 @@
       var mkey = EXPORT_MODELS[i];
       var probs;
       if (mkey === 'mlp'){
+        var exportProgressTrack = $('exportProgressTrack'), exportProgressFill = $('exportProgressFill');
+        exportProgressTrack.hidden = false; exportProgressFill.style.width = '0%';
         var m = await trainMLP(state.points, state.params, null, function(epoch, maxEpoch){
           $('exportStatus').textContent = 'training neural network… epoch ' + epoch + '/' + maxEpoch;
+          exportProgressFill.style.width = Math.min(100, Math.round((epoch / maxEpoch) * 100)) + '%';
         });
         probs = predictMLPGrid(m, GRID_N);
         m.dispose();
+        exportProgressTrack.hidden = true;
         $('exportStatus').textContent = 'rendering…';
       } else {
         var rnd = mulberry32(state.seed ^ 0x9e3779b9);
@@ -1408,6 +1444,7 @@
     }
     $('exportStatus').textContent = '';
     exportSpinner.hidden = true;
+    $('exportProgressTrack').hidden = true;
     $('downloadExportRow').style.display = 'flex';
     hasExported = true; state.exportStale = false; updateExportStaleUI();
   });
