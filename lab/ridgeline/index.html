@@ -269,7 +269,11 @@
             <div class="toggle-group" id="merchBgToggle">
               <button data-bg="dark" class="active">Dark</button>
               <button data-bg="light">Light</button>
+              <button data-bg="custom">Custom</button>
             </div>
+            <input type="color" id="merchBgColorPicker" value="#ffffff"
+              style="display:none; width:100%; height:38px; margin-top:8px; border:1px solid var(--line); border-radius:6px; background:none; cursor:pointer;">
+            <p class="status" id="merchBgCustomHint" style="display:none; margin-top:6px;">Off-dark and off-white tend to print with a visible tint on mugs — pick pure white, pure black, or a solid color instead for a truer print.</p>
             <label class="field" style="display:flex; align-items:center; gap:6px;">
               <input type="checkbox" id="merchPaddingCheck" checked style="accent-color: var(--amber); margin:0;">
               Padding
@@ -1496,7 +1500,7 @@
   // Must stay in sync with #merchStackRowsRange's min/max attributes -- used to normalize the
   // slider's position for the final line's fidelity ramp in drawMerchStack().
   const MERCH_STACK_MIN_ROWS = 3, MERCH_STACK_MAX_ROWS = 20;
-  const merchState = { style: 'stack', accent: '#e0a54c', bg: 'dark', fill: 'filled', stackPhotoFill: true, stackRows: 8, padding: true };
+  const merchState = { style: 'stack', accent: '#e0a54c', bg: 'dark', customBg: '#ffffff', fill: 'filled', stackPhotoFill: true, stackRows: 8, padding: true };
   const MERCH_DARK_BG = '#10131a', MERCH_LIGHT_BG = '#f5f0e6';
   const MERCH_SIZES = {
     line:  { w: 1800, h: 2200 },
@@ -1765,7 +1769,7 @@
   function currentMerchOpts(){
     return {
       accent: merchState.accent,
-      bgColor: merchState.bg === 'dark' ? MERCH_DARK_BG : MERCH_LIGHT_BG,
+      bgColor: merchState.bg === 'dark' ? MERCH_DARK_BG : merchState.bg === 'light' ? MERCH_LIGHT_BG : merchState.customBg,
       fill: merchState.fill,
       stackPhotoFill: merchState.stackPhotoFill,
       stackRows: merchState.stackRows,
@@ -1810,6 +1814,7 @@
         merchState.bg = sw.bg;
         document.getElementById('merchAccentColor').value = sw.accent;
         document.querySelectorAll('#merchBgToggle button').forEach(b=> b.classList.toggle('active', b.dataset.bg===sw.bg));
+        updateMerchBgCustomVisibility();
         document.querySelectorAll('.swatch').forEach(b=> b.classList.remove('active'));
         btn.classList.add('active');
         renderMerch();
@@ -1833,12 +1838,24 @@
     renderMerch();
   });
 
+  function updateMerchBgCustomVisibility(){
+    const isCustom = merchState.bg === 'custom';
+    document.getElementById('merchBgColorPicker').style.display = isCustom ? 'block' : 'none';
+    document.getElementById('merchBgCustomHint').style.display = isCustom ? 'block' : 'none';
+  }
+
   document.getElementById('merchBgToggle').addEventListener('click', e=>{
     const btn = e.target.closest('button'); if (!btn) return;
     document.querySelectorAll('#merchBgToggle button').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
     merchState.bg = btn.dataset.bg;
+    updateMerchBgCustomVisibility();
     document.querySelectorAll('.swatch').forEach(b=>b.classList.remove('active'));
+    renderMerch();
+  });
+
+  document.getElementById('merchBgColorPicker').addEventListener('input', e=>{
+    merchState.customBg = e.target.value;
     renderMerch();
   });
 

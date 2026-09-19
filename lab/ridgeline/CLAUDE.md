@@ -221,6 +221,35 @@ Afterimage's crop-box dragger.
   attributes change, update both together — the fidelity ramp's `t` calculation
   reads the constants, not the DOM element.
 
+## Background: Dark/Light presets, plus a real custom color picker
+
+Direct request: "the off-dark and off-white don't print well on mugs." `#merchBgToggle` originally
+only offered two fixed backgrounds (`MERCH_DARK_BG` = `#10131a`, `MERCH_LIGHT_BG` = `#f5f0e6`) —
+both deliberately slightly off pure black/white for on-screen aesthetic reasons, which is exactly
+what makes them print inconsistently on physical sublimation products: a mug printer reproducing
+`#10131a` or `#f5f0e6` doesn't have "pure black" or "pure white" to fall back on the way a design
+with an actually blank/transparent background area would, so a slight, unwanted tint shows up in
+what's supposed to read as a neutral background. Added a third toggle option, "Custom," which
+reveals a plain `<input type="color" id="merchBgColorPicker">` (defaulting to `#ffffff`, since
+pure white is the safest print-neutral starting point) plus a one-line hint explaining *why* this
+option exists, not just that it does. `currentMerchOpts()`'s `bgColor` now branches three ways
+(`dark`/`light`/anything else falls through to `merchState.customBg`) instead of the old binary
+ternary — everywhere downstream that already consumed `opts.bgColor` (the fill, the photo-fade
+blend, `drawMerchStack`'s base fill) needed no changes at all, since none of them ever assumed
+the color was one of exactly two values.
+
+**`updateMerchBgCustomVisibility()` exists so the picker/hint show and hide from a single place.**
+The curated swatches (`MERCH_SWATCHES`, "amber on dark," etc.) each set `merchState.bg` to
+`'dark'` or `'light'` directly, bypassing the toggle buttons' own click handler — an initial
+version only wired the show/hide logic into the toggle's click handler, so clicking a swatch after
+having selected "Custom" correctly restored the right preset background but left the picker input
+and hint text visibly stranded on screen, still showing, no longer relevant to what was actually
+selected. Caught and fixed before shipping (not by inspection — by scripting the actual sequence:
+click Custom, confirm the picker appears, click a swatch, confirm it disappears again) by factoring
+the two-line `style.display` toggle into one function called from both the toggle's click handler
+and the swatch click handler, so there's exactly one place that decides whether "Custom" is active
+and both entry points that can change `merchState.bg` stay in sync with it automatically.
+
 ## Monetization
 
 - AdSense: script tag + `google-adsense-account` meta tag in `<head>`, publisher id
@@ -264,7 +293,10 @@ fewer), the photo panel's size stays constant across the whole range (only the l
 should change), and — using a photo with real jagged detail, not a smooth test silhouette — the
 bold final line visibly sharpens as the slider goes up rather than looking the same at every
 position (see "Conventions specific to this file" above for the exact formula and why a
-low-detail test image won't show this last one).
+low-detail test image won't show this last one). For the background toggle, click "Custom" and
+confirm the color picker and its print-tint hint both appear and the canvas immediately re-renders
+with that exact color, then click a curated swatch afterward and confirm the picker/hint both
+disappear again (not just that the background changes) — the exact regression documented above.
 
 If you touch `detectSkyline()` or `autoTuneAndExtract()`, also check: a synthetic photo with a
 smooth vertical sky gradient and a jagged silhouette (a `<canvas>` gradient fill plus a filled
