@@ -109,7 +109,7 @@ past version.
 
 ## The homepage's certification badges link to real, verified individual pages
 
-The six `.cert-badge` icons used to be plain `<div>`s with no link at all — everything rolled up
+The `.cert-badge` icons used to be plain `<div>`s with no link at all — everything rolled up
 to one generic "See all certifications on LinkedIn" line below the grid. UX review flagged this:
 a recruiter or client wanting to verify one *specific* cert had no faster path than the LinkedIn
 aggregate page. Each badge is now its own `<a class="cert-badge">` pointing at that exact
@@ -117,7 +117,9 @@ certification's real Credly verification page (`https://www.credly.com/badges/<i
 directly from the real badge wallet at `https://www.credly.com/users/michael-krauklis.05da83e9`
 and spot-verified (loaded one badge page and confirmed it publicly shows "This badge was issued
 to Michael Krauklis" with the matching issue/expiry dates, no login required) before wiring any
-of them in, not guessed from a naming pattern. The six IDs, in the order they appear on the page:
+of them in, not guessed from a naming pattern. The grid started at six and grew to eight (see
+"A second pass added two more badges" below) — the IDs below are in the order they appear on the
+page:
 
 **Icons are the real, official Credly/AWS badge artwork, not hand-drawn placeholders.** An
 earlier version drew six lookalike hexagon icons in inline SVG (a `theme.css`-colored hexagon
@@ -127,12 +129,12 @@ badge." Direct request ("can we use the icons from credly instead of those svgs"
 with the genuine badge images. Each cert's own Credly page embeds several badge images (the
 cert's own, plus a few "related certifications" suggestions) — the real one is always the `<img>`
 whose `alt` text exactly matches that page's own badge title; grabbed via
-`images.credly.com/size/220x220/images/<image-uuid>/image.png` for each of the six, confirmed
+`images.credly.com/size/220x220/images/<image-uuid>/image.png` for each badge, confirmed
 against each badge's own page individually rather than assumed from the suggestions shown on a
 different badge's page. Downloaded once and committed to `/cert-badges/*.png` (self-hosted, same
 "real asset, not a hotlink to a third party" discipline as every other image on this site) rather
 than referencing `images.credly.com` directly from `index.html` — this site doesn't otherwise
-depend on any third-party host staying up or keeping a URL stable. The six image UUIDs (distinct
+depend on any third-party host staying up or keeping a URL stable. The image UUIDs (distinct
 from the badge IDs in the table below, which identify the *earned credential*, not the *artwork*):
 
 | Badge | Credly image UUID | Local file |
@@ -143,6 +145,8 @@ from the badge IDs in the table below, which identify the *earned credential*, n
 | Data Engineer – Associate | `e5c85d7f-4e50-431e-b5af-fa9d9b0596e7` | `cert-badges/data-engineer-associate.png` |
 | Solutions Architect – Associate | `0e284c3f-5164-4b21-8660-0d84737941bc` | `cert-badges/solutions-architect-associate.png` |
 | SysOps Administrator – Associate | `f0d3fbb9-bfa7-4017-9989-7bde8eaf42b1` | `cert-badges/sysops-administrator-associate.png` |
+| DevOps Engineer – Professional | `bd31ef42-d460-493e-8503-39592aaf0458` | `cert-badges/devops-engineer-professional.png` |
+| Developer – Associate | `b9feab85-1a43-4f6c-99a5-631b88d5461b` | `cert-badges/developer-associate.png` |
 
 If a badge is ever renewed or replaced (a new cert with a new badge ID and, likely, new artwork),
 re-fetch its image UUID from that specific badge's own Credly page the same way — don't assume
@@ -157,15 +161,26 @@ badge's "related certifications" row without confirming it against its own page 
 | Data Engineer – Associate | `84e87661-b3d1-4a4d-b1e2-02cd156d8018` |
 | Solutions Architect – Associate | `b9493f91-0740-4290-a410-44d0e83cba6c` |
 | SysOps Administrator – Associate | `df3b27f7-9c81-44fe-aa1d-328955b041c6` |
+| DevOps Engineer – Professional | `46d673fe-4f70-4503-b7ef-1c572c84508a` |
+| Developer – Associate | `eea39c8b-688c-4557-94aa-3af7e6edf025` |
 
-The Credly wallet has more badges than these six (an early-adopter variant of two of these, an
-expired older Solutions Architect and Machine Learning Specialty, plus DevOps Engineer
-Professional, Developer Associate, Cloud Practitioner, and Data Analytics Specialty) — the
-homepage only ever showed this curated set of six, and this change didn't expand that; it just
-made the six already shown individually verifiable instead of only reachable in aggregate. If the
-curated set ever changes, re-fetch the wallet rather than assuming an ID is still current — early-
-adopter and expired badges sit right next to the current ones in the same list and are easy to
-grab by mistake if you're not checking each one's own issue/expiry dates against the wallet page.
+**A second pass added two more badges, on direct request after being asked "are there other
+certifications we should add"** — re-fetching the live wallet rather than trusting this file's own
+memory of it (which turned out to still be accurate, but wasn't assumed so). Of the badges not yet
+shown, DevOps Engineer – Professional and Developer – Associate were added; Cloud Practitioner (a
+foundational-level cert, offered but explicitly deferred — arguably redundant sitting next to five
+associate/professional badges) was not, on direct instruction to add just the first two. `.cert-grid`
+went from `repeat(3, 1fr)` (six badges, three rows of two... actually three columns, two rows) to
+`repeat(4, 1fr)` (eight badges, a clean two rows of four) at the same time, per direct request
+("make it 4x2") — `max-width` widened from `520px` to `680px` to match the extra column; the
+`@media (max-width: 560px)` mobile fallback to two columns didn't need to change.
+
+The Credly wallet has more badges than these eight (an early-adopter variant of two of them, an
+expired older Solutions Architect and Machine Learning Specialty, plus Cloud Practitioner and
+Data Analytics Specialty) — this is still a curated subset, not the full wallet. If the curated
+set ever changes, re-fetch the wallet rather than assuming an ID is still current — early-adopter
+and expired badges sit right next to the current ones in the same list and are easy to grab by
+mistake if you're not checking each one's own issue/expiry dates against the wallet page.
 
 When adding a new lab tool, link both files and rely on `theme.css`'s defaults before writing
 new CSS — copying a whole `<style>` block from an existing tool page (the old pattern) is how
