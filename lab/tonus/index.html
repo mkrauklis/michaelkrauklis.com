@@ -158,9 +158,7 @@
     <div class="pill-grid" id="datasetGrid"></div>
 
     <div id="genControls">
-      <label class="field">Points <span class="field-value" id="pointCountLabel">150</span></label>
-      <input type="range" id="pointCountRange" min="30" max="300" step="10" value="150">
-      <div class="actions" style="margin-top:14px;">
+      <div class="actions">
         <button type="button" class="secondary" id="reseedBtn">New random seed</button>
         <span class="status" id="seedStatus"></span>
       </div>
@@ -245,6 +243,7 @@
     <button type="button" class="primary" id="exportGridBtn">Export comparison grid</button>
     <span class="status"><span class="spinner-inline" id="exportSpinner" hidden></span><span id="exportStatus"></span></span>
   </div>
+  <p class="status" id="exportStaleNote" hidden style="color:var(--danger); margin-top:8px;">⚠ The dataset, model, or a hyperparameter changed since this was exported — export again to bring it up to date.</p>
   <canvas id="exportCanvas" width="1500" height="500" hidden></canvas>
   <div class="actions" id="downloadExportRow" style="display:none;">
     <button type="button" class="secondary" id="downloadExportBtn">Download comparison as PNG</button>
@@ -265,7 +264,7 @@
   </div>
 </section>
 
-<details class="disclosure advanced">
+<details class="disclosure advanced" open>
   <summary>How this actually works <span class="adv-sub">— for anyone curious, no math background needed</span></summary>
   <div class="disclosure-body">
     <p>Every dataset here starts from a seeded random-number generator — the same "random" numbers
@@ -296,9 +295,10 @@
     <p>The model above earns the name "SVM" this one deliberately avoids. Instead of one straight
     line, it measures how "similar" a new point is to every point it was trained on, and only a
     subset of those training points — the ones that were genuinely hard to classify — end up
-    mattering to the final answer at all (that subset is the literal "support vectors"). The
-    <b>gamma</b> slider controls how local that similarity is: turn it up and the boundary can
-    bend tightly around individual points; turn it down and it smooths out into broader curves.</p>
+    mattering to the final answer at all (that subset is the literal "support vectors"). How
+    "local" that similarity is (called <b>gamma</b>) and how much breathing room it demands between
+    the two classes are both fixed at values tuned to work well across most shapes here, rather
+    than left as sliders to tune by hand.</p>
 
     <h3 style="margin-top:24px;">k-Nearest Neighbors</h3>
     <p>No training step at all — the "model" is just the stored points. To classify anywhere, find
@@ -533,6 +533,9 @@
   }
   function predictLogReg(m, x1, x2){ return 1 / (1 + Math.exp(-(m.w[0] + m.w[1] * x1 + m.w[2] * x2))); }
 
+  // Fixed rather than user-adjustable -- see "Hyperparameters that got removed" in CLAUDE.md.
+  var LINSVM_LAMBDA = 0.05;
+  var SVM_GAMMA = 10, SVM_LAMBDA = 0.001;
   function trainLinSVM(points, params){
     var lambda = params.lambda, epochs = 200, w = [0, 0, 0], t = 0;
     for (var e = 0; e < epochs; e++){
@@ -834,9 +837,9 @@
 
   // ---------------- state ----------------
   var state = {
-    datasetType: 'moons', points: [], seed: (Math.random() * 4294967295) >>> 0, pointCount: 150,
-    model: 'logreg', params: { lambda: 0.05, gamma: 2, k: 7, trees: 20, maxDepth: 5, layers: 2, width: 8, activation: 'relu'},
-    drawClass: 0, mlpModel: null, trainedModel: null
+    datasetType: 'moons', points: [], seed: (Math.random() * 4294967295) >>> 0, pointCount: 200,
+    model: 'logreg', params: { lambda: LINSVM_LAMBDA, svmGamma: SVM_GAMMA, svmLambda: SVM_LAMBDA, k: 7, trees: 20, maxDepth: 5, layers: 2, width: 8, activation: 'relu'},
+    drawClass: 0, mlpModel: null, trainedModel: null, exportStale: false
   };
 
   function regenerateDataset(){
@@ -941,6 +944,18 @@
 
   // ---------------- recompute ----------------
   var trainSeq = 0;
+  // Tracks whether the exported comparison grid (if one has ever been made) still reflects the
+  // current dataset/model/hyperparameters. `hasExported` gates the note so a first-time visitor
+  // who's never exported anything doesn't see a "changed since export" warning about an export
+  // that doesn't exist yet.
+  var hasExported = false;
+  function updateExportStaleUI(){
+    var note = $('exportStaleNote');
+    if (note) note.hidden = !(hasExported && state.exportStale);
+  }
+  function markExportStale(){
+    if (hasExported && !state.exportStale){ state.exportStale = true; updateExportStaleUI(); }
+  }
   // A spinner shown and hidden again within the same synchronous/microtask turn can genuinely
   // never get painted at all -- browsers don't guarantee a paint between two DOM mutations that
   // both happen before the next scheduled frame, and most classical models here finish fast
@@ -950,14 +965,23 @@
   // fast, to hold the spinner visible for at least one real, perceivable stretch.
   var MIN_SPINNER_MS = 300;
   async function recompute(){
+    markExportStale();
     var mySeq = ++trainSeq;
     var spinner = $('computeSpinner'), overlay = $('plotOverlay');
     var shownAt = null;
-    function showSpinner(){ spinner.hidden = false; overlay.hidden = false; shownAt = performance.now(); }
+    // #mlpArchOverlay only exists in the DOM while the Neural Network's params are showing (see
+    // syncModelUI's mlp branch) -- guarded rather than assumed present, since every other model
+    // recomputes through this same function with no architecture diagram to spin.
+    function showSpinner(){
+      spinner.hidden = false; overlay.hidden = false;
+      var archOverlay = $('mlpArchOverlay'); if (archOverlay) archOverlay.hidden = false;
+      shownAt = performance.now();
+    }
     async function hideSpinner(){
       var elapsed = shownAt === null ? MIN_SPINNER_MS : performance.now() - shownAt;
       if (elapsed < MIN_SPINNER_MS) await new Promise(function(res){ setTimeout(res, MIN_SPINNER_MS - elapsed); });
       spinner.hidden = true; overlay.hidden = true;
+      var archOverlay = $('mlpArchOverlay'); if (archOverlay) archOverlay.hidden = true;
     }
     if (!state.points.length){
       // tf.tensor2d([]) throws (no shape to infer from an empty flat array) -- and since that
@@ -971,6 +995,7 @@
       $('accuracyReadout').textContent = 'No points yet';
       $('trainStatus').textContent = '';
       spinner.hidden = true; overlay.hidden = true;
+      var zpArchOverlay = $('mlpArchOverlay'); if (zpArchOverlay) zpArchOverlay.hidden = true;
       refreshShare();
       return;
     }
@@ -994,9 +1019,10 @@
     } else {
       var rnd = mulberry32(state.seed ^ 0x9e3779b9);
       var trainer = { linreg: trainLinReg, logreg: trainLogReg, linsvm: trainLinSVM, svm: trainSVM, knn: trainKNN, nb: trainNB, rf: trainRF }[state.model];
-      var needsRnd = state.model === 'rf';
-      var needsParams = state.model === 'knn' || state.model === 'linsvm' || state.model === 'svm';
-      state.trainedModel = needsRnd ? trainer(state.points, state.params, rnd) : (needsParams ? trainer(state.points, state.params) : trainer(state.points));
+      if (state.model === 'rf') state.trainedModel = trainer(state.points, state.params, rnd);
+      else if (state.model === 'svm') state.trainedModel = trainer(state.points, { gamma: state.params.svmGamma, lambda: state.params.svmLambda });
+      else if (state.model === 'knn' || state.model === 'linsvm') state.trainedModel = trainer(state.points, state.params);
+      else state.trainedModel = trainer(state.points);
     }
     renderPlot();
     var acc = computeAccuracy();
@@ -1039,11 +1065,6 @@
   }
   syncDatasetUI();
 
-  $('pointCountRange').addEventListener('input', function(){
-    state.pointCount = parseInt(this.value, 10);
-    $('pointCountLabel').textContent = state.pointCount;
-    if (state.datasetType !== 'points'){ regenerateDataset(); recompute(); }
-  });
   $('reseedBtn').addEventListener('click', function(){
     state.seed = (Math.random() * 4294967295) >>> 0;
     regenerateDataset();
@@ -1156,21 +1177,7 @@
   function syncModelUI(){
     Array.prototype.forEach.call(modelGrid.children, function(btn){ btn.classList.toggle('selected', btn.dataset.model === state.model); });
     var box = $('modelParams'); box.innerHTML = ''; mlpArchCanvas = null;
-    if (state.model === 'linsvm'){
-      var lambdaPow = Math.log10(state.params.lambda);
-      var r = paramRow('Margin strength (regularization)', 'lambdaRange', -3, 0, 0.05, lambdaPow, function(){ return state.params.lambda.toFixed(3); },
-        'Lower = hugs the training points tightly; higher = a simpler, more cautious line.');
-      r.input.addEventListener('input', function(){ state.params.lambda = Math.pow(10, parseFloat(this.value)); r.val.textContent = state.params.lambda.toFixed(3); debouncedRecompute(); });
-      box.appendChild(r.wrap);
-    } else if (state.model === 'svm'){
-      var rg = paramRow('Kernel width (gamma)', 'gammaRange', -1, 1, 0.05, Math.log10(state.params.gamma), function(){ return state.params.gamma.toFixed(2); },
-        'Higher = the boundary can bend tightly around individual points; lower = smoother, broader curves.');
-      rg.input.addEventListener('input', function(){ state.params.gamma = Math.pow(10, parseFloat(this.value)); rg.val.textContent = state.params.gamma.toFixed(2); debouncedRecompute(); });
-      var rs = paramRow('Margin strength (regularization)', 'svmLambdaRange', -3, 0, 0.05, Math.log10(state.params.lambda), function(){ return state.params.lambda.toFixed(3); },
-        'Lower = hugs the training points tightly; higher = a simpler, more cautious boundary.');
-      rs.input.addEventListener('input', function(){ state.params.lambda = Math.pow(10, parseFloat(this.value)); rs.val.textContent = state.params.lambda.toFixed(3); debouncedRecompute(); });
-      box.appendChild(rg.wrap); box.appendChild(rs.wrap);
-    } else if (state.model === 'knn'){
+    if (state.model === 'knn'){
       var rk = paramRow('k (neighbors)', 'kRange', 1, 25, 1, state.params.k, null,
         'Lower = follows the data closely and can look noisy; higher = smoother, more averaged-out.');
       rk.input.addEventListener('input', function(){ state.params.k = parseInt(this.value, 10); rk.val.textContent = state.params.k; debouncedRecompute(); });
@@ -1196,8 +1203,17 @@
       var archNote = document.createElement('div'); archNote.className = 'status'; archNote.id = 'mlpArchNote';
       mlpArchCanvas = document.createElement('canvas'); mlpArchCanvas.width = 700; mlpArchCanvas.height = 220;
       mlpArchCanvas.style.width = '100%'; mlpArchCanvas.style.maxWidth = '700px'; mlpArchCanvas.style.display = 'block';
-      mlpArchCanvas.style.background = '#0c0e13'; mlpArchCanvas.style.border = '1px solid var(--line)'; mlpArchCanvas.style.borderRadius = '6px'; mlpArchCanvas.style.marginTop = '8px';
-      box.appendChild(archLab); box.appendChild(mlpArchCanvas); box.appendChild(archNote);
+      mlpArchCanvas.style.background = '#0c0e13'; mlpArchCanvas.style.border = '1px solid var(--line)'; mlpArchCanvas.style.borderRadius = '6px';
+      // A live spinner right over the diagram, not just the plot's own -- while tuning layers/width
+      // this is the thing a visitor is actually looking at, and it can be scrolled well away from
+      // #plotOverlay (especially on mobile), which is easy to miss the same way the very first
+      // spinner attempt was (see "Throbbers" in CLAUDE.md).
+      var archWrap = document.createElement('div'); archWrap.className = 'canvas-wrap'; archWrap.style.marginTop = '8px'; archWrap.style.maxWidth = '700px';
+      var archOverlay = document.createElement('div'); archOverlay.className = 'canvas-overlay'; archOverlay.id = 'mlpArchOverlay'; archOverlay.hidden = true;
+      var archSpinner = document.createElement('span'); archSpinner.className = 'spinner-big';
+      archOverlay.appendChild(archSpinner);
+      archWrap.appendChild(mlpArchCanvas); archWrap.appendChild(archOverlay);
+      box.appendChild(archLab); box.appendChild(archWrap); box.appendChild(archNote);
       renderMLPArchIfCurrent();
     } else {
       var note = document.createElement('p'); note.className = 'status'; note.textContent = 'No hyperparameters for this one.';
@@ -1214,7 +1230,7 @@
   var SURPRISES = [
     { dataset: 'xor', model: 'linreg', tip: 'A straight line can’t solve this — try Random Forest, the SVM, or the Neural Network instead.' },
     { dataset: 'circles', model: 'logreg', tip: 'A straight line can’t wrap around a ring — try k-Nearest Neighbors or the Neural Network instead.' },
-    { dataset: 'spirals', model: 'linsvm', tip: 'Even a max-margin straight line can’t untangle a spiral — try turning up the SVM’s gamma, or the Neural Network.' }
+    { dataset: 'spirals', model: 'linsvm', tip: 'Even a max-margin straight line can’t untangle a spiral — try the SVM (RBF kernel), or the Neural Network.' }
   ];
   $('surpriseMeBtn').addEventListener('click', function(){
     var pick = SURPRISES[Math.floor(Math.random() * SURPRISES.length)];
@@ -1247,10 +1263,6 @@
     for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
     return bytes;
   }
-  function lambdaToByte(lambda){ return Math.max(0, Math.min(255, Math.round(((Math.log10(lambda) + 3) / 3) * 255))); }
-  function byteToLambda(b){ return Math.pow(10, (b / 255) * 3 - 3); }
-  function gammaToByte(gamma){ return Math.max(0, Math.min(255, Math.round(((Math.log10(gamma) + 1) / 2) * 255))); }
-  function byteToGamma(b){ return Math.pow(10, (b / 255) * 2 - 1); }
   function buildPayload(){
     var header = new Uint8Array(12);
     header[0] = DATASETS.indexOf(state.datasetType);
@@ -1259,9 +1271,7 @@
     header[2] = (seed >>> 24) & 255; header[3] = (seed >>> 16) & 255; header[4] = (seed >>> 8) & 255; header[5] = seed & 255;
     var n = state.pointCount; header[6] = (n >> 8) & 255; header[7] = n & 255;
     var p = state.params;
-    if (state.model === 'linsvm') header[8] = lambdaToByte(p.lambda);
-    else if (state.model === 'svm'){ header[8] = lambdaToByte(p.lambda); header[9] = gammaToByte(p.gamma); }
-    else if (state.model === 'knn') header[8] = p.k;
+    if (state.model === 'knn') header[8] = p.k;
     else if (state.model === 'rf'){ header[8] = p.trees; header[9] = p.maxDepth; }
     else if (state.model === 'mlp'){ header[8] = p.layers; header[9] = p.width; }
     var parts = [header];
@@ -1285,11 +1295,9 @@
     if (dsIdx < 0 || dsIdx >= DATASETS.length || modelIdx < 0 || modelIdx >= MODELS.length) return null;
     var seed = ((bytes[2] << 24) | (bytes[3] << 16) | (bytes[4] << 8) | bytes[5]) >>> 0;
     var n = (bytes[6] << 8) | bytes[7];
-    var params = { lambda: 0.05, gamma: 2, k: 7, trees: 20, maxDepth: 5, layers: 2, width: 8, activation: 'relu'};
+    var params = { lambda: LINSVM_LAMBDA, svmGamma: SVM_GAMMA, svmLambda: SVM_LAMBDA, k: 7, trees: 20, maxDepth: 5, layers: 2, width: 8, activation: 'relu'};
     var modelKey = MODELS[modelIdx];
-    if (modelKey === 'linsvm') params.lambda = byteToLambda(bytes[8]);
-    else if (modelKey === 'svm'){ params.lambda = byteToLambda(bytes[8]); params.gamma = byteToGamma(bytes[9]); }
-    else if (modelKey === 'knn') params.k = bytes[8] || 7;
+    if (modelKey === 'knn') params.k = bytes[8] || 7;
     else if (modelKey === 'rf'){ params.trees = bytes[8] || 20; params.maxDepth = bytes[9] || 5; }
     else if (modelKey === 'mlp'){ params.layers = bytes[8] || 2; params.width = bytes[9] || 8; }
     var datasetType = DATASETS[dsIdx], points = null;
@@ -1338,7 +1346,8 @@
   function trainForExport(mkey, rnd){
     var trainer = { linreg: trainLinReg, logreg: trainLogReg, linsvm: trainLinSVM, svm: trainSVM, knn: trainKNN, nb: trainNB, rf: trainRF }[mkey];
     if (mkey === 'rf') return trainer(state.points, state.params, rnd);
-    if (mkey === 'knn' || mkey === 'linsvm' || mkey === 'svm') return trainer(state.points, state.params);
+    if (mkey === 'svm') return trainer(state.points, { gamma: state.params.svmGamma, lambda: state.params.svmLambda });
+    if (mkey === 'knn' || mkey === 'linsvm') return trainer(state.points, state.params);
     return trainer(state.points);
   }
   $('exportGridBtn').addEventListener('click', async function(){
@@ -1400,6 +1409,7 @@
     $('exportStatus').textContent = '';
     exportSpinner.hidden = true;
     $('downloadExportRow').style.display = 'flex';
+    hasExported = true; state.exportStale = false; updateExportStaleUI();
   });
   $('downloadExportBtn').addEventListener('click', function(){
     var a = document.createElement('a'); a.href = $('exportCanvas').toDataURL('image/png'); a.download = 'tonus-comparison.png'; a.click();
@@ -1444,11 +1454,10 @@
     state.datasetType = decoded.datasetType;
     state.model = decoded.model;
     state.seed = decoded.seed;
-    state.pointCount = decoded.pointCount || 150;
+    state.pointCount = decoded.pointCount || 200;
     state.params = decoded.params;
     if (decoded.points) state.points = decoded.points;
     else regenerateDataset();
-    $('pointCountRange').value = state.pointCount; $('pointCountLabel').textContent = state.pointCount;
     syncDatasetUI(); syncModelUI(); recompute();
   })();
 })();

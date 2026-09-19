@@ -95,6 +95,17 @@ implemented directly rather than as a separate curated preset — there was neve
 difference between "the hidden message dataset" and "a specific instance of it" once it's just
 one generator with one hardcoded message.
 
+**Point count is no longer a visitor-facing control.** A "Points" slider (30-300) used to sit
+right above the "New random seed" button — direct feedback was that this isn't a decision worth
+asking a first-time visitor to make ("the number of points isn't something that we need to expose
+to the user"). `state.pointCount` now just defaults to a fixed `200` and there's no UI to change
+it for a generated dataset; "if they want more, they can switch to custom" — Custom points (draw
+or CSV-upload) was already completely unbounded by this slider, so that escape hatch already
+existed and needed no changes. The share payload still carries a 2-byte point count (unused by any
+current UI, but harmless to keep — a previously-shared link that happened to encode some other
+count still decodes and regenerates correctly, `decoded.pointCount || 200` covers the case where
+an old/malformed payload has none).
+
 ## Models
 
 Each model exposes the same two-function shape: a `train*(points, params)` that returns whatever
@@ -111,7 +122,8 @@ see below.
   fixed learning rate 0.6) — the same `(prediction − label)` gradient form Inkling's own output
   layer uses, just for a 3-parameter model instead of a 64→18→26 network.
 - **Linear (hinge loss)** is the Pegasos algorithm (Shalev-Shwartz, Singer & Srebro) — stochastic
-  subgradient descent on hinge loss with L2 regularization, learning rate `1/(λt)`. Deliberately
+  subgradient descent on hinge loss with L2 regularization (`lambda`, fixed at `0.05`, no longer a
+  slider — see "Hyperparameters removed from the UI" below), learning rate `1/(λt)`. Deliberately
   labeled "linear classifier, hinge loss," never "SVM" — a true SVM is defined by its dual
   formulation and support vectors, and this is a primal, linearly-parameterized model trained to
   a similar-looking objective, not the same algorithm.
@@ -123,14 +135,11 @@ see below.
   (`y_i · f(x_i) < 1`) using an RBF kernel (`exp(-γ‖a-b‖²)`) instead of a plain dot product for
   every similarity comparison. A point's coefficient stays at exactly zero unless it ever
   triggers an update — only the points that do are "support vectors" in the literal sense, and
-  only they ever influence a prediction. Two hyperparameters, both reusing existing UI patterns:
-  `gamma` (kernel width, log-scale slider 0.1-10 — higher means each point's influence reaches a
-  smaller neighborhood, letting the boundary bend more tightly) and the same log-scale `lambda`
-  regularization slider the linear hinge-loss model already has (intentionally shared state —
-  they're the same *kind* of quantity for two different algorithms, not two unrelated settings
-  that happen to have the same name). Verified directly: on XOR, concentric rings, and moons —
-  none linearly separable — this model reached 95-100% accuracy where the linear/hinge-loss models
-  and Gaussian Naive Bayes all stayed well below 100%, confirming the kernel is doing real,
+  only they ever influence a prediction. Two hyperparameters, `gamma` (kernel width) and `lambda`
+  (regularization) — both fixed at `10` and `0.001` respectively, no longer sliders (see
+  "Hyperparameters removed from the UI" below). Verified directly: on XOR, concentric rings, and
+  moons — none linearly separable — this model reached 95-100% accuracy where the linear/hinge-loss
+  models and Gaussian Naive Bayes all stayed well below 100%, confirming the kernel is doing real,
   non-linear work and not just quietly falling back to a linear fit. Grid/point prediction is
   O(grid × training points) per render (every cell sums a kernel evaluation against every nonzero-
   alpha training point) — the same complexity class k-NN's own grid prediction already has, and
@@ -172,6 +181,45 @@ see below.
   network's tiny size the precision loss that broke Afterimage's much deeper gradient search
   hasn't shown up in testing; if an MLP boundary ever looks visibly wrong for no other reason,
   that's the first thing worth checking.
+
+## Hyperparameters removed from the UI: fixed constants instead
+
+Direct feedback, delivered as a batch of mobile-testing notes: "remove the linear regression
+hyperparameters [meaning the linear hinge-loss classifier's regularization slider — Linear
+Regression itself, the closed-form model, never had any]. remove the SVM hyperparameters. Just go
+with a kernel width of 10 and margin strength a 0.001." Both models' `paramRow()` branches were
+deleted from `syncModelUI()` outright — they now fall through to the same generic "No
+hyperparameters for this one." message every hyperparameter-free model (Linear Regression,
+Logistic Regression, Gaussian Naive Bayes) already shows, rather than being special-cased with an
+empty box of their own.
+
+The values themselves live as top-level constants next to the models they configure —
+`LINSVM_LAMBDA = 0.05` (unchanged from the old slider's default; no new value was requested for
+it) and `SVM_GAMMA = 10, SVM_LAMBDA = 0.001` (the exact values requested) — rather than folded back
+into `state.params.lambda`/`state.params.gamma` the way the sliders used to write them. That
+distinction matters: the linear hinge-loss model and the SVM used to *share* `params.lambda` on
+purpose (see "SVM (RBF kernel)" above, before this change — they were "the same kind of quantity
+for two different algorithms"), which was fine when a user could only ever be adjusting one of the
+two sliders at a time. Now that both are fixed, they need to be fixed at *different* numbers
+(`0.05` vs. `0.001`), so they can no longer share one field — `trainLinSVM` still reads
+`params.lambda`, while the SVM's own two values live in `state.params.svmGamma`/`svmLambda`
+instead and get remapped into a plain `{ gamma, lambda }` object at each of the two call sites
+(`recompute()`'s dispatch, and `trainForExport()`) that actually invoke `trainSVM` — `trainSVM`
+and `predictSVM` themselves are untouched, since they only ever cared about a `params.gamma`/
+`params.lambda` shape, not where those numbers originally came from.
+
+**The share-link payload got simpler, not more complicated, from this.** The 12-byte header used
+to spend bytes 8-9 encoding whichever of `lambda`/`gamma` the current model's now-removed sliders
+had been set to (`lambdaToByte`/`gammaToByte`, log-scale quantization to fit a hyperparameter
+spanning orders of magnitude into one byte). Since neither model has anything left to encode,
+those branches — and the four now-fully-unused `lambdaToByte`/`byteToLambda`/`gammaToByte`/
+`byteToGamma` helper functions — were deleted rather than left dead. A link generated with the
+linear hinge-loss classifier or the SVM selected now just leaves header bytes 8-9 at their default
+0 (identical to what Linear Regression, Logistic Regression, and Naive Bayes already did, since
+none of them ever had per-model bytes to write either) — decoding always resolves those two
+models' hyperparameters to the fixed constants above regardless of what (if anything) is sitting
+in those unused bytes, so an old link generated before this change still opens correctly, just
+with the new fixed values instead of whatever custom gamma/lambda it used to carry.
 
 ## `model.fit()` and `requestAnimationFrame`: three attempts before the real fix
 
@@ -347,6 +395,25 @@ already are (watching the boundary), rather than relying on a small icon in a st
 not be looking at. The export button keeps its own separate `#exportSpinner`, shown for the entire
 multi-model export.
 
+**A third overlay, `#mlpArchOverlay`, was added later directly over the Neural Network's own
+architecture diagram** — direct feedback ("we need to show a spinner on the neural network as well
+when it's training") after mobile testing. The plot's own overlay already covered every model,
+MLP included, from a strict "does `recompute()` show and hide it" standpoint — the actual gap was
+distance, not logic: while dragging a layers/width slider, the thing a visitor is looking at is the
+architecture diagram right under that slider, not the plot canvas down in step 3, which on a phone
+is very likely scrolled well out of view. `syncModelUI()`'s `mlp` branch now wraps `mlpArchCanvas`
+in its own `.canvas-wrap`/`.canvas-overlay`/`.spinner-big` (the identical trio `#plotOverlay`
+already uses, just a second instance), and `recompute()`'s `showSpinner()`/`hideSpinner()` toggle
+it too, guarded by `if (archOverlay)` rather than a `state.model === 'mlp'` check — the element
+only exists in the DOM at all while the Neural Network's params are showing (`syncModelUI()` tears
+down and rebuilds `#modelParams` on every model switch), so its mere presence already implies the
+right model is selected. The zero-points early-return branch (see "A real bug" below) also needed
+an explicit `archOverlay.hidden = true` of its own, since that branch returns before ever calling
+`showSpinner()`/`hideSpinner()` in the same pass — without it, an MLP training run that gets
+superseded by someone clearing all custom points mid-training could leave the architecture
+spinner stuck spinning forever, a real latent bug caught while wiring this up rather than one
+that had already been reported.
+
 ## A real bug: switching to an empty custom dataset while the Neural Network is selected
 
 **Also found directly during testing**, right after fixing the hang above. Selecting "Custom
@@ -469,6 +536,15 @@ about *why* you'd move it, leaving a first-time visitor to guess-and-check with 
 build on. Deliberately the opposite direction from a "how it works" deep-dive: one sentence, right
 where the decision is actually being made, not a paragraph to go read elsewhere.
 
+**Reversed later, on direct instruction: "How it works is supposed to be expanded by default."**
+`<details class="disclosure advanced">` now carries `open` again. The reasoning above for
+collapsing it in the first place hasn't been invalidated — the content still opened with formula
+blocks back then, which really was the problem — but by the time this reversal landed, the math
+had already been stripped out in favor of plain-language explanation (that part of this section
+still stands), so "collapsed to avoid scaring off a casual visitor with formulas" was solving a
+problem that no longer existed in the same form. Don't collapse this again without checking
+whether the actual objection (dense math, not the disclosure's open/closed state) has resurfaced.
+
 ## The drawing instructions were disconnected from the drawing surface
 
 UX review finding: "Custom points" mode's instructions and class toggle live in step 1 (where
@@ -542,9 +618,9 @@ arbitrary than just trusting the same honest number the accuracy readout itself 
 ## The export grid ignored whatever model you'd actually just gotten excited about
 
 UX review finding: `EXPORT_MODELS` was a hardcoded `['logreg', 'rf', 'knn', 'mlp']` regardless of
-what was selected — if a visitor had just tuned the SVM's gamma to solve their own hand-drawn
-spiral, the export retrained four completely different models from scratch and never showed the
-result they were actually proud of. `computeExportModelList()` now always puts `state.model` in
+what was selected — if a visitor had just picked the SVM to solve their own hand-drawn spiral, the
+export retrained four completely different models from scratch and never showed the result they
+were actually proud of. `computeExportModelList()` now always puts `state.model` in
 the first slot, filling the rest from the same `DEFAULT_EXPORT_MODELS` list minus whichever entry
 is now redundant with it — so the current model is always represented, the panel count stays at
 a fixed 4, and if the current model already *is* one of the defaults (e.g. Random Forest), nothing
@@ -557,27 +633,51 @@ Verified directly: exporting with SVM selected produced a real, non-erroring 4-p
 SVM included; exporting with Random Forest selected (already one of the defaults) still produced
 exactly 4 distinct panels with no duplicate.
 
+## The exported comparison grid had no way to say it was out of date
+
+Direct feedback: "when we change the dataset or hyperparameters for any of the models we need to
+at least indicate that comparison grid is stale." Once an export exists, nothing about the page
+distinguished "this PNG reflects exactly what's on screen right now" from "this PNG was rendered
+three datasets ago and someone's about to download it thinking it's current" — the export panel
+just sits there, unchanged, until someone clicks the button again. `markExportStale()` is called
+as the very first line of `recompute()` — the single choke point every dataset pick, model pick,
+hyperparameter slider, draw stroke, and CSV upload already funnels through — so it fires on
+anything that could actually change what an export would show, without needing to be wired into
+each of those input handlers separately. It sets `state.exportStale = true` and reveals
+`#exportStaleNote`, a `var(--danger)`-colored line directly under the export button; the export
+button's own click handler clears it (`state.exportStale = false`) once a fresh render actually
+completes. `hasExported` gates the whole thing on both sides — the note can't appear for a
+first-time visitor who's never exported anything (there's nothing to be stale relative to), and
+`markExportStale()` itself is a no-op until `hasExported` flips true, so idle page-load recomputes
+before any export don't do pointless work setting a flag nothing is checking yet. Deliberately
+"at least indicate," per the request's own wording — this doesn't auto-regenerate the export or
+block the download button, it just tells you to look again before you trust it.
+
 ## Testing changes
 
 No test suite — static page. Verify via a local static server (root-relative `/nav.js` and
 `/theme.css` mean `file://` won't pick them up). Golden path: confirm the page opens with the
-Moons dataset and Logistic Regression selected, a real heatmap and scattered points visible, and a
-training-accuracy readout well under 100% (moons genuinely isn't linearly separable) → switch to
-XOR and confirm Logistic Regression and the hinge-loss linear classifier both land near 50%
-accuracy while k-Nearest Neighbors, Random Forest, the SVM (RBF kernel), and the Neural Network
-all reach 90%+ — this is the core pedagogical claim of the whole tool, so it's the single most
-important thing to re-verify if any model's math is ever touched → confirm Gaussian Naive Bayes
-lands well below 100% on XOR too (its independence assumption is a textbook failure case for
-exactly this dataset) → for the SVM specifically, drag the gamma slider to both extremes and
-confirm the boundary visibly changes shape each time — poll the actual trained model's `gamma`
-field rather than trusting a fixed wait if scripting this, since a debounce (180ms) plus the
-spinner's now-enforced minimum visible duration (300ms) means a change can take a moment to fully
-settle → drag every hyperparameter slider for k-NN/Random Forest/the Neural Network and confirm the
-boundary and accuracy actually change, not just the displayed number → for the Neural Network
-specifically, confirm there's no epoch-count slider at all, confirm the architecture diagram
-redraws its *shape* the instant a layers/width slider moves (before the retrain finishes — check
-the "structure only" caption) and switches to real-weight coloring with the "colored by this
-network's real trained weights" caption once a training run completes → switch to "Custom points"
+Moons dataset and Logistic Regression selected, no "Points" slider anywhere in step 1 (just "New
+random seed"), a real heatmap and scattered points visible, and a training-accuracy readout well
+under 100% (moons genuinely isn't linearly separable) → switch to XOR and confirm Logistic
+Regression and the hinge-loss linear classifier both land near 50% accuracy while k-Nearest
+Neighbors, Random Forest, the SVM (RBF kernel), and the Neural Network all reach 90%+ — this is the
+core pedagogical claim of the whole tool, so it's the single most important thing to re-verify if
+any model's math is ever touched → confirm Gaussian Naive Bayes lands well below 100% on XOR too
+(its independence assumption is a textbook failure case for exactly this dataset) → select the
+linear hinge-loss classifier and the SVM in turn and confirm each shows "No hyperparameters for
+this one." rather than any slider — this is the one thing to re-check most carefully if either
+`LINSVM_LAMBDA`/`SVM_GAMMA`/`SVM_LAMBDA` is ever touched, since these are the two models where a
+regression would be silent (no error, just a quietly wrong fixed value) → drag every hyperparameter
+slider for k-NN/Random Forest/the Neural Network and confirm the boundary and accuracy actually
+change, not just the displayed number → for the Neural Network specifically, confirm there's no
+epoch-count slider at all, confirm the architecture diagram redraws its *shape* the instant a
+layers/width slider moves (before the retrain finishes — check the "structure only" caption) and
+switches to real-weight coloring with the "colored by this network's real trained weights" caption
+once a training run completes, and confirm the diagram's own overlay spinner (`#mlpArchOverlay`)
+is visible while that training run is in progress and gone once it completes — separately from,
+not instead of, the plot's own overlay — since this is the one model whose relevant spinner sits
+somewhere other than the plot canvas → switch to "Custom points"
 with **zero points already present** while the Neural Network is selected and confirm no console
 errors and a clean "No points yet" message (the exact regression documented above) → draw a small
 shape, confirm points are added continuously while dragging and the boundary retrains after
@@ -588,7 +688,11 @@ custom dataset) every point round-trip correctly → click "Export comparison gr
 four panels render with visibly different boundaries for the same underlying points, every panel
 label and the title are cleanly legible against the plain dark background (not overlapping any
 panel's own heatmap colors — the exact bug documented above), a QR code appears in the bottom-right
-corner, and "Download comparison as PNG" saves a real, non-empty file → confirm **both** the
+corner, "Download comparison as PNG" saves a real, non-empty file, and `#exportStaleNote` is
+hidden right after that export finishes → change the dataset (or the model, or any hyperparameter)
+and confirm `#exportStaleNote` appears without needing to click anything else, then click "Export
+comparison grid" again and confirm it disappears and the newly-rendered panels actually reflect
+the changed state — not the previous export's → confirm **both** the
 overlay spinner centered on the plot canvas (`#plotOverlay`/`.spinner-big`) and the small inline
 one next to the accuracy readout (`#computeSpinner`) are actually visible — not just toggled in
 the DOM — for *every* kind of change (dataset, model, and hyperparameter, not just Neural Network
