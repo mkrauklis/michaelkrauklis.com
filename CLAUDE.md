@@ -186,8 +186,10 @@ When adding a new lab tool, link both files and rely on `theme.css`'s defaults b
 new CSS — copying a whole `<style>` block from an existing tool page (the old pattern) is how
 the palette and the paragraph-width bug drifted out of sync across pages in the first place.
 
-`lab/index.html`'s tool list is ordered newest-first, top to bottom (currently Inkling, Echo
-State, Neural Viaduct, Vectis, Afterimage, Ridgeline) — add a new tool's card at the *top* of
+`lab/index.html`'s tool list is ordered newest-first, top to bottom (currently Attention, Tonus,
+Inkling, Echo State, Neural Viaduct, Vectis, Afterimage, Ridgeline — keep this parenthetical
+current when it drifts; it had already fallen a tool behind before this edit) — add a new tool's
+card at the *top* of
 `.tool-list`, not the bottom. Each card also gets a `/lab/<tool>/thumbnail.jpg` — build it from
 the tool's own real output, not placeholder art, but crop it to a **tight square around the
 actual content** before saving it (no padding/letterboxing baked into the file — if the tool's
@@ -207,8 +209,8 @@ Echo State trace of the text "MKConceptLab" (default reservoir: seed 42, H=8, sp
 0.9), not a hand-drawn icon. Every page's `<head>` links it directly (`<link rel="icon"
 type="image/png" href="/echo-state-trace-mkconceptlab.png">`, placed right before the
 `theme.css` link) rather than relying on the browser's automatic `/favicon.ico` fallback. If the
-site ever gets a different mascot/favicon, update all 9 pages' `<link>` tags together in one
-commit (root, `lab/index.html`, and 7 tools as of this writing — check `lab/index.html`'s own
+site ever gets a different mascot/favicon, update all 10 pages' `<link>` tags together in one
+commit (root, `lab/index.html`, and 8 tools as of this writing — check `lab/index.html`'s own
 newest-first list for the current count) — there's no shared head-include mechanism, so this one
 tag is duplicated per page the same way the SEO meta block below is.
 
@@ -225,7 +227,8 @@ rel="canonical">`, `og:type`/`og:site_name`/`og:title`/`og:description`/`og:url`
 duplicate the meta description and `<title>` rather than being written separately — there's no
 reason for them to diverge on a site this size.
 
-**`og:image`/`twitter:image` were added site-wide, in one pass, across all 9 pages** — this was
+**`og:image`/`twitter:image` were added site-wide, in one pass, across all pages that existed at
+the time (9; a 10th, Attention, followed the same convention when it shipped)** — this was
 deliberately held off on until it could be done consistently everywhere at once, not one page at
 a time (see git history for the earlier, longer-standing version of this note). Every image used
 is a **real, already-existing asset already vetted for another purpose on this site** — no new

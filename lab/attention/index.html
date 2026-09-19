@@ -1,0 +1,1196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="google-adsense-account" content="ca-pub-5936916546458743">
+<title>Attention — Watch a Language Model Decide What Matters</title>
+<meta name="description" content="Type a sentence and watch real scaled dot-product attention — the mechanism behind every modern language model — run on your own words, from tokens through Query/Key/Value, attention weights, a KV cache, and next-token prediction.">
+<link rel="canonical" href="https://michaelkrauklis.me/lab/attention/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Michael Krauklis">
+<meta property="og:title" content="Attention — Watch a Language Model Decide What Matters">
+<meta property="og:description" content="Type a sentence and watch real scaled dot-product attention — the mechanism behind every modern language model — run on your own words, from tokens through Query/Key/Value, attention weights, a KV cache, and next-token prediction.">
+<meta property="og:url" content="https://michaelkrauklis.me/lab/attention/">
+<meta property="og:image" content="https://michaelkrauklis.me/lab/attention/thumbnail.jpg">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Attention — Watch a Language Model Decide What Matters">
+<meta name="twitter:description" content="Type a sentence and watch real scaled dot-product attention — the mechanism behind every modern language model — run on your own words, from tokens through Query/Key/Value, attention weights, a KV cache, and next-token prediction.">
+<meta name="twitter:image" content="https://michaelkrauklis.me/lab/attention/thumbnail.jpg">
+<link rel="icon" type="image/png" href="/echo-state-trace-mkconceptlab.png">
+<link rel="stylesheet" href="/theme.css">
+<style>
+  :root{
+    --accent: #4fd17a; --accent-dim: #235c3d;
+    /* Query / Key / Value get three distinct hues so Stage 2's three offshoots (and every KV
+       table cell downstream) read as three different *kinds* of thing, not three shades of the
+       same accent -- Q reuses the page accent since it's the "active" one Stage 3 traces from. */
+    --q-color: #4fd17a; --k-color: #9b8cd9; --v-color: #e0a54c;
+  }
+  .wrap{ max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+  /* ---- example pills + hook ---- */
+  .pill-grid{ display:flex; flex-wrap:wrap; gap:10px; margin-top:14px; }
+  .pill{
+    background: var(--bg-panel-2); border:1px solid var(--line); color: var(--ink);
+    padding: 8px 14px; border-radius: 999px; font-size: 0.82rem; cursor:pointer;
+    font-family:'Inter', sans-serif; transition: border-color .12s ease, color .12s ease;
+  }
+  .pill:hover{ border-color: var(--accent); }
+  .pill.selected{ border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--bg-panel-2)); font-weight:600; }
+
+  .hook-caption{
+    font-size:1rem; line-height:1.55; color:var(--ink);
+    background:linear-gradient(180deg, color-mix(in srgb, var(--accent) 10%, transparent), transparent);
+    border-left:2px solid var(--accent); padding:14px 18px; border-radius:0 8px 8px 0;
+    margin-top:18px;
+  }
+  .hook-caption b{ color:var(--accent); }
+
+  /* ---- toggle groups (shared page-local pattern, same shape every other tool uses) ---- */
+  .toggle-group{ display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; }
+  .toggle-group button{
+    background: var(--bg-panel-2); border: 1px solid var(--line); color: var(--ink-dim);
+    padding: 9px 16px; border-radius: 6px; cursor: pointer; font-family: 'Inter', sans-serif;
+    font-size: 0.88rem; transition: all .12s ease;
+  }
+  .toggle-group button.active{ border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+
+  /* ---- token / QKV cards (Stage 1 + Stage 2 share this) ---- */
+  .tok-row{ display:flex; flex-wrap:wrap; gap:14px; margin-top:18px; }
+  .tok-card{
+    background: var(--bg-panel-2); border:1px solid var(--line); border-radius:8px;
+    padding:10px 12px; display:flex; flex-direction:column; gap:6px; min-width:76px;
+    cursor:pointer; transition:border-color .12s ease;
+  }
+  .tok-card:hover{ border-color: var(--accent-dim); }
+  .tok-card.active{ border-color: var(--accent); }
+  .tok-word{ font-size:0.92rem; white-space:nowrap; }
+  .tok-card.active .tok-word{ color:var(--accent); font-weight:600; }
+  .strip-row{ display:flex; align-items:center; gap:6px; }
+  .strip-label{ font-size:0.62rem; color:var(--ink-dim); width:16px; flex:0 0 auto; text-align:right; font-family:'JetBrains Mono', ui-monospace, monospace; }
+  .strip-label.q{ color:var(--q-color); }
+  .strip-label.k{ color:var(--k-color); }
+  .strip-label.v{ color:var(--v-color); }
+  .strip{ display:flex; gap:2px; }
+  .strip .cell{ width:5px; height:24px; border-radius:1px; background:#333; }
+  .strip.qkv .cell{ height:16px; }
+
+  .tooltip{ font-size:0.85rem; color:var(--ink-dim); min-height:20px; margin-top:12px; }
+
+  /* ---- attention SVG diagrams (main + go-deeper reuse) ---- */
+  .attn-wrap{
+    background: var(--bg-panel); border:1px solid var(--line); border-radius:8px;
+    padding:16px 8px 8px; overflow-x:auto;
+  }
+  .attn-wrap svg{ display:block; margin:0 auto; }
+  .attn-word{ font-size:12px; fill:var(--ink); text-anchor:middle; cursor:pointer; }
+  .attn-word.active{ fill:var(--accent); font-weight:600; }
+  .attn-dot{ fill:var(--ink-dim); }
+  .attn-dot.active{ fill:var(--accent); }
+  .legend-row{ display:flex; align-items:center; gap:18px; flex-wrap:wrap; margin-top:12px; font-size:0.85rem; color:var(--ink-dim); }
+  .legend-dot{ display:inline-block; width:11px; height:11px; border-radius:50%; margin-right:6px; vertical-align:-1px; }
+
+  .head-grid{ display:flex; gap:14px; flex-wrap:wrap; margin-top:14px; }
+  .head-panel{ flex:1 1 220px; min-width:220px; }
+  .head-panel .attn-wrap{ padding:10px 4px 4px; }
+  .head-panel-label{ font-size:0.78rem; color:var(--ink-dim); text-align:center; margin-top:6px; }
+
+  /* ---- KV cache table ---- */
+  .kv-table-wrap{ overflow-x:auto; margin-top:16px; }
+  table.kv-table{ border-collapse:collapse; width:100%; font-size:0.85rem; }
+  table.kv-table th{ text-align:left; color:var(--ink-dim); font-weight:600; font-size:0.75rem; padding:6px 10px; border-bottom:1px solid var(--line); }
+  table.kv-table td{ padding:6px 10px; border-bottom:1px solid var(--line); vertical-align:middle; }
+  table.kv-table tr.flash{ animation: flash-row .7s ease; }
+  @keyframes flash-row{ 0%{ background: color-mix(in srgb, var(--accent) 22%, transparent); } 100%{ background: transparent; } }
+  .kv-counter{ font-family:'JetBrains Mono', ui-monospace, monospace; color:var(--ink); margin-top:10px; }
+  .kv-counter b{ color:var(--accent); }
+
+  /* ---- prediction bars ---- */
+  .pred-row{ display:flex; align-items:center; gap:10px; margin-top:8px; cursor:pointer; }
+  .pred-word{ width:84px; flex:0 0 auto; font-family:'JetBrains Mono', ui-monospace, monospace; font-size:0.85rem; text-align:right; }
+  .pred-bar{ flex:1; height:16px; background:var(--bg-panel-2); border-radius:4px; overflow:hidden; }
+  .pred-bar > i{ display:block; height:100%; width:0%; background:var(--accent); transition:width .25s ease; }
+  .pred-row:hover .pred-bar > i{ filter:brightness(1.2); }
+  .pred-pct{ width:44px; flex:0 0 auto; font-size:0.78rem; color:var(--ink-dim); font-family:'JetBrains Mono', ui-monospace, monospace; }
+  .done-banner{
+    margin-top:16px; padding:12px 16px; border-radius:8px;
+    background:color-mix(in srgb, var(--accent) 12%, var(--bg-panel-2));
+    border:1px solid color-mix(in srgb, var(--accent) 40%, var(--line));
+    display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;
+    font-size:0.88rem;
+  }
+  .done-banner a{ font-weight:600; white-space:nowrap; }
+
+  /* ---- portrait + share ---- */
+  #portraitCanvas{ display:block; width:100%; max-width:520px; margin-top:16px; border:1px solid var(--line); border-radius:6px; background:#0c0e13; }
+  .qr-row{ display:flex; align-items:center; gap:20px; flex-wrap:wrap; margin-top:14px; }
+  #qrHolder canvas, #qrHolder img{ display:block; border-radius:6px; }
+  #shareUrlBox{ font-family:'JetBrains Mono', ui-monospace, monospace; font-size:0.78rem; color:var(--ink-dim); word-break:break-all; background:var(--bg-panel-2); border:1px solid var(--line); border-radius:6px; padding:10px 12px; max-width:420px; }
+
+  /* theme.css scopes .primary/.secondary to <button>; this is the one <a> on the page styled to
+     match, since an outbound Zazzle link can't be a <button>. */
+  a.primary{
+    background: var(--accent); color: #0b1310; border: none; padding: 12px 22px;
+    border-radius: 6px; font-weight: 600; font-size: 0.95rem; font-family: 'Inter', sans-serif;
+  }
+  a.primary:hover{ text-decoration:none; filter:brightness(1.08); }
+
+  .merch-cta{ display:flex; align-items:center; gap:28px; flex-wrap:wrap; margin-top:28px; padding-top:24px; border-top:1px solid var(--line); }
+  .merch-cta > div:last-child{ flex:1 1 240px; min-width:220px; }
+  .shirt-mockup{ position:relative; width:150px; height:160px; flex:0 0 auto; }
+  .shirt-mockup .shirt-body{ position:absolute; inset:0; width:100%; height:100%; display:block; }
+  .shirt-print{
+    position:absolute; left:43px; top:58px; width:64px; height:64px; border-radius:4px;
+    background-color:#0c0e13; background-size:cover; background-position:center;
+  }
+
+  /* ---- go deeper mini-tools ---- */
+  .deeper-block{ margin-top:36px; padding-top:28px; border-top:1px solid var(--line); }
+  .deeper-block:first-child{ margin-top:0; padding-top:0; border-top:none; }
+  .deeper-block h3{ font-size:1.05rem; margin:0 0 6px; }
+  .deeper-block p.lead{ margin:0 0 10px; font-size:0.9rem; }
+  .pos-compare{ display:flex; gap:24px; flex-wrap:wrap; margin-top:12px; }
+  .pos-compare > div{ flex:1 1 240px; }
+  .pos-compare-label{ font-size:0.78rem; color:var(--ink-dim); margin-bottom:8px; }
+  input[type=range].temp-slider{ max-width:320px; }
+</style>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5936916546458743"
+     crossorigin="anonymous"></script>
+</head>
+<body>
+<script src="/nav.js"></script>
+
+<header class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <span class="hero-line">the mechanism behind every modern language model, running on your own sentence</span>
+      <h1>Attention</h1>
+      <p>Type a sentence below. Before any explanation, this page has already run real
+      scaled dot-product attention on your own words — the same core operation from
+      <i>Attention Is All You Need</i> (Vaswani et al., 2017), the paper that made this the
+      heart of GPT, Claude, and everything like them. Scroll down to see, step by step,
+      exactly what just happened.</p>
+    </div>
+    <canvas id="heroCanvas"></canvas>
+  </div>
+</header>
+
+<main class="wrap" style="padding-top:40px;">
+
+<section id="step-hook">
+  <span class="step-tag">1 — the hook</span>
+  <h2>Type anything</h2>
+  <p>No button to click — attention runs on every keystroke, live, on this page's own default
+  example or on whatever you type instead.</p>
+  <div class="panel">
+    <input type="text" id="sentenceInput" spellcheck="false" autocomplete="off"
+      value="the river bank was steep near the old bridge">
+    <div class="pill-grid" id="examplePills"></div>
+    <div class="hook-caption" id="hookCaption">
+      That's attention deciding which of your words matter to each other. You just ran the
+      same math that powers ChatGPT.
+    </div>
+  </div>
+</section>
+
+<section id="step-tokens">
+  <span class="step-tag">2 — tokens &amp; embeddings</span>
+  <h2>Every word becomes a list of numbers</h2>
+  <p class="lead">Your sentence splits into tokens — usually a whole word, sometimes a
+  word-piece when it's long enough (marked with a leading <code>##</code>, the same convention
+  real subword tokenizers use). Each token gets an <b>embedding</b>: a short fingerprint of
+  numbers, rendered here as a small colored strip. Click any token to see what that means.</p>
+  <div class="panel">
+    <div class="tok-row" id="stage1Cards"></div>
+    <div class="toggle-group" id="posToggle">
+      <button type="button" data-pos="off" class="active">No position</button>
+      <button type="button" data-pos="on">Add position</button>
+    </div>
+    <p class="tooltip" id="tok1Tooltip">The model has no innate sense of word order — flip
+    this to see a position vector get added directly on top of every embedding.</p>
+  </div>
+</section>
+
+<section id="step-qkv">
+  <span class="step-tag">3 — query, key, value</span>
+  <h2>The step almost every explainer skips</h2>
+  <p class="lead">Each token's embedding gets projected three different ways — three learned
+  lenses on the same fingerprint, called <b>Query</b>, <b>Key</b>, and <b>Value</b>. Think of a
+  library: your <b>Query</b> is what you type into the search bar, every book's <b>Key</b> is
+  its catalog listing, and the <b>Value</b> is what's actually inside once you pick it up.</p>
+  <div class="panel">
+    <div class="tok-row" id="stage2Cards"></div>
+    <p class="tooltip">📚 <b style="color:var(--q-color);">Query</b> — what this word is
+    looking for. <b style="color:var(--k-color);">Key</b> — what this word has to offer, to
+    anyone looking. <b style="color:var(--v-color);">Value</b> — what it actually contributes,
+    once picked. Real models run several of these lenses in parallel, called <b>heads</b> —
+    see "Go deeper" below.</p>
+  </div>
+</section>
+
+<section id="step-attention">
+  <span class="step-tag">4 — attention itself</span>
+  <h2>Who's looking at whom</h2>
+  <p class="lead">Every word's Query asks every word's Key how relevant it is. Those raw scores
+  get squeezed through <b>softmax</b> into weights that sum to exactly 1 — the model is forced
+  to spend its full attention budget across the sentence, it just chooses how to split it.
+  Those weights then blend the Values into each word's new, context-aware output. Click a word
+  to spotlight what it's attending to.</p>
+  <div class="panel">
+    <div class="attn-wrap">
+      <svg id="attnSvg" viewBox="0 0 700 260" width="100%" height="260"></svg>
+    </div>
+    <div class="legend-row">
+      <span><span class="legend-dot" style="background:var(--accent);"></span>thicker / brighter = more attention</span>
+      <span>click a word to spotlight its attention</span>
+    </div>
+    <p class="tooltip" id="attnNote"></p>
+    <p class="tooltip" id="attnHonesty" style="margin-top:14px; border-top:1px solid var(--line); padding-top:12px;">
+    ⚠ <b>What's real here, and what isn't:</b> the dot products, the softmax, and the blending
+    are exactly the real operation. What's <i>not</i> real is which words end up mattering to
+    which — these Query/Key lenses are fixed, untrained numbers, not weights learned from
+    billions of real sentences. In an actual trained model, that's what makes "bank" attend
+    differently near "river" than near "loan." Here, the mechanism is authentic; the judgment
+    behind it isn't. See "How this actually works" below for why that trade was made on purpose.</p>
+  </div>
+</section>
+
+<section id="step-kv">
+  <span class="step-tag">5 — the kv cache</span>
+  <h2>Now watch it generate, one token at a time</h2>
+  <p class="lead">Everything above treated your sentence as fully typed and analyzed at once.
+  A real chatbot writes its reply one token at a time instead — and that's the only situation
+  where a <b>KV cache</b> makes sense. Once a token's Key and Value are computed, they never
+  change (they only depend on that token and the ones before it) — only a fresh Query gets
+  computed at each new step. Click "Generate next token" below and watch this table grow.</p>
+  <div class="panel">
+    <div class="toggle-group" id="cacheToggle">
+      <button type="button" data-cache="on" class="active">Cache on</button>
+      <button type="button" data-cache="off">Cache off</button>
+    </div>
+    <div class="kv-table-wrap">
+      <table class="kv-table">
+        <thead><tr><th>token</th><th>Key</th><th>Value</th></tr></thead>
+        <tbody id="kvTableBody"></tbody>
+      </table>
+    </div>
+    <p class="kv-counter" id="kvCounter"></p>
+    <p class="tooltip">With the cache <b>off</b>, every new token forces a full recomputation of
+    every row so far (watch the whole table flash) — wasteful, since nothing about the earlier
+    rows actually changed. With it <b>on</b>, only the new row lights up. Either way the output
+    is identical — this is a real speed/redundancy difference, never a correctness one.</p>
+  </div>
+</section>
+
+<section id="step-predict">
+  <span class="step-tag">6 — prediction</span>
+  <h2>What comes next?</h2>
+  <p class="lead">The last token's context-aware output gets projected once more and compared
+  against a list of candidate next words — the closer the match, the higher the probability.
+  Pick one yourself, or let the top pick auto-select, and the whole pipeline — tokenize, embed,
+  attend, cache — visibly reruns for one more step.</p>
+  <div class="panel">
+    <div id="predBars"></div>
+    <div class="actions">
+      <button type="button" class="primary" id="generateBtn">Generate next token ▶</button>
+      <button type="button" class="secondary" id="resetGenBtn">Reset generation</button>
+      <label style="display:flex; align-items:center; gap:6px; font-size:0.85rem; color:var(--ink-dim); cursor:pointer;">
+        <input type="checkbox" id="autoPickCheck" style="accent-color:var(--accent);">
+        always take the top pick (unchecked = sample from the odds — real randomness, not fake)
+      </label>
+    </div>
+    <div class="done-banner" id="genDoneBanner" hidden>
+      <span>✅ That's five real generation steps — a real language model just keeps repeating this.</span>
+      <a href="#step-portrait" id="genDoneLink">See your portrait ↓</a>
+    </div>
+  </div>
+</section>
+
+<section id="step-portrait">
+  <span class="step-tag">7 — take it with you</span>
+  <h2>Your sentence portrait</h2>
+  <p>A single image built from everything above: your sentence, its attention pattern, the
+  embedding fingerprints, and a slice of the KV cache — rendered small and dense, like
+  circuitry. Download it, or scan the QR code to reopen this exact sentence live.</p>
+  <div class="row">
+    <div class="col">
+      <canvas id="portraitCanvas" width="1200" height="1500"></canvas>
+      <div class="actions">
+        <button type="button" class="primary" id="downloadPortraitBtn">Download portrait PNG</button>
+      </div>
+    </div>
+    <div class="col">
+      <div class="qr-row">
+        <div id="qrHolder"></div>
+        <div>
+          <div id="shareUrlBox"></div>
+          <div class="actions">
+            <button type="button" class="secondary" id="copyUrlBtn">Copy link</button>
+            <button type="button" class="secondary" id="downloadQrBtn">Download QR as PNG</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="merch-cta">
+        <div class="shirt-mockup" aria-hidden="true">
+          <svg class="shirt-body" viewBox="0 0 150 160">
+            <path d="M40 8 L20 26 L32 42 L40 36 L40 150 L110 150 L110 36 L118 42 L130 26 L110 8 L95 18 Q75 30 55 18 Z"
+              fill="#1d2230" stroke="#2a3040" stroke-width="2"/>
+          </svg>
+          <div class="shirt-print" id="shirtPrint"></div>
+        </div>
+        <div>
+          <p style="margin:0 0 10px;">Whatever pattern your sentence made is worth putting on
+          something — download the portrait above, then upload it here to make it real.</p>
+          <div class="actions">
+            <a class="primary" href="https://www.zazzle.com/personalized_one_of_a_kind_photo_collage_t_shirt-235429040115913948?rf=238054754631086278" target="_blank" rel="noopener" style="display:inline-block; text-decoration:none;">Put it on a shirt →</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<details class="disclosure advanced">
+  <summary>Go deeper <span class="adv-sub">— four more things worth playing with</span></summary>
+  <div class="disclosure-body panel">
+    <p class="status" style="margin-bottom:0;">Each of these reuses a mechanic already built
+    above, just isolated so you can sit with one idea at a time. Everything below stays in sync
+    with whatever sentence you typed above.</p>
+
+    <div class="deeper-block">
+      <h3>🧵 Multi-head comparison</h3>
+      <p class="lead">Real models don't run one Query/Key/Value lens — they run several in
+      parallel, called <b>heads</b>, each with its own fixed random projections here. Different
+      heads learn to track different kinds of relationships in a trained model — one might
+      track grammar, another topic. Here, since nothing is trained, they just look like
+      independent, differently-shaped guesses — which is itself the honest point.</p>
+      <div class="toggle-group" id="headCountToggle">
+        <button type="button" data-heads="2">2 heads</button>
+        <button type="button" data-heads="3" class="active">3 heads</button>
+        <button type="button" data-heads="4">4 heads</button>
+      </div>
+      <div class="head-grid" id="headGrid"></div>
+    </div>
+
+    <div class="deeper-block">
+      <h3>📍 Positional encoding, isolated</h3>
+      <p class="lead">The exact same comparison from Stage 2's toggle, replayed side by side
+      with nothing else changing — the same embedding, position off vs. on.</p>
+      <div class="pos-compare">
+        <div>
+          <div class="pos-compare-label">Without position</div>
+          <div class="tok-row" id="posOffCards" style="margin-top:0;"></div>
+        </div>
+        <div>
+          <div class="pos-compare-label">With position added</div>
+          <div class="tok-row" id="posOnCards" style="margin-top:0;"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="deeper-block">
+      <h3>🔒 Causal masking</h3>
+      <p class="lead">A model generating text one token at a time can't peek at words it hasn't
+      written yet. Masking blacks out every connection to a future token before softmax runs —
+      compare the same sentence with and without it.</p>
+      <div class="toggle-group" id="causalToggle">
+        <button type="button" data-causal="off" class="active">No mask (sees everything)</button>
+        <button type="button" data-causal="on">Causal mask (can't see ahead)</button>
+      </div>
+      <div class="attn-wrap" style="margin-top:14px;">
+        <svg id="causalSvg" viewBox="0 0 700 220" width="100%" height="220"></svg>
+      </div>
+    </div>
+
+    <div class="deeper-block">
+      <h3>🌡️ Temperature &amp; sampling</h3>
+      <p class="lead">The same next-word ranking from Stage 6, now with a dial. Low temperature
+      sharpens the model's confidence toward its single top pick; high temperature flattens the
+      odds so long-shot words get a real chance — the same knob every real chat model exposes as
+      "creativity."</p>
+      <label class="field">Temperature — <span class="field-value" id="tempVal">1.00</span></label>
+      <input type="range" class="temp-slider" id="tempSlider" min="0.3" max="2" step="0.05" value="1">
+      <div id="tempBars" style="margin-top:12px;"></div>
+    </div>
+  </div>
+</details>
+
+<details class="disclosure advanced">
+  <summary>How this actually works <span class="adv-sub">— for anyone curious, no math background needed</span></summary>
+  <div class="disclosure-body">
+    <p>Every real computation on this page runs on your own words, live, entirely in your
+    browser — nothing you type is sent anywhere. The one thing that's <i>not</i> real is the
+    starting material: normally these numbers come from months of training on real text.
+    Here, that training never happened.</p>
+
+    <h3 style="margin-top:24px;">Why the embeddings and projections are fixed, not trained</h3>
+    <p>Every token's embedding here is a deterministic fingerprint generated from the word's own
+    spelling (a seeded hash, not a lookup into any real vocabulary) — "bank" always gets the
+    exact same 16 numbers, but those numbers carry no relationship to "river," "loan," or
+    anything else. The Query, Key, and Value projections are small, fixed random matrices too.
+    That was a deliberate choice, not a shortcut taken lightly: a real pretrained embedding
+    table would make Stage 1's fingerprints "mean" something, but the attention <i>pattern</i>
+    you actually watch in Stage 4 is driven by the Query/Key projections, not the embeddings
+    themselves — and those projections would still be untrained, fixed, random numbers either
+    way. Shipping a real embedding table would have added real asset weight for a benefit that
+    doesn't survive to the part you actually watch. So: the mechanism (every dot product,
+    softmax, and weighted blend) is 100% real and exactly what a trained model does. The
+    judgment behind <i>which</i> words end up mattering to which is not — that's what training
+    on real language actually buys you, and it's honestly out of scope for a page that runs
+    entirely in a browser tab with no server and no training step.</p>
+
+    <h3 style="margin-top:24px;">Tokenization</h3>
+    <p>Real tokenizers (like BPE, used by GPT-style models) learn their word-splitting rules
+    from millions of real documents. This page uses a much simpler stand-in: split on
+    whitespace, peel off trailing punctuation as its own token, and split a long word before a
+    common suffix (like <code>-ing</code> or <code>-tion</code>), marking the split piece with
+    a leading <code>##</code> the same way real subword tokenizers do. It's a simplified
+    approximation built to make the "words sometimes split into pieces" idea visible and
+    genuinely happen sometimes — not a reimplementation of BPE itself.</p>
+
+    <h3 style="margin-top:24px;">Positional encoding</h3>
+    <p>This one <i>is</i> the real formula from the original paper — alternating sine and
+    cosine waves at different frequencies per position, added directly on top of the
+    embedding. No shortcuts here: this is exactly how real transformers inject word order.</p>
+
+    <h3 style="margin-top:24px;">Attention</h3>
+    <p>Real scaled dot-product attention: for every pair of tokens, the Query of one is dotted
+    with the Key of the other, divided by the square root of the projection size (keeps the
+    numbers from blowing up as dimensions grow), and every token's full row of scores is run
+    through softmax so it sums to exactly 1. Those weights are the literal thickness/brightness
+    of the threads you saw in Stage 4. The final output for a token is a weighted sum of every
+    token's Value, using those exact weights — also real, also exactly what a trained model
+    does with its own (trained) numbers.</p>
+
+    <h3 style="margin-top:24px;">The KV cache</h3>
+    <p>Keys and Values only ever depend on a token and the ones before it, which is why they
+    never need to be recomputed once they exist — a fact that's true in any real model,
+    trained or not, since it's a property of the causal generation setup, not of what the
+    numbers happen to be. The "redundant computations avoided" counter is a real count of how
+    many rows a naive from-scratch implementation would have recomputed at each step that this
+    page's cache-on path skipped — it's not measuring actual wall-clock time (everything here
+    is small enough to be instant either way), just the real structural redundancy the cache
+    exists to eliminate.</p>
+
+    <h3 style="margin-top:24px;">Predicting the next token</h3>
+    <p>A real language model's final layer projects its last hidden state back into vocabulary
+    space and picks a probability for literally every word it knows. This page does the same
+    kind of projection — one more fixed matrix maps the attention output back into embedding
+    space, then compares that against a candidate word list using the exact same dot-product
+    similarity attention itself uses — but the candidate list is a few hundred common English
+    words, not a real vocabulary, and the matrix is untrained. That's why generated continuations
+    read as plausible-looking word soup rather than fluent language: the mechanism (project,
+    compare, softmax, sample) is real; the fluency a trained model has learned is not.</p>
+
+    <h3 style="margin-top:24px;">The sentence portrait and share link</h3>
+    <p>The portrait canvas redraws the same attention geometry, embedding strips, and a slice
+    of the KV cache at print resolution, entirely from your sentence — no separate export
+    pipeline that could drift out of sync with what you actually saw. The share link and QR
+    code encode nothing but your sentence text itself (URL-encoded, packed after <code>?s=</code>)
+    — every embedding, projection, and attention weight is fully deterministic from that one
+    string, so there's nothing else to transmit. Generated via the same vendored
+    <code>qrcode.min.js</code> library already sitting in Tonus's, Echo State's, and Inkling's
+    own folders.</p>
+
+    <h3 style="margin-top:24px;">Learn more</h3>
+    <p>Vaswani et al., <a href="https://arxiv.org/abs/1706.03762" target="_blank" rel="noopener"><i>Attention Is All You Need</i></a>
+    (2017) — the paper this page's name and mechanism both come from. Everything on this page
+    is the real computation at small, untrained scale, not an illustration of it — the same
+    claim every other tool in The Concept Lab makes about its own math.</p>
+  </div>
+</details>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    Attention runs entirely in your browser — nothing you type is sent anywhere.
+    Part of <a href="/lab/">The Concept Lab</a> by <a href="/">Michael Krauklis</a>.
+  </div>
+</footer>
+
+<script src="qrcode.min.js"></script>
+<script>
+(function(){
+  "use strict";
+  function $(id){ return document.getElementById(id); }
+
+  // ---------------- deterministic PRNG + hashing (same discipline every tool here uses) ----------------
+  function mulberry32(seed){
+    return function(){
+      seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+      var t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function hashStr(s){
+    var h = 2166136261;
+    for (var i = 0; i < s.length; i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return h >>> 0;
+  }
+
+  // ---------------- dimensions ----------------
+  var EMB_DIM = 16, QKV_DIM = 8, N_HEADS = 4, MAX_GEN_STEPS = 5;
+
+  // ---------------- tokenizer: whitespace + punctuation peel + a simplified suffix split ----------------
+  // Real BPE learns its merges from millions of documents; this is a hand-picked stand-in just
+  // big enough to make "long words sometimes split into pieces" genuinely happen. The leading
+  // "##" on the split-off piece mirrors the convention real WordPiece/BPE tokenizers use.
+  // Longer, more distinctive suffixes get a lower length bar; short ones ("er", "s", "ed") are
+  // real suffixes but false-positive constantly on ordinary short words ("river", "water") that
+  // just happen to end that way -- gated behind a longer minimum word length so a split only
+  // happens where it's actually plausible, at the cost of sometimes missing a real one.
+  var SUFFIXES = ['tion', 'sion', 'ness', 'ment', 'able', 'ible', 'ing', 'est'];
+  var SHORT_SUFFIXES = ['ed', 'er', 'ly', 's'];
+  function trySuffixList(word, lower, list, minWordLen, minStemLen){
+    if (lower.length < minWordLen) return null;
+    for (var i = 0; i < list.length; i++){
+      var suf = list[i];
+      if (lower.length - suf.length >= minStemLen && lower.slice(-suf.length) === suf){
+        return [word.slice(0, word.length - suf.length), '##' + word.slice(word.length - suf.length)];
+      }
+    }
+    return null;
+  }
+  function splitSubword(word){
+    var lower = word.toLowerCase();
+    return trySuffixList(word, lower, SUFFIXES, 6, 4) || trySuffixList(word, lower, SHORT_SUFFIXES, 8, 5) || [word];
+  }
+  function tokenize(sentence){
+    var raw = (sentence || '').trim().split(/\s+/).filter(Boolean);
+    var toks = [];
+    raw.forEach(function(w){
+      var m = w.match(/^([A-Za-z0-9']+)([.,!?;:]*)$/);
+      var core = m ? m[1] : w, punct = m ? m[2] : '';
+      if (core) splitSubword(core).forEach(function(p){ toks.push(p); });
+      if (punct) toks.push(punct);
+    });
+    return toks.length ? toks : ['hello'];
+  }
+
+  // ---------------- embeddings, position, projections ----------------
+  // Deterministic hash-seeded fingerprint, not a real pretrained lookup -- see "How this
+  // actually works" on the page itself for exactly why that trade was made.
+  function tokenEmbedding(tok){
+    var rand = mulberry32(hashStr('emb:' + tok.toLowerCase()));
+    var v = [];
+    for (var i = 0; i < EMB_DIM; i++) v.push(rand() * 2 - 1);
+    return v;
+  }
+  // The real formula from Vaswani et al. -- no simplification here.
+  function positionalEncoding(pos, dim){
+    var v = [];
+    for (var i = 0; i < dim; i++){
+      var angle = pos / Math.pow(10000, (2 * Math.floor(i / 2)) / dim);
+      v.push(i % 2 === 0 ? Math.sin(angle) : Math.cos(angle));
+    }
+    return v;
+  }
+  function addVec(a, b){ return a.map(function(x, i){ return x + b[i]; }); }
+  function makeMatrix(rows, cols, seedStr){
+    var rand = mulberry32(hashStr(seedStr));
+    var m = [];
+    for (var r = 0; r < rows; r++){
+      var row = [];
+      for (var c = 0; c < cols; c++) row.push((rand() * 2 - 1) * 0.6);
+      m.push(row);
+    }
+    return m;
+  }
+  function matVec(vec, mat){
+    var out = new Array(mat[0].length).fill(0);
+    for (var r = 0; r < mat.length; r++){
+      var vr = vec[r], row = mat[r];
+      for (var c = 0; c < row.length; c++) out[c] += vr * row[c];
+    }
+    return out;
+  }
+  function dot(a, b){ var s = 0; for (var i = 0; i < a.length; i++) s += a[i] * b[i]; return s; }
+  function softmax(arr){
+    var m = -Infinity; for (var i = 0; i < arr.length; i++) if (arr[i] > m) m = arr[i];
+    var ex = arr.map(function(x){ return Math.exp(x - m); });
+    var s = ex.reduce(function(a, b){ return a + b; }, 0);
+    return ex.map(function(x){ return x / s; });
+  }
+
+  // Fixed, untrained projection lenses -- one set per "head." Head 0 is what the main pipeline
+  // (Stages 2-6) always uses; heads 1-3 exist only for the Go Deeper multi-head comparison.
+  var HEADS = [];
+  for (var h = 0; h < N_HEADS; h++){
+    HEADS.push({
+      Wq: makeMatrix(EMB_DIM, QKV_DIM, 'Wq-head-' + h),
+      Wk: makeMatrix(EMB_DIM, QKV_DIM, 'Wk-head-' + h),
+      Wv: makeMatrix(EMB_DIM, QKV_DIM, 'Wv-head-' + h)
+    });
+  }
+  // Projects an attention output back into embedding space for next-token comparison (Stage 6 /
+  // temperature Go Deeper tool) -- see "How this actually works" for why this reuses the same
+  // dot-product-similarity idea attention itself uses, rather than a fixed vocab-sized matrix.
+  var Wu = makeMatrix(QKV_DIM, EMB_DIM, 'Wu-fixed-v1');
+
+  // ---------------- the pipeline itself ----------------
+  // tokens -> embeddings (+ position) -> Q/K/V for one head -> (optionally causally masked)
+  // scaled dot-product attention -> per-token blended output. Every stage below just reads a
+  // slice of what this one function already computed.
+  function computePipeline(tokens, opts){
+    opts = opts || {};
+    var headIdx = opts.headIdx || 0;
+    var posOn = !!opts.posOn;
+    var causal = !!opts.causal;
+    var head = HEADS[headIdx];
+    var baseEmb = tokens.map(tokenEmbedding);
+    var finalEmb = posOn
+      ? baseEmb.map(function(e, i){ return addVec(e, positionalEncoding(i, EMB_DIM)); })
+      : baseEmb.map(function(e){ return e.slice(); });
+    var Q = finalEmb.map(function(e){ return matVec(e, head.Wq); });
+    var K = finalEmb.map(function(e){ return matVec(e, head.Wk); });
+    var V = finalEmb.map(function(e){ return matVec(e, head.Wv); });
+    var scale = Math.sqrt(QKV_DIM);
+    var weights = Q.map(function(q, i){
+      var scores = K.map(function(k, j){ return (causal && j > i) ? -Infinity : dot(q, k) / scale; });
+      return softmax(scores);
+    });
+    var output = weights.map(function(w){
+      var out = new Array(QKV_DIM).fill(0);
+      w.forEach(function(wt, j){ if (wt > 0) for (var d = 0; d < QKV_DIM; d++) out[d] += wt * V[j][d]; });
+      return out;
+    });
+    return { tokens: tokens, baseEmb: baseEmb, finalEmb: finalEmb, Q: Q, K: K, V: V, weights: weights, output: output };
+  }
+
+  // ---------------- next-token prediction ----------------
+  var VOCAB_BASE = ['the','a','and','of','to','in','that','it','was','for','on','with','as','at','by','from',
+    'this','which','or','an','be','are','were','had','has','have','not','but','if','so','because','when',
+    'while','after','before','then','than','into','over','under','near','far','old','new','big','small',
+    'tall','short','dark','bright','quiet','loud','river','bank','bridge','water','money','loan','check',
+    'cave','bat','ball','game','home','run','house','door','window','road','street','city','town','mountain',
+    'forest','tree','leaf','wind','rain','storm','sun','moon','star','sky','cloud','fire','ice','stone','rock',
+    'sand','field','garden','flower','bird','fish','dog','cat','horse','child','man','woman','friend','teacher',
+    'student','book','word','story','song','music','light','shadow','time','day','night','morning','evening',
+    'year','world','life','love','fear','hope','dream','idea','question','answer','work','play','walk','jump',
+    'sit','stand','look','see','hear','feel','think','know','say','tell','ask','give','take','make','build',
+    'break','fix','open','close'];
+  function candidateVocab(tokens){
+    var seen = {}, out = [];
+    VOCAB_BASE.forEach(function(w){ if (!seen[w]){ seen[w] = 1; out.push(w); } });
+    tokens.forEach(function(t){
+      var w = t.replace(/^##/, '').toLowerCase();
+      if (w && !/^[.,!?;:]+$/.test(w) && !seen[w]){ seen[w] = 1; out.push(w); }
+    });
+    return out;
+  }
+  function nextTokenDistribution(outputVec, candidates, temperature){
+    var q = matVec(outputVec, Wu);
+    var logits = candidates.map(function(w){ return dot(q, tokenEmbedding(w)) / Math.sqrt(EMB_DIM); });
+    var scaled = logits.map(function(l){ return l / Math.max(0.05, temperature); });
+    var probs = softmax(scaled);
+    return candidates.map(function(w, i){ return { word: w, p: probs[i] }; }).sort(function(a, b){ return b.p - a.p; });
+  }
+
+  // ---------------- shared rendering helpers ----------------
+  function cellColor(v, kind){
+    var a = Math.min(1, Math.abs(v));
+    var pos = kind === 'k' ? [155, 140, 217] : kind === 'v' ? [224, 165, 76] : [79, 209, 122];
+    var neg = [217, 122, 108];
+    var c = v >= 0 ? pos : neg;
+    return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + (0.18 + 0.72 * a) + ')';
+  }
+  function renderStrip(container, vec, kind){
+    container.innerHTML = '';
+    vec.forEach(function(v){
+      var cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.style.background = cellColor(v, kind);
+      container.appendChild(cell);
+    });
+  }
+  function escapeHtml(s){ return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+  // Shared by Stage 1 (embedding only) and Stage 2 (embedding + Q/K/V) -- and by the Go Deeper
+  // positional-encoding comparison -- so all four places a token gets rendered as a strip-card
+  // read identically and can never quietly drift apart from each other.
+  function renderTokenCards(container, pipeline, opts){
+    opts = opts || {};
+    container.innerHTML = '';
+    pipeline.tokens.forEach(function(tok, i){
+      var card = document.createElement('div');
+      card.className = 'tok-card' + (opts.activeIdx === i ? ' active' : '');
+      var wordDiv = document.createElement('div');
+      wordDiv.className = 'tok-word'; wordDiv.textContent = tok;
+      card.appendChild(wordDiv);
+      var embRow = document.createElement('div'); embRow.className = 'strip-row';
+      var embStrip = document.createElement('div'); embStrip.className = 'strip';
+      embRow.appendChild(embStrip); card.appendChild(embRow);
+      renderStrip(embStrip, pipeline.finalEmb[i]);
+      if (opts.showQKV){
+        [['Q', pipeline.Q[i], 'q'], ['K', pipeline.K[i], 'k'], ['V', pipeline.V[i], 'v']].forEach(function(t){
+          var row = document.createElement('div'); row.className = 'strip-row';
+          var label = document.createElement('span'); label.className = 'strip-label ' + t[2]; label.textContent = t[0];
+          var strip = document.createElement('div'); strip.className = 'strip qkv';
+          row.appendChild(label); row.appendChild(strip); card.appendChild(row);
+          renderStrip(strip, t[1], t[2]);
+        });
+      }
+      if (opts.onClick) card.addEventListener('click', function(){ opts.onClick(i); });
+      container.appendChild(card);
+    });
+  }
+
+  // Reused for the main Stage 4 diagram, every Go Deeper multi-head panel, and the causal-mask
+  // comparison -- one geometry, every consumer just supplies different weights/activeIdx.
+  function renderAttentionSVG(svg, tokens, weights, activeIdx, dims){
+    var W = dims.w, H = dims.h;
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    var n = tokens.length;
+    var padX = Math.min(46, W * 0.08);
+    var usable = W - padX * 2;
+    var y = H * 0.28;
+    var xs = n === 1 ? [W / 2] : tokens.map(function(_, i){ return padX + usable * i / (n - 1); });
+    var parts = [];
+    for (var i = 0; i < n; i++){
+      for (var j = 0; j < n; j++){
+        if (i === j) continue;
+        var w = weights[i][j];
+        if (w < 0.03) continue;
+        var focus = (activeIdx === null || activeIdx === undefined) || activeIdx === i;
+        var opacity = focus ? Math.min(0.9, 0.12 + w * 1.6) : 0.04;
+        var strokeW = Math.max(0.6, w * (dims.compact ? 6 : 10));
+        var x1 = xs[i], x2 = xs[j];
+        var midX = (x1 + x2) / 2;
+        var dip = Math.min(H * 0.4, 30 + Math.min(70, Math.abs(x1 - x2) * 0.15));
+        parts.push('<path d="M ' + x1 + ' ' + y + ' Q ' + midX + ' ' + (y + dip) + ' ' + x2 + ' ' + y +
+          '" fill="none" stroke="var(--accent)" stroke-width="' + strokeW + '" stroke-opacity="' + opacity + '" stroke-linecap="round"/>');
+      }
+    }
+    for (var k = 0; k < n; k++){
+      var isActive = activeIdx === k;
+      parts.push('<circle class="attn-dot' + (isActive ? ' active' : '') + '" cx="' + xs[k] + '" cy="' + y + '" r="4"></circle>');
+      parts.push('<text class="attn-word' + (isActive ? ' active' : '') + '" data-i="' + k + '" x="' + xs[k] + '" y="' + (y + 26) +
+        '" font-size="' + (dims.compact ? 10 : 12) + '">' + escapeHtml(tokens[k]) + '</text>');
+    }
+    svg.innerHTML = parts.join('');
+    return xs;
+  }
+
+  // ---------------- main pipeline state + render ----------------
+  var state = { posOn: false, activeIdx: null };
+  var sentenceInput = $('sentenceInput');
+
+  function currentTokens(){ return tokenize(sentenceInput.value); }
+
+  function render(){
+    var tokens = currentTokens();
+    if (state.activeIdx !== null && state.activeIdx >= tokens.length) state.activeIdx = null;
+    var p = computePipeline(tokens, { headIdx: 0, posOn: state.posOn });
+
+    renderTokenCards($('stage1Cards'), p, {
+      onClick: function(i){
+        state.activeIdx = (state.activeIdx === i) ? null : i;
+        $('tok1Tooltip').textContent = state.activeIdx === i
+          ? '"' + tokens[i] + '" — a ' + EMB_DIM + '-number fingerprint. Fixed for this demo, not learned live.'
+          : 'The model has no innate sense of word order — flip this to see a position vector get added directly on top of every embedding.';
+        render();
+      }
+    });
+    renderTokenCards($('stage2Cards'), p, { showQKV: true, activeIdx: state.activeIdx, onClick: function(i){ state.activeIdx = (state.activeIdx === i) ? null : i; render(); } });
+
+    var xs = renderAttentionSVG($('attnSvg'), tokens, p.weights, state.activeIdx, { w: 700, h: 260 });
+    Array.prototype.forEach.call($('attnSvg').querySelectorAll('text.attn-word'), function(el){
+      el.addEventListener('click', function(){
+        var i = +el.getAttribute('data-i');
+        state.activeIdx = (state.activeIdx === i) ? null : i;
+        render();
+      });
+    });
+    if (state.activeIdx !== null){
+      var ranked = p.weights[state.activeIdx]
+        .map(function(w, i){ return { w: w, i: i }; })
+        .filter(function(o){ return o.i !== state.activeIdx; })
+        .sort(function(a, b){ return b.w - a.w; })
+        .slice(0, 3)
+        .map(function(o){ return '"' + tokens[o.i] + '" (' + Math.round(o.w * 100) + '%)'; });
+      $('attnNote').textContent = '"' + tokens[state.activeIdx] + '" is attending most to: ' + (ranked.join(', ') || 'itself') + '.';
+    } else {
+      $('attnNote').textContent = 'Same word, different neighbors, different attention, different output — click any word above to see exactly where its attention goes.';
+    }
+
+    renderGoDeeper(tokens, p);
+    genSyncIfNeeded(tokens);
+    renderPortrait(tokens, p);
+    refreshShare();
+  }
+
+  $('posToggle').addEventListener('click', function(e){
+    var btn = e.target.closest('button'); if (!btn) return;
+    Array.prototype.forEach.call($('posToggle').querySelectorAll('button'), function(b){ b.classList.remove('active'); });
+    btn.classList.add('active');
+    state.posOn = btn.dataset.pos === 'on';
+    render();
+  });
+
+  var exampleTimer = null;
+  sentenceInput.addEventListener('input', function(){
+    clearTimeout(exampleTimer);
+    exampleTimer = setTimeout(function(){
+      Array.prototype.forEach.call($('examplePills').children, function(b){ b.classList.remove('selected'); });
+      render();
+    }, 120);
+  });
+
+  // ---------------- example pills ----------------
+  var EXAMPLES = [
+    'the river bank was steep near the old bridge',
+    'she deposited the check at the bank downtown',
+    'the bat flew out of the cave at dusk',
+    'he swung the bat and hit a home run',
+    'attention is all you need'
+  ];
+  (function(){
+    var row = $('examplePills');
+    EXAMPLES.forEach(function(ex){
+      var btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'pill'; btn.textContent = ex;
+      if (ex === sentenceInput.value) btn.classList.add('selected');
+      btn.addEventListener('click', function(){
+        sentenceInput.value = ex;
+        Array.prototype.forEach.call(row.children, function(b){ b.classList.remove('selected'); });
+        btn.classList.add('selected');
+        state.activeIdx = null;
+        render();
+      });
+      row.appendChild(btn);
+    });
+  })();
+
+  // ---------------- Stage 5/6: KV cache + generation ----------------
+  var gen = { tokens: [], rows: [], lastOutput: null, step: 0, cacheOn: true, avoided: 0, baseSentence: null };
+
+  function genBuildRows(tokens){
+    var p = computePipeline(tokens, { headIdx: 0, posOn: true });
+    gen.rows = tokens.map(function(t, i){ return { token: t, K: p.K[i], V: p.V[i] }; });
+    gen.lastOutput = p.output[p.output.length - 1];
+  }
+  function genReset(){
+    gen.tokens = currentTokens().slice();
+    gen.baseSentence = sentenceInput.value;
+    gen.step = 0; gen.avoided = 0;
+    genBuildRows(gen.tokens);
+    renderKVTable(true);
+    renderPrediction();
+    $('genDoneBanner').hidden = true;
+  }
+  function genSyncIfNeeded(tokens){
+    // Re-seed the generation state whenever the underlying sentence actually changed -- so
+    // Stage 5/6 always continue from what's currently typed, not a stale earlier sentence.
+    if (gen.baseSentence !== sentenceInput.value) genReset();
+  }
+  function renderKVTable(flashAll){
+    var tbody = $('kvTableBody');
+    tbody.innerHTML = '';
+    gen.rows.forEach(function(row, i){
+      var tr = document.createElement('tr');
+      if (flashAll || i === gen.rows.length - 1) tr.className = 'flash';
+      var tdTok = document.createElement('td'); tdTok.textContent = row.token;
+      var tdK = document.createElement('td'); var kStrip = document.createElement('div'); kStrip.className = 'strip qkv';
+      var tdV = document.createElement('td'); var vStrip = document.createElement('div'); vStrip.className = 'strip qkv';
+      tdK.appendChild(kStrip); tdV.appendChild(vStrip);
+      tr.appendChild(tdTok); tr.appendChild(tdK); tr.appendChild(tdV);
+      tbody.appendChild(tr);
+      renderStrip(kStrip, row.K, 'k');
+      renderStrip(vStrip, row.V, 'v');
+    });
+    $('kvCounter').innerHTML = 'Redundant K/V computations avoided so far: <b>' + gen.avoided + '</b>';
+  }
+  function renderPrediction(){
+    var candidates = candidateVocab(gen.tokens);
+    var ranked = nextTokenDistribution(gen.lastOutput, candidates, 1).slice(0, 8);
+    var box = $('predBars');
+    box.innerHTML = '';
+    ranked.forEach(function(r){
+      var row = document.createElement('div'); row.className = 'pred-row';
+      row.innerHTML = '<span class="pred-word">' + escapeHtml(r.word) + '</span>' +
+        '<div class="pred-bar"><i style="width:' + Math.round(r.p * 100) + '%"></i></div>' +
+        '<span class="pred-pct">' + (r.p * 100).toFixed(1) + '%</span>';
+      row.addEventListener('click', function(){ genStep(r.word); });
+      box.appendChild(row);
+    });
+  }
+  // Real sampling, not just window-dressing: with "auto-pick top" off, the button draws from
+  // the full probability distribution (weighted random) instead of always taking rank #1 --
+  // the same greedy-decoding-vs-sampling distinction real chat models expose as "creativity,"
+  // without needing either term. Clicking a candidate row directly always picks that exact word.
+  function weightedSample(ranked){
+    var r = Math.random(), acc = 0;
+    for (var i = 0; i < ranked.length; i++){ acc += ranked[i].p; if (r <= acc) return ranked[i].word; }
+    return ranked[ranked.length - 1].word;
+  }
+  function genStep(word){
+    if (!word){
+      var candidates = candidateVocab(gen.tokens);
+      var ranked = nextTokenDistribution(gen.lastOutput, candidates, 1);
+      word = $('autoPickCheck').checked ? ranked[0].word : weightedSample(ranked);
+    }
+    gen.tokens.push(word);
+    if (gen.cacheOn) gen.avoided += (gen.rows.length);
+    genBuildRows(gen.tokens);
+    gen.step++;
+    renderKVTable(!gen.cacheOn);
+    renderPrediction();
+    if (gen.step >= MAX_GEN_STEPS) $('genDoneBanner').hidden = false;
+  }
+  $('generateBtn').addEventListener('click', function(){ genStep(null); });
+  $('resetGenBtn').addEventListener('click', genReset);
+  $('cacheToggle').addEventListener('click', function(e){
+    var btn = e.target.closest('button'); if (!btn) return;
+    Array.prototype.forEach.call($('cacheToggle').querySelectorAll('button'), function(b){ b.classList.remove('active'); });
+    btn.classList.add('active');
+    gen.cacheOn = btn.dataset.cache === 'on';
+  });
+  $('genDoneLink').addEventListener('click', function(e){
+    e.preventDefault();
+    $('step-portrait').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+
+  // ---------------- Go Deeper ----------------
+  var deeperState = { headCount: 3, causalOn: false, temperature: 1 };
+
+  function renderGoDeeper(tokens, mainPipeline){
+    // Multi-head comparison
+    var headGrid = $('headGrid');
+    headGrid.innerHTML = '';
+    for (var h = 0; h < deeperState.headCount; h++){
+      var p = h === 0 ? mainPipeline : computePipeline(tokens, { headIdx: h, posOn: state.posOn });
+      var panel = document.createElement('div'); panel.className = 'head-panel';
+      var wrap = document.createElement('div'); wrap.className = 'attn-wrap';
+      var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('width', '100%'); svg.setAttribute('height', '160');
+      wrap.appendChild(svg); panel.appendChild(wrap);
+      var label = document.createElement('div'); label.className = 'head-panel-label';
+      label.textContent = 'Head ' + (h + 1) + (h === 0 ? ' (same as Stage 4)' : '');
+      panel.appendChild(label);
+      headGrid.appendChild(panel);
+      renderAttentionSVG(svg, tokens, p.weights, null, { w: 320, h: 160, compact: true });
+    }
+
+    // Positional encoding, isolated
+    var pOff = computePipeline(tokens, { headIdx: 0, posOn: false });
+    var pOn = computePipeline(tokens, { headIdx: 0, posOn: true });
+    renderTokenCards($('posOffCards'), pOff, {});
+    renderTokenCards($('posOnCards'), pOn, {});
+
+    // Causal masking
+    var pCausal = computePipeline(tokens, { headIdx: 0, posOn: true, causal: deeperState.causalOn });
+    renderAttentionSVG($('causalSvg'), tokens, pCausal.weights, null, { w: 700, h: 220 });
+
+    // Temperature / sampling
+    renderTempBars(mainPipeline);
+  }
+  function renderTempBars(mainPipeline){
+    var tokens = mainPipeline.tokens;
+    var candidates = candidateVocab(tokens);
+    var lastOut = mainPipeline.output[mainPipeline.output.length - 1];
+    var ranked = nextTokenDistribution(lastOut, candidates, deeperState.temperature).slice(0, 8);
+    var box = $('tempBars');
+    box.innerHTML = '';
+    ranked.forEach(function(r){
+      var row = document.createElement('div'); row.className = 'pred-row'; row.style.cursor = 'default';
+      row.innerHTML = '<span class="pred-word">' + escapeHtml(r.word) + '</span>' +
+        '<div class="pred-bar"><i style="width:' + Math.round(r.p * 100) + '%"></i></div>' +
+        '<span class="pred-pct">' + (r.p * 100).toFixed(1) + '%</span>';
+      box.appendChild(row);
+    });
+  }
+  $('headCountToggle').addEventListener('click', function(e){
+    var btn = e.target.closest('button'); if (!btn) return;
+    Array.prototype.forEach.call($('headCountToggle').querySelectorAll('button'), function(b){ b.classList.remove('active'); });
+    btn.classList.add('active');
+    deeperState.headCount = parseInt(btn.dataset.heads, 10);
+    render();
+  });
+  $('causalToggle').addEventListener('click', function(e){
+    var btn = e.target.closest('button'); if (!btn) return;
+    Array.prototype.forEach.call($('causalToggle').querySelectorAll('button'), function(b){ b.classList.remove('active'); });
+    btn.classList.add('active');
+    deeperState.causalOn = btn.dataset.causal === 'on';
+    render();
+  });
+  $('tempSlider').addEventListener('input', function(){
+    deeperState.temperature = parseFloat(this.value);
+    $('tempVal').textContent = deeperState.temperature.toFixed(2);
+    renderTempBars(computePipeline(currentTokens(), { headIdx: 0, posOn: state.posOn }));
+  });
+
+  // ---------------- portrait ----------------
+  function drawAttentionCanvas(ctx, x0, y0, w, h, tokens, weights, accentHex){
+    var n = tokens.length;
+    var padX = Math.min(50, w * 0.1);
+    var usable = w - padX * 2;
+    var y = y0 + h * 0.3;
+    var xs = n === 1 ? [x0 + w / 2] : tokens.map(function(_, i){ return x0 + padX + usable * i / (n - 1); });
+    for (var i = 0; i < n; i++){
+      for (var j = 0; j < n; j++){
+        if (i === j) continue;
+        var wt = weights[i][j];
+        if (wt < 0.03) continue;
+        var x1 = xs[i], x2 = xs[j], midX = (x1 + x2) / 2;
+        var dip = Math.min(h * 0.45, 40 + Math.min(90, Math.abs(x1 - x2) * 0.18));
+        ctx.beginPath();
+        ctx.moveTo(x1, y);
+        ctx.quadraticCurveTo(midX, y + dip, x2, y);
+        ctx.strokeStyle = accentHex;
+        ctx.globalAlpha = Math.min(0.9, 0.1 + wt * 1.5);
+        ctx.lineWidth = Math.max(1, wt * 14);
+        ctx.lineCap = 'round';
+        ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#e9e7de'; ctx.font = '600 15px Inter, sans-serif'; ctx.textAlign = 'center';
+    for (var k = 0; k < n; k++){
+      ctx.beginPath(); ctx.arc(xs[k], y, 4, 0, Math.PI * 2); ctx.fillStyle = '#9aa0ae'; ctx.fill();
+      ctx.fillStyle = '#e9e7de';
+      ctx.fillText(tokens[k], xs[k], y + 26);
+    }
+  }
+  function renderPortrait(tokens, p){
+    var canvas = $('portraitCanvas');
+    var ctx = canvas.getContext('2d');
+    var W = canvas.width, H = canvas.height;
+    ctx.fillStyle = '#10131a'; ctx.fillRect(0, 0, W, H);
+
+    // title
+    ctx.fillStyle = '#e9e7de'; ctx.font = '700 40px Georgia, serif'; ctx.textAlign = 'center';
+    var sentence = sentenceInput.value.trim();
+    var words = sentence.split(/\s+/);
+    var lines = [], cur = '';
+    words.forEach(function(w){
+      var test = cur ? cur + ' ' + w : w;
+      if (ctx.measureText(test).width > W - 120){ lines.push(cur); cur = w; } else cur = test;
+    });
+    if (cur) lines.push(cur);
+    lines.slice(0, 3).forEach(function(line, i){ ctx.fillText(line, W / 2, 110 + i * 50); });
+
+    // central attention diagram (the star of the composition)
+    drawAttentionCanvas(ctx, 40, 220 + lines.length * 10, W - 80, 480, tokens, p.weights, '#4fd17a');
+
+    // embedding strip along the bottom third
+    var stripTop = 780, cellW = Math.min(60, (W - 80) / (tokens.length * EMB_DIM));
+    var stripX = 40;
+    ctx.font = '13px Inter, sans-serif'; ctx.textAlign = 'left';
+    tokens.forEach(function(tok, ti){
+      ctx.fillStyle = '#9aa0ae';
+      ctx.fillText(tok, stripX, stripTop - 8);
+      p.finalEmb[ti].forEach(function(v, ci){
+        var a = Math.min(1, Math.abs(v));
+        var c = v >= 0 ? [79, 209, 122] : [217, 122, 108];
+        ctx.fillStyle = 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + (0.2 + 0.7 * a) + ')';
+        ctx.fillRect(stripX + ci * (cellW + 2), stripTop, cellW, 26);
+      });
+      stripX += EMB_DIM * (cellW + 2) + 18;
+    });
+
+    // dense KV table slice, drawn like circuitry
+    var kvTop = 860;
+    ctx.fillStyle = '#9aa0ae'; ctx.font = '13px Inter, sans-serif';
+    ctx.fillText('KV cache', 40, kvTop - 10);
+    var rows = gen.rows.length ? gen.rows : tokens.map(function(t, i){ return { token: t, K: p.K[i], V: p.V[i] }; });
+    rows.forEach(function(row, ri){
+      var ry = kvTop + ri * 22;
+      if (ry > H - 200) return;
+      ctx.fillStyle = '#e9e7de'; ctx.font = '11px JetBrains Mono, monospace';
+      ctx.fillText(row.token, 40, ry + 14);
+      row.K.forEach(function(v, ci){
+        var a = Math.min(1, Math.abs(v));
+        var c = v >= 0 ? [155, 140, 217] : [217, 122, 108];
+        ctx.fillStyle = 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + (0.2 + 0.7 * a) + ')';
+        ctx.fillRect(140 + ci * 14, ry, 12, 16);
+      });
+      row.V.forEach(function(v, ci){
+        var a = Math.min(1, Math.abs(v));
+        var c = v >= 0 ? [224, 165, 76] : [217, 122, 108];
+        ctx.fillStyle = 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + (0.2 + 0.7 * a) + ')';
+        ctx.fillRect(280 + ci * 14, ry, 12, 16);
+      });
+    });
+
+    ctx.fillStyle = '#5f6678'; ctx.font = '13px Inter, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('michaelkrauklis.me/lab/attention', W / 2, H - 30);
+
+    // small live shirt-mockup preview mirrors the same composition, scaled down -- same
+    // "set background-image from a canvas' own toDataURL()" technique Tonus's mug mockup uses,
+    // rather than an embedded live <canvas> (a fragile, untested-elsewhere pattern on this site).
+    var shirtPreview = $('shirtPrint');
+    if (shirtPreview){
+      var off = document.createElement('canvas'); off.width = 64; off.height = 64;
+      var octx = off.getContext('2d');
+      octx.fillStyle = '#10131a'; octx.fillRect(0, 0, 64, 64);
+      drawAttentionCanvas(octx, 2, -6, 60, 50, tokens, p.weights, '#4fd17a');
+      shirtPreview.style.backgroundImage = 'url(' + off.toDataURL('image/png') + ')';
+    }
+  }
+  $('downloadPortraitBtn').addEventListener('click', function(){
+    var a = document.createElement('a');
+    a.href = $('portraitCanvas').toDataURL('image/png');
+    a.download = 'attention-portrait.png';
+    a.click();
+  });
+
+  // ---------------- share ----------------
+  function shareUrl(){
+    return location.origin + location.pathname + '?s=' + encodeURIComponent(sentenceInput.value);
+  }
+  var qrRendered = false;
+  function refreshShare(){
+    var url = shareUrl();
+    $('shareUrlBox').textContent = url;
+    var holder = $('qrHolder');
+    if (window.QRCode){
+      holder.innerHTML = '';
+      new QRCode(holder, { text: url, width: 116, height: 116, correctLevel: QRCode.CorrectLevel.M });
+      qrRendered = true;
+    }
+  }
+  $('copyUrlBtn').addEventListener('click', function(){
+    navigator.clipboard.writeText(shareUrl()).then(function(){
+      var btn = $('copyUrlBtn'); var old = btn.textContent;
+      btn.textContent = 'Copied!'; setTimeout(function(){ btn.textContent = old; }, 1400);
+    });
+  });
+  $('downloadQrBtn').addEventListener('click', function(){
+    var el = $('qrHolder').querySelector('img') || $('qrHolder').querySelector('canvas');
+    if (!el) return;
+    var a = document.createElement('a');
+    a.href = el.tagName === 'CANVAS' ? el.toDataURL('image/png') : el.src;
+    a.download = 'attention-share-qr.png';
+    a.click();
+  });
+
+  // ---------------- hero (decorative, fixed demo, computed once) ----------------
+  function drawHero(){
+    var c = $('heroCanvas');
+    var dpr = window.devicePixelRatio || 1;
+    var w = c.clientWidth, h = c.clientHeight;
+    c.width = w * dpr; c.height = h * dpr;
+    var ctx = c.getContext('2d'); ctx.scale(dpr, dpr);
+    var tokens = tokenize('the cat sat down');
+    var p = computePipeline(tokens, { headIdx: 0, posOn: true });
+    drawAttentionCanvas(ctx, 0, 0, w, h, tokens, p.weights, '#4fd17a');
+  }
+  drawHero();
+  window.addEventListener('resize', drawHero);
+
+  // ---------------- init from URL ----------------
+  (function initFromUrl(){
+    var params = new URLSearchParams(location.search);
+    var s = params.get('s');
+    if (s) sentenceInput.value = s;
+    genReset();
+    render();
+  })();
+})();
+</script>
+</body>
+</html>
