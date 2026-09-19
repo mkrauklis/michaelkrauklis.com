@@ -95,10 +95,17 @@ was removed entirely once nothing needed it.
 The Concept Lab card's own description used to name a specific example tool ("for example,
 Ridgeline, a Fourier-transform mountain silhouette reconstructor") — caught in a UX review as a
 staleness trap: it named the *oldest* tool, not the newest or most representative, and would need
-a manual update every time a new tool shipped if left as a specific example at all. Reworded to
-describe the collection generically ("real backpropagation, real Fourier transforms, real
-embeddings, running entirely in your browser") so it stays accurate without needing to change
-every time `lab/index.html`'s own list grows.
+a manual update every time a new tool shipped if left as a specific example at all. Reworded once
+to describe the collection generically in terms of what the tools *are built from* ("real
+backpropagation, real Fourier transforms, real embeddings, running entirely in your browser"), and
+reworded again on direct request to describe what they're *for* instead — the card's `<h2>` is now
+just "Concept Lab" (not "The Concept Lab" — this one specific spot is a deliberate exception to
+the site-wide naming rule in "Site-wide shared files" above, per direct instruction, not a drift to
+fix) and the paragraph reads "Collection of personalizeable proof of concept tools I've built. They
+are meant to bridge math and computer science concepts, learning, user experience, and engagement."
+Both rewrites are legitimate, non-conflicting angles (what it's built from vs. what it's for) — if
+this gets revised again, don't assume the current copy is wrong just because it differs from either
+past version.
 
 ## The homepage's certification badges link to real, verified individual pages
 
