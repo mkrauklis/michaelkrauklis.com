@@ -302,6 +302,10 @@
     <div class="row" style="margin-top:18px;">
       <div class="col">
         <canvas id="badgeCanvas" width="720" height="900"></canvas>
+        <div class="toggle-group" id="badgeThemeToggle" style="margin-top:14px;">
+          <button type="button" data-theme="dark" class="active">Dark</button>
+          <button type="button" data-theme="light">White</button>
+        </div>
         <div class="actions">
           <button type="button" class="primary" id="downloadBadgeBtn" disabled>Download badge PNG</button>
         </div>
@@ -769,61 +773,173 @@
     return y + lineHeight;
   }
 
+  var BADGE_THEMES = {
+    dark:  { bg: '#10131a', ink: '#e9e7de', dim: '#9aa0ae', line: '#4a5064', jarLine: '#4a5064', jarFill: 'rgba(255,255,255,0.04)' },
+    light: { bg: '#faf7f0', ink: '#20222a', dim: '#5b5f6b', line: '#c9bfae', jarLine: '#8a8f9b', jarFill: 'rgba(0,0,0,0.035)' }
+  };
+  var badgeTheme = 'dark';
+  var caseFileNo = 1000 + Math.floor(Math.random() * 9000);
+  var issueDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+
+  function drawMiniJar(ctx, cx, cy, jw, jh, orangeOutOf10, t){
+    var jx = cx - jw/2, jy = cy - jh/2;
+    ctx.beginPath();
+    ctx.moveTo(jx, jy + jh*0.14);
+    ctx.quadraticCurveTo(jx, jy, jx + jw*0.14, jy);
+    ctx.lineTo(jx + jw*0.86, jy);
+    ctx.quadraticCurveTo(jx + jw, jy, jx + jw, jy + jh*0.14);
+    ctx.lineTo(jx + jw, jy + jh*0.86);
+    ctx.quadraticCurveTo(jx + jw, jy + jh, jx + jw*0.86, jy + jh);
+    ctx.lineTo(jx + jw*0.14, jy + jh);
+    ctx.quadraticCurveTo(jx, jy + jh, jx, jy + jh*0.86);
+    ctx.closePath();
+    ctx.fillStyle = t.jarFill;
+    ctx.fill();
+    ctx.strokeStyle = t.jarLine;
+    ctx.lineWidth = Math.max(1.5, jw*0.035);
+    ctx.stroke();
+    ctx.fillStyle = t.jarLine;
+    ctx.fillRect(jx + jw*0.2, jy - jh*0.07, jw*0.6, jh*0.07);
+    var slots = [[0.32,0.26],[0.62,0.22],[0.78,0.42],[0.34,0.5],[0.62,0.56],[0.5,0.76]];
+    var r = jw*0.1;
+    var orangeSlots = Math.round(orangeOutOf10/10*slots.length);
+    for (var i = 0; i < slots.length; i++){
+      var ccx = jx + slots[i][0]*jw, ccy = jy + slots[i][1]*jh;
+      ctx.beginPath();
+      ctx.arc(ccx, ccy, r, 0, Math.PI*2);
+      ctx.fillStyle = i < orangeSlots ? COLOR_ORANGE : COLOR_BLUE;
+      ctx.fill();
+    }
+  }
+
+  function drawStar(ctx, cx, cy, outerR, innerR, color){
+    var rot = Math.PI/2*3, step = Math.PI/5;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - outerR);
+    for (var i = 0; i < 5; i++){
+      ctx.lineTo(cx + Math.cos(rot)*outerR, cy + Math.sin(rot)*outerR); rot += step;
+      ctx.lineTo(cx + Math.cos(rot)*innerR, cy + Math.sin(rot)*innerR); rot += step;
+    }
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+  }
+
+  function drawSeal(ctx, cx, cy, r, color){
+    ctx.beginPath(); ctx.arc(cx, cy, r*1.22, 0, Math.PI*2);
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.globalAlpha = 0.5; ctx.stroke(); ctx.globalAlpha = 1;
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2);
+    ctx.fillStyle = color; ctx.globalAlpha = 0.14; ctx.fill(); ctx.globalAlpha = 1;
+    ctx.lineWidth = 3; ctx.stroke();
+    drawStar(ctx, cx, cy, r*0.5, r*0.22, color);
+    ctx.beginPath();
+    ctx.moveTo(cx - r*0.4, cy + r*0.85); ctx.lineTo(cx - r*0.6, cy + r*1.7); ctx.lineTo(cx - r*0.12, cy + r*1.15); ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(cx + r*0.4, cy + r*0.85); ctx.lineTo(cx + r*0.6, cy + r*1.7); ctx.lineTo(cx + r*0.12, cy + r*1.15); ctx.closePath();
+    ctx.fill();
+  }
+
+  function drawCornerFlourish(ctx, x, y, size, color){
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(Math.PI/4);
+    ctx.strokeStyle = color; ctx.lineWidth = 2;
+    ctx.strokeRect(-size/2, -size/2, size, size);
+    ctx.restore();
+  }
+
   function renderBadge(){
     var ctx = badgeCanvas.getContext('2d');
     var w = badgeCanvas.width, h = badgeCanvas.height;
-    ctx.fillStyle = '#10131a';
+    var t = BADGE_THEMES[badgeTheme];
+
+    ctx.fillStyle = t.bg;
     ctx.fillRect(0, 0, w, h);
 
-    // border
+    // ornate double border with corner flourishes
     ctx.strokeStyle = COLOR_ACCENT;
     ctx.lineWidth = 6;
     ctx.strokeRect(24, 24, w - 48, h - 48);
-    ctx.strokeStyle = '#4a5064';
+    ctx.strokeStyle = t.line;
     ctx.lineWidth = 1.5;
     ctx.strokeRect(38, 38, w - 76, h - 76);
+    [[24,24],[w-24,24],[24,h-24],[w-24,h-24]].forEach(function(c){
+      drawCornerFlourish(ctx, c[0], c[1], 16, COLOR_ACCENT);
+    });
 
     ctx.textAlign = 'center';
-    ctx.fillStyle = COLOR_ACCENT;
-    ctx.font = '600 26px Inter, sans-serif';
-    ctx.fillText('CERTIFIED', w/2, 110);
-    ctx.font = '600 46px Fraunces, serif';
-    ctx.fillStyle = '#e9e7de';
-    ctx.fillText('Bayes Detective', w/2, 165);
+    ctx.fillStyle = t.dim;
+    ctx.font = '600 15px Inter, sans-serif';
+    ctx.fillText('C E R T I F I C A T E   O F   A C H I E V E M E N T', w/2, 85);
 
-    // magnifying glass icon
-    var mgx = w/2, mgy = 250;
+    ctx.fillStyle = COLOR_ACCENT;
+    ctx.font = '600 24px Inter, sans-serif';
+    ctx.fillText('CERTIFIED', w/2, 128);
+    ctx.font = '600 46px Fraunces, serif';
+    ctx.fillStyle = t.ink;
+    ctx.fillText('Bayes Detective', w/2, 182);
+
+    // jar A -- magnifying glass -- jar B, the real recipe from the last case (or the current jars)
+    var jarA = lastCase ? lastCase.jarA : state.jarA;
+    var jarB = lastCase ? lastCase.jarB : state.jarB;
+    var mgx = w/2, mgy = 265;
+    drawMiniJar(ctx, mgx - 155, mgy, 78, 92, jarA, t);
+    drawMiniJar(ctx, mgx + 155, mgy, 78, 92, jarB, t);
     ctx.beginPath();
-    ctx.arc(mgx - 12, mgy, 42, 0, Math.PI*2);
+    ctx.arc(mgx - 10, mgy, 40, 0, Math.PI*2);
     ctx.strokeStyle = COLOR_ACCENT;
     ctx.lineWidth = 8;
     ctx.stroke();
     ctx.beginPath();
-    ctx.moveTo(mgx + 18, mgy + 30);
-    ctx.lineTo(mgx + 55, mgy + 67);
+    ctx.moveTo(mgx + 18, mgy + 28);
+    ctx.lineTo(mgx + 52, mgy + 62);
     ctx.lineWidth = 10;
     ctx.lineCap = 'round';
     ctx.stroke();
 
-    var name = (detectiveName.value || 'Anonymous Detective').trim();
-    ctx.font = '600 34px Inter, sans-serif';
-    ctx.fillStyle = '#e9e7de';
-    ctx.fillText(name, w/2, 370);
+    ctx.font = 'italic 19px Fraunces, serif';
+    ctx.fillStyle = t.dim;
+    ctx.fillText('This certifies that', w/2, 372);
 
-    ctx.font = '400 22px Inter, sans-serif';
-    ctx.fillStyle = '#9aa0ae';
-    ctx.textAlign = 'left';
-    var y = 420;
+    var name = (detectiveName.value || 'Anonymous Detective').trim();
+    ctx.font = '600 36px Inter, sans-serif';
+    ctx.fillStyle = t.ink;
+    ctx.fillText(name, w/2, 415);
+
+    ctx.font = 'italic 19px Fraunces, serif';
+    ctx.fillStyle = t.dim;
     if (lastCase){
-      y = wrapText(ctx, 'Cases cracked: ' + state.casesSolved + ' out of ' + state.casesTotal, w/2 - 260, y, 520, 30);
-      y = wrapText(ctx, 'Last case: Jar A had ' + lastCase.jarA + '/10 orange, Jar B had ' + lastCase.jarB + '/10 orange.', w/2 - 260, y + 6, 520, 30);
-      y = wrapText(ctx, 'Solved with ' + lastCase.clues + ' clue' + (lastCase.clues===1?'':'s') + ' and ' + lastCase.confidence + '% confidence.', w/2 - 260, y + 6, 520, 30);
-      y = wrapText(ctx, lastCase.correct ? 'Verdict: correct.' : 'Verdict: it happens to every detective.', w/2 - 260, y + 6, 520, 30);
+      ctx.fillText('has applied real Bayes’ theorem to crack', w/2, 452);
+      ctx.font = '700 26px Inter, sans-serif';
+      ctx.fillStyle = COLOR_ACCENT;
+      ctx.fillText(state.casesSolved + ' of ' + state.casesTotal + ' case' + (state.casesTotal===1?'':'s'), w/2, 490);
+    } else {
+      ctx.fillText('is ready to crack their first case.', w/2, 452);
     }
+
+    ctx.font = '400 21px Inter, sans-serif';
+    ctx.fillStyle = t.dim;
+    ctx.textAlign = 'left';
+    var y = 540;
+    if (lastCase){
+      y = wrapText(ctx, 'Last case: Jar A had ' + lastCase.jarA + '/10 orange, Jar B had ' + lastCase.jarB + '/10 orange.', w/2 - 260, y, 520, 29);
+      y = wrapText(ctx, 'Solved with ' + lastCase.clues + ' clue' + (lastCase.clues===1?'':'s') + ' and ' + lastCase.confidence + '% confidence.', w/2 - 260, y + 6, 520, 29);
+      y = wrapText(ctx, lastCase.correct ? 'Verdict: correct.' : 'Verdict: it happens to every detective.', w/2 - 260, y + 6, 520, 29);
+    }
+
+    // seal + case file number, the certificate's own "official" flourishes
+    drawSeal(ctx, w - 128, 690, 46, COLOR_ACCENT);
+    ctx.textAlign = 'left';
+    ctx.font = '600 15px "JetBrains Mono", ui-monospace, monospace';
+    ctx.fillStyle = t.dim;
+    ctx.fillText('CASE FILE NO. ' + caseFileNo, 78, 700);
+    ctx.font = '400 15px "JetBrains Mono", ui-monospace, monospace';
+    ctx.fillText('ISSUED ' + issueDate.toUpperCase(), 78, 722);
 
     ctx.textAlign = 'center';
     ctx.font = 'italic 20px Fraunces, serif';
-    ctx.fillStyle = '#9aa0ae';
+    ctx.fillStyle = t.dim;
     ctx.fillText('"Every guess is a hunch waiting for a clue."', w/2, h - 90);
     ctx.font = '400 16px Inter, sans-serif';
     ctx.fillText('michaelkrauklis.me/lab/hunch', w/2, h - 55);
@@ -833,12 +949,21 @@
 
   downloadBadgeBtn.addEventListener('click', function(){
     var link = document.createElement('a');
-    link.download = 'bayes-detective-badge.png';
+    link.download = 'bayes-detective-badge-' + badgeTheme + '.png';
     link.href = badgeCanvas.toDataURL('image/png');
     link.click();
   });
 
-  detectiveName.addEventListener('input', function(){ if (lastCase) renderBadge(); });
+  document.getElementById('badgeThemeToggle').addEventListener('click', function(e){
+    var btn = e.target.closest('button');
+    if (!btn) return;
+    Array.prototype.forEach.call(this.querySelectorAll('button'), function(b){ b.classList.remove('active'); });
+    btn.classList.add('active');
+    badgeTheme = btn.dataset.theme;
+    renderBadge();
+  });
+
+  detectiveName.addEventListener('input', function(){ renderBadge(); });
 
   // ---------- init ----------
   renderJars();

@@ -67,6 +67,25 @@ Stage 2 doesn't just list arbitrary examples — each one was picked because it 
   which then shows exactly how that multiplication works and scales the same rule up to much
   bigger matrices.
 
+## Hero canvas got real bracket notation, and the thumbnail follows it
+
+The hero canvas originally drew each matrix as plain bordered boxes — no brackets. Direct feedback
+on `lab/index.html`'s card icons ("the icons for these are stinkers... an icon of a matrix") landed
+on the actual missing piece: bracket notation (`[ a b ; c d ]`) is the one glyph anyone who's seen
+linear algebra actually recognizes as "a matrix" on sight, and a grid of bordered boxes reads more
+like a spreadsheet or a game board. `drawBracket()` draws real bracket shapes (an open rectangle
+missing its vertical middle — two horizontal ticks plus a vertical spine) on both sides of each of
+the hero's three matrices, in that matrix's own color. This is a genuine improvement to the page
+itself, not just a change made for the sake of a thumbnail.
+
+`thumbnail.jpg` is a fresh, larger render of the same bracket-notation idea — a standalone 1280×1280
+canvas showing just matrix A `[[2,0],[1,3]]` at export resolution, tightly cropped to its own real
+content (via a numpy bounding-box check against the background color, not a hand-guessed crop
+rectangle) and resized down to 640×640. Built as a one-off render sharing the hero's exact drawing
+logic rather than reusing the hero canvas directly, since the hero draws all three matrices side by
+side at page scale — a crop tight enough to read as an icon would have cut into B or C, and a crop
+loose enough to include only A would have wasted most of the frame on empty background.
+
 ## A real closure bug, caught by testing every editable cell, not just the first
 
 **The bug**: `renderGrid()`'s editable-cell branch declared `var input = document.createElement

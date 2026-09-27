@@ -630,6 +630,17 @@
   });
 
   // ---------- hero canvas ----------
+  function drawBracket(ctx, x, yTop, yBottom, side, color){
+    var tick = 7;
+    ctx.beginPath();
+    if (side === 'left'){
+      ctx.moveTo(x + tick, yTop); ctx.lineTo(x, yTop); ctx.lineTo(x, yBottom); ctx.lineTo(x + tick, yBottom);
+    } else {
+      ctx.moveTo(x - tick, yTop); ctx.lineTo(x, yTop); ctx.lineTo(x, yBottom); ctx.lineTo(x - tick, yBottom);
+    }
+    ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.stroke();
+  }
+
   (function(){
     var canvas = document.getElementById('heroCanvas');
     var ctx = canvas.getContext('2d');
@@ -640,19 +651,21 @@
     var A = [[2,0],[1,3]], B = [[4,1],[2,2]], C = matMul(A,B);
     function drawGrid(mat, x0, y0, color){
       var cell = 34;
+      var gw = mat[0].length * cell, gh = mat.length * cell;
+      drawBracket(ctx, x0 - 6, y0 - 4, y0 + gh, 'left', color);
+      drawBracket(ctx, x0 + gw + 2, y0 - 4, y0 + gh, 'right', color);
       for (var i=0;i<mat.length;i++) for (var j=0;j<mat[0].length;j++){
-        ctx.strokeStyle = color; ctx.lineWidth = 1.5;
-        ctx.strokeRect(x0+j*cell, y0+i*cell, cell-4, cell-4);
-        ctx.fillStyle = color; ctx.font = '14px JetBrains Mono, monospace'; ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillStyle = color; ctx.font = '600 15px JetBrains Mono, monospace'; ctx.textAlign='center'; ctx.textBaseline='middle';
         ctx.fillText(mat[i][j], x0+j*cell+(cell-4)/2, y0+i*cell+(cell-4)/2);
       }
     }
-    drawGrid(A, 30, h/2-38, '#22d3ee');
-    ctx.fillStyle = '#9aa0ae'; ctx.font = '20px monospace'; ctx.fillText('×', 110, h/2);
-    drawGrid(B, 130, h/2-38, '#e0a54c');
-    ctx.fillStyle = '#9aa0ae'; ctx.fillText('=', 210, h/2);
-    drawGrid(C, 230, h/2-38, '#e9e7de');
+    drawGrid(A, 42, h/2-38, '#22d3ee');
+    ctx.fillStyle = '#9aa0ae'; ctx.font = '20px monospace'; ctx.textAlign='center'; ctx.fillText('×', 118, h/2);
+    drawGrid(B, 142, h/2-38, '#e0a54c');
+    ctx.fillStyle = '#9aa0ae'; ctx.fillText('=', 222, h/2);
+    drawGrid(C, 250, h/2-38, '#e9e7de');
   })();
+
   window.addEventListener('resize', function(){});
 })();
 </script>
