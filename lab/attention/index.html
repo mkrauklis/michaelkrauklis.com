@@ -215,7 +215,9 @@
     </div>
   </div>
   <p class="status" style="margin-top:20px;">Here's the whole journey your sentence just took,
-  start to finish. The rest of this page walks through each arrow, one at a time:</p>
+  start to finish — this whole left-to-right trip through the model, sentence in, prediction out,
+  is what's called a <b>forward pass</b>. The rest of this page walks through each arrow, one at a
+  time:</p>
   <div class="flow-map-holder" data-current="hook"></div>
 </section>
 
@@ -531,23 +533,28 @@
     entirely in a browser tab with no server and no training step.</p>
 
     <h3 style="margin-top:24px;">How training actually changes these numbers</h3>
-    <p>Every matrix on this page — the embeddings, all three Query/Key/Value projections, the
-    final prediction matrix in Stage 6 — starts out in a real model exactly the way it starts out
-    here: random numbers with no meaning yet. Training is the process of nudging every one of
-    those numbers, a tiny bit at a time, until the model's predictions get better. Concretely: feed
-    it a real sentence with the next word hidden, let it predict that word using its current
-    (still mostly-random, early on) numbers, and compare the guess to the real word with a
-    <b>loss function</b> — one number measuring how wrong that guess was. <b>Backpropagation</b>
-    then works backward through the entire computation you just watched — the prediction matrix,
-    the attention weights, all three Q/K/V projections, even the embeddings — to figure out
-    exactly how much each individual number contributed to that wrongness. <b>Gradient descent</b>
-    nudges every number a small step in whichever direction would have made the guess less wrong.
-    Repeat that same cycle billions of times over a huge pile of real text, and the numbers stop
-    being random — a Key projection starts actually encoding "this is a noun," a Query projection
-    starts actually encoding "I'm an adjective looking for the noun I modify." Nothing about the
-    <i>mechanism</i> changes from what this page already computes — same dot products, same
-    softmax, same weighted average. Training only ever changes which numbers sit inside the
-    matrices, never what's done with them.</p>
+    <p>Every matrix on this page — the embedding table, all three Query/Key/Value projections, the
+    final prediction matrix in Stage 6 — is made of exactly the kind of numbers usually called a
+    model's <b>weights</b> (as in "a 7-billion-weight model," or a "pretrained weights" file you'd
+    download). That's a different thing from the <b>attention weights</b> Stage 4 computes: those
+    are a fresh, temporary result, recalculated from scratch for every sentence you type, using
+    whatever the fixed weights happen to be. The weights themselves are what training actually
+    produces — once, in advance — and then ships as "the model."</p>
+    <p>In a real model, those weights start out exactly the way they do here: random numbers with
+    no meaning yet. Training nudges every one of them, a tiny bit at a time, until predictions get
+    better. Concretely: feed the model a real sentence with the next word hidden, let it guess
+    using its current weights, and compare that guess to the real next word with a <b>loss
+    function</b> — one number measuring how wrong the guess was. <b>Backpropagation</b> then runs
+    backward through the exact same forward pass named at the top of this page — starting from the
+    prediction and working back through every step to the embeddings — to work out exactly how
+    much each individual weight contributed to that wrongness. <b>Gradient descent</b> nudges every
+    weight a small step in whichever direction would have made the guess less wrong. Repeat that
+    cycle billions of times over a huge pile of real text, and the weights stop being random — a
+    Key projection's weights start actually encoding "this is a noun," a Query projection's weights
+    start actually encoding "I'm an adjective looking for the noun I modify." Nothing about the
+    <i>mechanism</i> changes from what this page already computes — same forward pass, same dot
+    products, same softmax, same weighted average, every time. Training only ever changes the
+    weights sitting inside the matrices, never what's done with them.</p>
 
     <h3 style="margin-top:24px;">Tokenization</h3>
     <p>Real tokenizers (like BPE, used by GPT-style models) learn their word-splitting rules

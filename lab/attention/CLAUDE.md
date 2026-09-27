@@ -441,6 +441,38 @@ premise (this page leans on prerequisite concepts without fully teaching them) �
 the second-review pass above, but this time the gap was about the *system's* properties
 (training, parallelism) rather than a *component's* purpose (QKV, dot product).
 
+## Fourth-review pass: "weights" and "forward pass" were never actually named
+
+Direct follow-up: "So I'll understand qkv and the weights and forward prop through it intuitively
+at the end of this?" Checked rather than assumed — grepped the whole file for "weight" and
+"forward" first. Two real findings:
+
+- **"Forward pass"/"forward propagation" never appeared anywhere on the page**, despite Stages 1-6
+  literally *being* one — the flow map at the top of Stage 1 already showed this exact journey
+  visually, it just never had the name attached.
+- **"Weights" was used, but only for one specific meaning** — the softmax output in Stage 4
+  ("attention weights," `p.weights` throughout the JS). The *other*, more common meaning of
+  "weights" in ML — the trainable numbers inside a matrix, as in "a 7-billion-weight model" or a
+  downloaded "pretrained weights" file — was never used anywhere, including in the training
+  section added in the previous pass, which called those same numbers just "numbers." Left as-is,
+  a reader who came away from this page as their first exposure to "weights" would form the wrong
+  association (weights = the per-sentence attention pattern) and be confused the first time they
+  saw "model weights" used the standard way elsewhere.
+
+Two small, targeted fixes rather than a rewrite:
+- The Stage 1 flow-map intro sentence ("Here's the whole journey your sentence just took...") now
+  explicitly names that journey a **forward pass** — in the main flow, not buried in the disclosure,
+  since this is a one-clause vocabulary label attached to something the reader already sees, not a
+  new concept requiring explanation.
+- "How training actually changes these numbers" (added in the previous pass) was rewritten to lead
+  with an explicit **weights vs. attention weights** disambiguation — the matrices' own numbers are
+  "weights" in the standard sense; Stage 4's attention weights are a separate, temporary,
+  per-sentence computation made *from* those weights, not the same thing — before continuing into
+  loss/backprop/gradient descent, every mention of "numbers" swapped for "weights" throughout, and
+  backpropagation now explicitly described as running backward through "the exact same forward
+  pass named at the top of this page," closing the loop between the two additions instead of
+  leaving them as two disconnected facts.
+
 ## Testing changes
 
 No test suite — static page. Verify via a local static server (root-relative `/nav.js` and
