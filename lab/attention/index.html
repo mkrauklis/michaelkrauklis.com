@@ -265,12 +265,22 @@
   <span class="step-tag">3 — query, key, value</span>
   <h2>The step almost every explainer skips</h2>
   <div class="flow-map-holder" data-current="qkv"></div>
-  <p class="lead">Each embedding vector now gets multiplied by three different fixed matrices —
-  three separate linear maps of the same 16-number vector — producing three shorter, 8-number
-  vectors called <b>Query</b>, <b>Key</b>, and <b>Value</b>. A useful handle for what each one is
-  <i>for</i>: think of a library. Your <b>Query</b> is what you type into the search bar, every
-  book's <b>Key</b> is its catalog entry, and its <b>Value</b> is what's actually inside once you
-  pick it up.</p>
+  <p class="lead">Right now, every word has exactly one fingerprint — but figuring out which words
+  matter to each other means each word actually needs to play three different roles at once:
+  something that goes <i>looking</i> for other words, something that other words can <i>find it
+  by</i>, and something it actually <i>hands over</i> once it's been found. One fingerprint can't
+  do all three jobs well at the same time, so instead of comparing the plain fingerprints
+  directly, each one gets reshaped into three purpose-built copies. A library makes the roles
+  concrete: your <b>Query</b> is what you type into the search bar, every book's <b>Key</b> is its
+  catalog entry (the thing your search actually gets matched against), and its <b>Value</b> is
+  what's actually printed on the pages once you pick it up. Three different jobs, three different
+  vectors — none of them would work as well doing double duty as one of the others.</p>
+  <p class="lead">The reshaping itself is done by multiplying each embedding by a <b>matrix</b> —
+  here, that just means a fixed grid of numbers that acts like a recipe: feed in the embedding's 16
+  numbers, and it blends them together the same specific way every single time, handing back a
+  new list of 8 numbers. There are three separate recipes (three separate matrices), one for
+  Query, one for Key, one for Value, so the same starting fingerprint comes out three different
+  ways depending on which job it's being reshaped for.</p>
   <div class="panel">
     <div class="tok-row" id="stage2Cards"></div>
     <p class="tooltip">📚 <b style="color:var(--q-color);">Query</b> — what this token is
@@ -286,8 +296,11 @@
   <h2>Who's looking at whom</h2>
   <div class="flow-map-holder" data-current="attention"></div>
   <p class="lead">For every pair of tokens, take the <b>dot product</b> of one token's Query
-  vector with the other's Key vector, then divide by √8 (the vectors' own dimension) to keep the
-  scale steady — one real number per pair, measuring how aligned the two vectors are. Collect one
+  vector with the other's Key vector — multiply each pair of matching numbers together and add up
+  all the results, which takes two 8-number vectors and turns them into one plain number. The
+  bigger that number, the more the two vectors point in the same direction, which is exactly what
+  we want: a stand-in for "how relevant is this other word to me." Divide that number by √8 (the
+  vectors' own dimension) to keep the scale steady. Collect one
   token's numbers against every token in the sentence (including itself) into a list, then turn
   that list into a genuine probability distribution with <b>softmax</b>: raise <i>e</i> to the
   power of each number, then divide every result by their total, so the whole list becomes

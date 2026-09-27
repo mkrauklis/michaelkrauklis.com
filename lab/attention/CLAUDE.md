@@ -369,6 +369,43 @@ should be "a light re-skin of a mechanic already built... no new heavy engineeri
   share was consistently higher (sharper) than at 2.0 (flatter, closer to uniform across ~150
   candidates) for the same sentence.
 
+## Second-review pass: QKV's "what" was covered, its "why" wasn't
+
+Direct follow-up, after the first feedback pass above had already landed: "Make sure it makes
+sense if you're coming in with nothing. What are the QKV matrices? What purpose do they serve?"
+Reading Stage 3 cold exposed a real gap the first pass's six fixes hadn't caught — the section
+*described* Query/Key/Value (the library analogy) but never actually answered why three separate
+projections exist instead of just comparing the plain embeddings directly, and it introduced
+"multiplied by three different fixed matrices" as if "multiplying a vector by a matrix" were
+already a known operation, which for this page's stated audience (calibrated all the way down to
+"a 6th grader" for [[lab-hunch]], and "coming in with nothing" here) it can't be assumed to be.
+
+Two paragraphs in Stage 3 were restructured, in this order:
+1. **The "why" now leads, not the "what."** The opening sentence now states the actual problem
+   directly — a single fingerprint has to serve three different jobs (search for others, be
+   found by others, hand over content once found) and can't do all three well — *before* the
+   library analogy, which now reads as the concrete payoff of a problem the reader already
+   understands, not a metaphor with nothing to attach to yet.
+2. **A second, new paragraph explains what "multiplying by a matrix" actually means**, in plain
+   language, without assuming the reader already knows: "a fixed grid of numbers that acts like a
+   recipe... blends them together the same specific way every single time." This doesn't attempt
+   to teach matrix multiplication properly (see below) — it's a one-paragraph bridge just wide
+   enough to get through this page, not a substitute for a real lesson.
+
+Stage 4's opening sentence had the same problem one level down — it used "dot product" as an
+already-known term before ever defining it. Fixed the same way: the definition ("multiply each
+pair of matching numbers together and add up all the results... the bigger that number, the more
+the two vectors point in the same direction") now comes inline, immediately, before the sentence
+continues on to describe how the score gets scaled and used.
+
+**What this pass deliberately didn't do**: build full, standalone explainers for matrix
+multiplication or dot product, or expand multi-head attention's existing "Go deeper" treatment.
+Both math prerequisites and multi-head attention were logged as candidate future Concept Lab
+topics instead (see the `project-lab-future-topics` memory) — the fix here is scoped to "Attention
+no longer silently assumes these," not "Attention now fully teaches these from first principles,"
+since a proper treatment of either is realistically its own tool, not a paragraph bolted onto this
+one.
+
 ## Testing changes
 
 No test suite — static page. Verify via a local static server (root-relative `/nav.js` and
