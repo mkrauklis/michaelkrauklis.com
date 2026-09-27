@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="google-adsense-account" content="ca-pub-5936916546458743">
+<title>Matrix Matrix — What Matrix Multiplication Actually Is</title>
+<meta name="description" content="What a matrix is, what it can represent, and what multiplying two of them actually means — worked by hand from a 2×2, to a 4×4, to two matrices of totally different shapes, with a shape checker to test your own.">
+<link rel="canonical" href="https://michaelkrauklis.me/lab/matrixmatrix/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Michael Krauklis">
+<meta property="og:title" content="Matrix Matrix — What Matrix Multiplication Actually Is">
+<meta property="og:description" content="What a matrix is, what it can represent, and what multiplying two of them actually means — worked by hand from a 2×2, to a 4×4, to two matrices of totally different shapes, with a shape checker to test your own.">
+<meta property="og:url" content="https://michaelkrauklis.me/lab/matrixmatrix/">
+<meta property="og:image" content="https://michaelkrauklis.me/lab/matrixmatrix/thumbnail.jpg">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Matrix Matrix — What Matrix Multiplication Actually Is">
+<meta name="twitter:description" content="What a matrix is, what it can represent, and what multiplying two of them actually means — worked by hand from a 2×2, to a 4×4, to two matrices of totally different shapes, with a shape checker to test your own.">
+<meta name="twitter:image" content="https://michaelkrauklis.me/lab/matrixmatrix/thumbnail.jpg">
+<link rel="icon" type="image/png" href="/echo-state-trace-mkconceptlab.png">
+<link rel="stylesheet" href="/theme.css">
+<style>
+  :root{
+    --accent: #22d3ee; --accent-dim: #0e5f6e;
+    /* Distinct hues for "which matrix" in the multiplication demos -- A is the accent itself
+       (it's the "active" one, same convention Attention uses for Q), B gets a warm contrast,
+       result cells get a neutral highlight so they never get confused with A's row or B's
+       column glow. */
+    --a-color: #22d3ee; --b-color: #e0a54c;
+  }
+  .wrap{ max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+  .toggle-group{ display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; }
+  .toggle-group button{
+    background: var(--bg-panel-2); border: 1px solid var(--line); color: var(--ink-dim);
+    padding: 9px 16px; border-radius: 6px; cursor: pointer; font-family: 'Inter', sans-serif;
+    font-size: 0.88rem; transition: all .12s ease;
+  }
+  .toggle-group button.active{ border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+
+  /* ---- generic matrix grid ---- */
+  .matrix-grid{ display:inline-grid; gap:4px; }
+  .matrix-cell{
+    width:42px; height:42px; display:flex; align-items:center; justify-content:center;
+    background:var(--bg-panel-2); border:1.5px solid var(--line); border-radius:5px;
+    font-family:'JetBrains Mono', ui-monospace, monospace; font-size:0.88rem; color:var(--ink);
+    transition: background .15s ease, border-color .15s ease;
+  }
+  .matrix-cell.static{ cursor:default; }
+  .matrix-cell.clickable{ cursor:pointer; }
+  .matrix-cell input{
+    width:100%; height:100%; background:transparent; border:none; color:var(--ink);
+    font-family:'JetBrains Mono', ui-monospace, monospace; font-size:0.88rem; text-align:center;
+    padding:0;
+  }
+  .matrix-cell input:focus{ outline:none; }
+  .matrix-cell.row-hl{ border-color: var(--a-color); background: color-mix(in srgb, var(--a-color) 20%, var(--bg-panel-2)); }
+  .matrix-cell.col-hl{ border-color: var(--b-color); background: color-mix(in srgb, var(--b-color) 20%, var(--bg-panel-2)); }
+  .matrix-cell.result-hl{ border-color: var(--ink); background: color-mix(in srgb, var(--ink) 16%, var(--bg-panel-2)); font-weight:700; }
+  .matrix-cell.result{ cursor:pointer; font-weight:600; }
+  .matrix-cell.result:hover{ border-color: var(--ink-dim); }
+
+  .matmul-row{ display:flex; align-items:center; gap:18px; flex-wrap:wrap; margin-top:18px; }
+  .matrix-block{ display:flex; flex-direction:column; align-items:center; gap:8px; }
+  .matrix-label{ font-size:0.78rem; color:var(--ink-dim); font-family:'Inter', sans-serif; }
+  .matmul-op{ font-size:1.6rem; color:var(--ink-dim); font-family:'JetBrains Mono', monospace; }
+
+  .matmul-explain{
+    margin-top:16px; padding:12px 16px; border-radius:6px; background:var(--bg-panel-2);
+    border:1px solid var(--line); font-family:'JetBrains Mono', ui-monospace, monospace;
+    font-size:0.9rem; color:var(--ink); word-break:break-word;
+  }
+
+  /* ---- pixel grid (Stage 2b) ---- */
+  .pixel-canvas{ display:block; image-rendering:pixelated; border:1px solid var(--line); border-radius:6px; background:#000; }
+  .pixel-row{ display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start; margin-top:14px; }
+
+  /* ---- transform demo (Stage 2c) ---- */
+  #transformCanvas{ display:block; background:#0c0e13; border:1px solid var(--line); border-radius:8px; }
+  .transform-controls{ display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+  .transform-matrix-readout{
+    margin-top:10px; font-family:'JetBrains Mono', ui-monospace, monospace; font-size:0.95rem;
+    color:var(--accent);
+  }
+
+  /* ---- shape explorer (Stage 4) ---- */
+  .shape-inputs{ display:flex; gap:14px; flex-wrap:wrap; margin-top:14px; }
+  .shape-inputs label{ display:flex; flex-direction:column; gap:4px; font-size:0.8rem; color:var(--ink-dim); }
+  .shape-inputs input{
+    width:64px; background:var(--bg-panel-2); border:1px solid var(--line); color:var(--ink);
+    padding:8px 10px; border-radius:6px; font-family:'JetBrains Mono', monospace; text-align:center;
+  }
+  .shape-equation{
+    margin-top:18px; font-family:'JetBrains Mono', ui-monospace, monospace; font-size:1.3rem;
+    color:var(--ink);
+  }
+  .shape-equation .inner{ font-weight:700; padding:2px 6px; border-radius:4px; }
+  .shape-equation .inner.match{ color:#4fd17a; background:color-mix(in srgb, #4fd17a 15%, transparent); }
+  .shape-equation .inner.mismatch{ color:var(--danger); background:color-mix(in srgb, var(--danger) 15%, transparent); }
+
+  /* ---- terminal-error design export (Stage 6) ---- */
+  #designCanvas{ display:block; width:100%; max-width:420px; height:auto; background:#0c0e13; border:1px solid var(--line); border-radius:8px; }
+
+  table.data-table{ border-collapse:collapse; margin-top:14px; font-size:0.9rem; }
+  table.data-table th, table.data-table td{ border:1px solid var(--line); padding:8px 14px; text-align:center; }
+  table.data-table th{ background:var(--bg-panel-2); color:var(--ink-dim); font-weight:600; font-size:0.8rem; }
+</style>
+</head>
+<body>
+<script src="/nav.js"></script>
+<div class="wrap">
+
+<header class="hero">
+  <div class="hero-grid">
+    <div>
+      <span class="hero-line">The building block underneath every tool in this lab</span>
+      <h1>Matrix Matrix</h1>
+      <p>Attention reshapes words by "multiplying by a matrix." Tonus's neural network is nothing
+      but matrices, layer after layer. This page is the thing itself, on its own, worked by hand —
+      what a matrix actually is, a few things it can stand for, and exactly what happens when you
+      multiply two of them together, from the smallest case up to two matrices that don't even
+      match in shape.</p>
+    </div>
+    <canvas id="heroCanvas"></canvas>
+  </div>
+</header>
+
+<main>
+
+  <section id="step-what">
+    <span class="step-tag">01 — what is a matrix</span>
+    <h2>Just a grid of numbers</h2>
+    <p>A matrix is a rectangular grid of numbers, arranged in rows and columns. That's the whole
+    definition — nothing about it is more mysterious than a spreadsheet with the row and column
+    headers stripped off. A matrix's size is always written <b>rows × columns</b>, in that order —
+    a common early mix-up is flipping them, so it's worth saying out loud: rows first, then
+    columns, every time. Click any cell below to see its own row and column number.</p>
+    <div class="panel">
+      <div class="matrix-block">
+        <div class="matrix-label">A 3×2 matrix (3 rows, 2 columns)</div>
+        <div class="matrix-grid" id="introGrid" data-rows="3" data-cols="2"></div>
+      </div>
+      <p class="status" id="introCellNote" style="margin-top:14px;">👆 Click a cell above.</p>
+    </div>
+  </section>
+
+  <section id="step-represent">
+    <span class="step-tag">02 — what a matrix can represent</span>
+    <h2>The grid doesn't care what the numbers mean</h2>
+    <p>A matrix is just a container — what makes it useful is that the same grid shape can hold
+    completely different kinds of information. Here are three real ones.</p>
+
+    <div class="panel">
+      <h3 class="stage-sub">A table of data</h3>
+      <p class="tooltip">The most literal reading: rows are things, columns are properties of
+      those things. Three students, three subjects, nine test scores — a 3×3 matrix, no different
+      in kind from any spreadsheet you've ever opened.</p>
+      <table class="data-table">
+        <tr><th></th><th>Math</th><th>Science</th><th>Art</th></tr>
+        <tr><th>Alice</th><td>92</td><td>85</td><td>78</td></tr>
+        <tr><th>Bob</th><td>74</td><td>90</td><td>95</td></tr>
+        <tr><th>Carol</th><td>88</td><td>81</td><td>99</td></tr>
+      </table>
+    </div>
+
+    <div class="panel" style="margin-top:20px;">
+      <h3 class="stage-sub">A picture</h3>
+      <p class="tooltip">Every digital image is a matrix — each cell's number is that pixel's
+      brightness (0 = fully off, higher = brighter). The exact same 8×8 grid of numbers below is
+      shown two ways: as plain numbers, and as an actual picture. Nothing was drawn by hand — the
+      picture <i>is</i> the numbers, just displayed as colored squares instead of digits.</p>
+      <div class="pixel-row">
+        <canvas class="pixel-canvas" id="pixelCanvas" width="160" height="160"></canvas>
+        <div class="matrix-grid" id="pixelNumbers" data-rows="8" data-cols="8"></div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:20px;">
+      <h3 class="stage-sub">A set of instructions for reshaping something</h3>
+      <p class="tooltip">A matrix can also be a recipe: feed it a point (or a whole shape made of
+      points), and it hands back a new point, moved somewhere specific. Every button below sets a
+      different 2×2 matrix — watch the square actually get rotated, stretched, or flipped by it.
+      Notice what's happening under the hood: moving <i>one</i> point is a 2×2 matrix multiplied
+      by a single point's 2 numbers — a matrix multiplication with the smallest possible second
+      matrix. Stage 3 below shows exactly how that multiplication works, then scales the same idea
+      up.</p>
+      <canvas id="transformCanvas" width="320" height="320"></canvas>
+      <div class="transform-controls" id="transformButtons">
+        <button type="button" class="pill" data-m="1,0,0,1">Identity (no change)</button>
+        <button type="button" class="pill" data-m="0,-1,1,0">Rotate 90°</button>
+        <button type="button" class="pill" data-m="2,0,0,2">Scale ×2</button>
+        <button type="button" class="pill" data-m="-1,0,0,1">Flip horizontally</button>
+        <button type="button" class="pill" data-m="1,1,0,1">Shear</button>
+      </div>
+      <div class="transform-matrix-readout" id="transformReadout"></div>
+    </div>
+  </section>
+
+  <section id="step-multiply">
+    <span class="step-tag">03 — multiplying two matrices</span>
+    <h2>Row, times column, added up</h2>
+    <p class="lead">Here's the entire rule: to find the number that goes in row <i>i</i>, column
+    <i>j</i> of the answer, take row <i>i</i> of the first matrix and column <i>j</i> of the second
+    matrix — two equal-length lists of numbers — multiply them together position by position, and
+    add up the results. That's a <b>dot product</b>, the exact same operation Attention uses to
+    compare two words. Do that once for every row/column pairing, and you've filled in the whole
+    answer. Click any cell in C below to see exactly which row and column made it.</p>
+
+    <div class="panel">
+      <h3 class="stage-sub">Start small: 2×2 times 2×2</h3>
+      <p class="tooltip">Both matrices are editable — change a number and watch the answer update
+      live.</p>
+      <div class="matmul-row" id="demo2x2"></div>
+      <div class="matmul-explain" id="demo2x2-explain"></div>
+    </div>
+
+    <div class="panel" style="margin-top:20px;">
+      <h3 class="stage-sub">The same idea, just bigger: 4×4 times 4×4</h3>
+      <p class="tooltip">Nothing about the rule changed — every cell of the answer is still one
+      row dotted with one column. There are just more numbers to multiply and add per cell (4
+      terms instead of 2) and more cells to fill (16 instead of 4).</p>
+      <div class="actions" style="margin-bottom:4px;">
+        <button type="button" class="secondary" id="randomize4x4">Randomize</button>
+      </div>
+      <div class="matmul-row" id="demo4x4"></div>
+      <div class="matmul-explain" id="demo4x4-explain"></div>
+    </div>
+
+    <div class="panel" style="margin-top:20px;">
+      <h3 class="stage-sub">Different shapes: 1×2 times 2×4</h3>
+      <p class="tooltip">Square matrices can hide a real requirement: the first matrix's number of
+      <b>columns</b> has to match the second matrix's number of <b>rows</b> — here, 2 and 2. Every
+      row of A and every column of B still has to be the same length for the dot product to even
+      make sense; that shared length (2) disappears from the answer's own shape, which ends up
+      1 row × 4 columns — one row from A, but every column from B, each one getting its own dot
+      product against A's single row.</p>
+      <div class="matmul-row" id="demoRect"></div>
+      <div class="matmul-explain" id="demoRect-explain"></div>
+    </div>
+  </section>
+
+  <section id="step-shapes">
+    <span class="step-tag">04 — try any shape</span>
+    <h2>When does this actually work?</h2>
+    <p>The rule that showed up by accident above, stated in general: for an <b>m×k</b> matrix times
+    a <b>k×n</b> matrix, the two <b>k</b>'s in the middle have to match — that's the only
+    requirement. What survives into the answer's shape is the two numbers on the outside, <b>m</b>
+    and <b>n</b>. Try breaking it on purpose:</p>
+    <div class="panel">
+      <div class="shape-inputs">
+        <label>A rows (m) <input type="number" id="seM" min="1" max="6" value="2"></label>
+        <label>A cols (k) <input type="number" id="seK1" min="1" max="6" value="3"></label>
+        <label>B rows (k) <input type="number" id="seK2" min="1" max="6" value="3"></label>
+        <label>B cols (n) <input type="number" id="seN" min="1" max="6" value="4"></label>
+      </div>
+      <div class="shape-equation" id="shapeEquation"></div>
+      <p class="status" id="shapeVerdict" style="margin-top:10px;"></p>
+    </div>
+  </section>
+
+  <section id="step-why">
+    <span class="step-tag">05 — why this matters</span>
+    <h2>This is the one operation everything else here runs on</h2>
+    <p><b>Neural networks</b> (see <a href="/lab/tonus/">Tonus</a>) are, underneath the training and
+    the jargon, layers of matrices multiplied one after another — every "neuron" is just one row of
+    a dot product.</p>
+    <p><b>Attention</b> (see <a href="/lab/attention/">Attention</a>) reshapes every word's
+    fingerprint into a Query, a Key, and a Value using exactly the multiplication from Stage 3 —
+    three different matrices applied to the same starting numbers.</p>
+    <p><b>Computer graphics and games</b> move, rotate, and scale every 3D model you've ever seen
+    on screen using the same transformation idea from Stage 2 — just with bigger matrices, and
+    many more points per shape.</p>
+    <p><b>Image filters</b> (blur, sharpen, edge-detection) work by multiplying a small matrix
+    across every patch of pixels in a photo — the same "picture is a matrix" idea from Stage 2,
+    with a second matrix doing the reshaping.</p>
+  </section>
+
+  <section id="step-design">
+    <span class="step-tag">06 — take it with you</span>
+    <h2>A design for anyone who's ever gotten this wrong</h2>
+    <p>If you've ever multiplied real matrices in code, you've seen this error. Download it,
+    print it, put it wherever you want.</p>
+    <canvas id="designCanvas" width="800" height="800"></canvas>
+    <div class="actions" style="margin-top:14px;">
+      <button type="button" class="primary" id="downloadDesignBtn">Download design PNG</button>
+    </div>
+  </section>
+
+  <details class="disclosure advanced" open>
+    <summary>How this actually works <span class="adv-sub">— the precise version</span></summary>
+    <div class="disclosure-body">
+      <p>For matrix <i>A</i> (size m×k) and matrix <i>B</i> (size k×n), the product <i>C = AB</i>
+      (size m×n) is defined entry by entry:</p>
+      <p style="font-family:'JetBrains Mono', ui-monospace, monospace; color:var(--accent); font-size:1rem;">
+      C[i][j] = &Sigma;<sub>t=1..k</sub> A[i][t] &times; B[t][j]</p>
+      <p>Computing the whole matrix this way takes m × n cells, each one costing k multiplications
+      and k−1 additions — for two square n×n matrices, that's O(n³) total, the naive algorithm
+      every intro course teaches first. It's not the fastest one known: Strassen's algorithm
+      (1969) does better by recombining the multiplications themselves, and faster algorithms have
+      been found since — see "Learn more" below. Every demo on this page uses the plain O(n³)
+      definition above; the answer is identical either way, just computed with more or fewer
+      multiplications along the way.</p>
+      <p>Matrix multiplication is also <b>not commutative</b>: in general, AB ≠ BA — swap the
+      order and you can get a completely different answer, or an operation that isn't even
+      defined anymore (an m×k matrix times a k×n one works; flip the order and it only works if
+      n happens to equal m too). Try it on the 2×2 demo in Stage 3: swap which grid holds which
+      numbers and watch the answer change.</p>
+    </div>
+  </details>
+
+  <details class="disclosure advanced">
+    <summary>Learn more</summary>
+    <div class="disclosure-body">
+      <p><a href="https://en.wikipedia.org/wiki/Matrix_multiplication" target="_blank" rel="noopener">Matrix multiplication</a>
+      on Wikipedia covers the general definition used on this page. Volker Strassen's 1969 paper
+      introduced the first algorithm faster than the naive O(n³) approach shown above, by finding
+      a way to compute a 2×2 block product with 7 multiplications instead of 8 — a result that
+      still anchors most of the faster algorithms discovered since.</p>
+    </div>
+  </details>
+
+</main>
+
+<footer>
+  <div class="wrap" style="padding:0;">
+    <p>Part of <a href="/lab/">The Concept Lab</a> by Michael Krauklis.</p>
+  </div>
+</footer>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  var ACCENT = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#22d3ee';
+
+  // ---------- core math ----------
+  function matMul(A, B){
+    var m = A.length, k = A[0].length, n = B[0].length;
+    var C = [];
+    for (var i = 0; i < m; i++){
+      var row = [];
+      for (var j = 0; j < n; j++){
+        var sum = 0;
+        for (var t = 0; t < k; t++){ sum += A[i][t] * B[t][j]; }
+        row.push(sum);
+      }
+      C.push(row);
+    }
+    return C;
+  }
+
+  function explainCell(A, B, i, j){
+    var rowArr = A[i];
+    var colArr = B.map(function(r){ return r[j]; });
+    var terms = rowArr.map(function(a, idx){ return a + '×' + colArr[idx]; });
+    var products = rowArr.map(function(a, idx){ return a * colArr[idx]; });
+    var sum = products.reduce(function(s, v){ return s + v; }, 0);
+    return 'C[' + i + '][' + j + '] = ' + terms.join(' + ') + ' = ' + products.join(' + ') + ' = ' + sum;
+  }
+
+  // ---------- generic editable/clickable matrix grid ----------
+  function renderGrid(container, matrix, opts){
+    opts = opts || {};
+    var rows = matrix.length, cols = matrix[0].length;
+    container.style.gridTemplateColumns = 'repeat(' + cols + ', 42px)';
+    container.innerHTML = '';
+    for (var i = 0; i < rows; i++){
+      for (var j = 0; j < cols; j++){
+        var cell = document.createElement('div');
+        cell.className = 'matrix-cell ' + (opts.editable ? 'clickable' : (opts.onClick ? 'clickable result' : 'static'));
+        if (opts.highlightRow === i) cell.classList.add('row-hl');
+        if (opts.highlightCol === j) cell.classList.add('col-hl');
+        if (opts.highlightResult && opts.highlightResult[0] === i && opts.highlightResult[1] === j) cell.classList.add('result-hl');
+
+        if (opts.editable){
+          var input = document.createElement('input');
+          input.type = 'number';
+          input.value = matrix[i][j];
+          (function(i, j, input){
+            input.addEventListener('input', function(){
+              var v = parseFloat(input.value);
+              matrix[i][j] = isNaN(v) ? 0 : v;
+              if (opts.onChange) opts.onChange();
+            });
+          })(i, j, input);
+          cell.appendChild(input);
+        } else {
+          cell.textContent = matrix[i][j];
+          if (opts.onClick){
+            (function(i, j){
+              cell.addEventListener('click', function(){ opts.onClick(i, j); });
+            })(i, j);
+          }
+        }
+        container.appendChild(cell);
+      }
+    }
+  }
+
+  // ---------- Stage 1: intro grid ----------
+  (function(){
+    var intro = [[3, 7], [1, 9], [5, 2]];
+    var note = document.getElementById('introCellNote');
+    renderGrid(document.getElementById('introGrid'), intro, {
+      onClick: function(i, j){
+        note.textContent = 'Row ' + i + ', column ' + j + ' — the number ' + intro[i][j] + '.';
+      }
+    });
+  })();
+
+  // ---------- Stage 2a: pixel grid (numbers -> picture) ----------
+  (function(){
+    var HEART = [
+      [0,1,1,0,0,1,1,0],
+      [1,1,1,1,1,1,1,1],
+      [1,1,1,1,1,1,1,1],
+      [1,1,1,1,1,1,1,1],
+      [0,1,1,1,1,1,1,0],
+      [0,0,1,1,1,1,0,0],
+      [0,0,0,1,1,0,0,0],
+      [0,0,0,0,0,0,0,0]
+    ];
+    var brightness = HEART.map(function(row){ return row.map(function(v){ return v ? 9 : 0; }); });
+    renderGrid(document.getElementById('pixelNumbers'), brightness, {});
+    var canvas = document.getElementById('pixelCanvas');
+    var ctx = canvas.getContext('2d');
+    var cell = canvas.width / 8;
+    for (var i = 0; i < 8; i++){
+      for (var j = 0; j < 8; j++){
+        var v = brightness[i][j] / 9;
+        ctx.fillStyle = v === 0 ? '#0c0e13' : 'color-mix(in srgb, ' + ACCENT + ' ' + Math.round(v*100) + '%, #0c0e13)';
+        ctx.fillStyle = v === 0 ? '#0c0e13' : ACCENT;
+        ctx.globalAlpha = v === 0 ? 1 : (0.35 + v*0.65);
+        ctx.fillRect(j*cell, i*cell, cell, cell);
+      }
+    }
+    ctx.globalAlpha = 1;
+  })();
+
+  // ---------- Stage 2c: transform demo ----------
+  (function(){
+    var canvas = document.getElementById('transformCanvas');
+    var ctx = canvas.getContext('2d');
+    var readout = document.getElementById('transformReadout');
+    var unit = 50, cx = canvas.width/2, cy = canvas.height/2;
+    var square = [[0,0],[1,0],[1,1],[0,1]];
+
+    function toScreen(p){ return [cx + p[0]*unit, cy - p[1]*unit]; }
+    function applyM(m, p){ return [m[0]*p[0] + m[1]*p[1], m[2]*p[0] + m[3]*p[1]]; }
+
+    function drawPoly(points, color, fill){
+      ctx.beginPath();
+      points.forEach(function(p, idx){
+        var s = toScreen(p);
+        if (idx === 0) ctx.moveTo(s[0], s[1]); else ctx.lineTo(s[0], s[1]);
+      });
+      ctx.closePath();
+      if (fill){ ctx.fillStyle = color; ctx.globalAlpha = 0.35; ctx.fill(); ctx.globalAlpha = 1; }
+      ctx.strokeStyle = color; ctx.lineWidth = 2.5; ctx.stroke();
+    }
+
+    function render(m){
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = '#2a3040'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0, cy); ctx.lineTo(canvas.width, cy);
+      ctx.moveTo(cx, 0); ctx.lineTo(cx, canvas.height); ctx.stroke();
+
+      drawPoly(square, '#9aa0ae', false);
+      var transformed = square.map(function(p){ return applyM(m, p); });
+      drawPoly(transformed, ACCENT, true);
+
+      readout.textContent = 'Matrix: [ ' + m[0] + ', ' + m[1] + ' ; ' + m[2] + ', ' + m[3] + ' ]';
+    }
+
+    document.getElementById('transformButtons').addEventListener('click', function(e){
+      var btn = e.target.closest('.pill');
+      if (!btn) return;
+      Array.prototype.forEach.call(document.querySelectorAll('#transformButtons .pill'), function(b){ b.classList.remove('selected'); });
+      btn.classList.add('selected');
+      var m = btn.dataset.m.split(',').map(Number);
+      render(m);
+    });
+
+    render([1,0,0,1]);
+  })();
+
+  // ---------- Stage 3: matrix multiplication demos ----------
+  function buildDemo(prefix, initA, initB, editable){
+    var A = initA.map(function(r){ return r.slice(); });
+    var B = initB.map(function(r){ return r.slice(); });
+    var selected = [0, 0];
+    var row = document.getElementById(prefix);
+    var explainEl = document.getElementById(prefix + '-explain');
+
+    function render(){
+      var C = matMul(A, B);
+      row.innerHTML = '';
+
+      function block(label, gridId){
+        var b = document.createElement('div');
+        b.className = 'matrix-block';
+        var l = document.createElement('div'); l.className = 'matrix-label'; l.textContent = label;
+        var g = document.createElement('div'); g.className = 'matrix-grid'; g.id = gridId;
+        b.appendChild(l); b.appendChild(g);
+        return { block: b, grid: g };
+      }
+
+      var aBlock = block('A (' + A.length + '×' + A[0].length + ')', prefix + '-A');
+      var op1 = document.createElement('div'); op1.className = 'matmul-op'; op1.textContent = '×';
+      var bBlock = block('B (' + B.length + '×' + B[0].length + ')', prefix + '-B');
+      var op2 = document.createElement('div'); op2.className = 'matmul-op'; op2.textContent = '=';
+      var cBlock = block('C (' + C.length + '×' + C[0].length + ')', prefix + '-C');
+
+      row.appendChild(aBlock.block);
+      row.appendChild(op1);
+      row.appendChild(bBlock.block);
+      row.appendChild(op2);
+      row.appendChild(cBlock.block);
+
+      renderGrid(aBlock.grid, A, {
+        editable: editable, onChange: render,
+        highlightRow: selected[0]
+      });
+      renderGrid(bBlock.grid, B, {
+        editable: editable, onChange: render,
+        highlightCol: selected[1]
+      });
+      renderGrid(cBlock.grid, C, {
+        onClick: function(i, j){ selected = [i, j]; render(); },
+        highlightResult: selected
+      });
+
+      explainEl.textContent = explainCell(A, B, selected[0], selected[1]);
+    }
+
+    render();
+    return { randomize: function(min, max){
+      for (var i = 0; i < A.length; i++) for (var j = 0; j < A[0].length; j++) A[i][j] = Math.floor(Math.random()*(max-min+1))+min;
+      for (var i2 = 0; i2 < B.length; i2++) for (var j2 = 0; j2 < B[0].length; j2++) B[i2][j2] = Math.floor(Math.random()*(max-min+1))+min;
+      render();
+    }};
+  }
+
+  buildDemo('demo2x2', [[2,0],[1,3]], [[4,1],[2,2]], true);
+
+  var demo4x4 = buildDemo('demo4x4',
+    [[2,0,1,3],[1,4,0,2],[3,1,2,0],[0,2,1,4]],
+    [[1,2,0,1],[0,1,3,2],[2,0,1,1],[1,1,0,2]],
+    true
+  );
+  document.getElementById('randomize4x4').addEventListener('click', function(){
+    demo4x4.randomize(-5, 9);
+  });
+
+  buildDemo('demoRect', [[3,-2]], [[1,0,4,2],[5,2,-1,3]], true);
+
+  // ---------- Stage 4: shape explorer ----------
+  (function(){
+    var mEl = document.getElementById('seM'), k1El = document.getElementById('seK1');
+    var k2El = document.getElementById('seK2'), nEl = document.getElementById('seN');
+    var eqEl = document.getElementById('shapeEquation');
+    var verdictEl = document.getElementById('shapeVerdict');
+
+    function clamp(v){ v = parseInt(v, 10); if (isNaN(v)) v = 1; return Math.max(1, Math.min(6, v)); }
+
+    function render(){
+      var m = clamp(mEl.value), k1 = clamp(k1El.value), k2 = clamp(k2El.value), n = clamp(nEl.value);
+      var match = k1 === k2;
+      var cls = match ? 'match' : 'mismatch';
+      eqEl.innerHTML = '(' + m + ' × <span class="inner ' + cls + '">' + k1 + '</span>) · (' +
+        '<span class="inner ' + cls + '">' + k2 + '</span> × ' + n + ')' +
+        (match ? ' = (' + m + ' × ' + n + ')' : ' = undefined');
+      verdictEl.textContent = match
+        ? '✅ Compatible — multiplying these gives a ' + m + '×' + n + ' result.'
+        : '❌ Not compatible — A has ' + k1 + ' column' + (k1===1?'':'s') + ' but B has ' + k2 + ' row' + (k2===1?'':'s') + '. These have to match.';
+    }
+    [mEl, k1El, k2El, nEl].forEach(function(el){ el.addEventListener('input', render); });
+    render();
+  })();
+
+  // ---------- Stage 6: the design ----------
+  var designCanvas = document.getElementById('designCanvas');
+  (function(){
+    var ctx = designCanvas.getContext('2d');
+    var w = designCanvas.width, h = designCanvas.height;
+    ctx.fillStyle = '#050608';
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.textAlign = 'left';
+    ctx.font = '18px "JetBrains Mono", ui-monospace, monospace';
+    ctx.fillStyle = '#5eb0a4';
+    ctx.fillText('>>> attention_output = A @ B', 60, 90);
+
+    ctx.fillStyle = '#e5484d';
+    ctx.font = 'bold 26px "JetBrains Mono", ui-monospace, monospace';
+    ctx.fillText('ValueError', 60, 150);
+    ctx.font = '20px "JetBrains Mono", ui-monospace, monospace';
+    ctx.fillStyle = '#e9e7de';
+    ctx.fillText('shapes (3,4) and (5,6) not aligned:', 60, 190);
+    ctx.fillText('4 (dim 1) != 5 (dim 0)', 60, 220);
+
+    ctx.strokeStyle = '#2a3040';
+    ctx.beginPath(); ctx.moveTo(60, 270); ctx.lineTo(w-60, 270); ctx.stroke();
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#e9e7de';
+    ctx.font = '600 40px Fraunces, serif';
+    ctx.fillText('Make sure the', w/2, 400);
+    ctx.fillText('inner dimensions', w/2, 452);
+    ctx.fillText('match.', w/2, 504);
+
+    ctx.font = 'italic 20px Fraunces, serif';
+    ctx.fillStyle = '#9aa0ae';
+    ctx.fillText('— every matrix multiplication error, eventually', w/2, 560);
+
+    ctx.font = '600 22px "JetBrains Mono", ui-monospace, monospace';
+    ctx.fillStyle = '#22d3ee';
+    ctx.fillText('MATRIX MATRIX', w/2, h - 90);
+    ctx.font = '16px Inter, sans-serif';
+    ctx.fillStyle = '#9aa0ae';
+    ctx.fillText('michaelkrauklis.me/lab/matrixmatrix', w/2, h - 55);
+  })();
+
+  document.getElementById('downloadDesignBtn').addEventListener('click', function(){
+    var link = document.createElement('a');
+    link.download = 'matrix-matrix-inner-dimensions.png';
+    link.href = designCanvas.toDataURL('image/png');
+    link.click();
+  });
+
+  // ---------- hero canvas ----------
+  (function(){
+    var canvas = document.getElementById('heroCanvas');
+    var ctx = canvas.getContext('2d');
+    var w = canvas.clientWidth || 480, h = 220;
+    canvas.width = w; canvas.height = h;
+    ctx.fillStyle = '#161a24';
+    ctx.fillRect(0, 0, w, h);
+    var A = [[2,0],[1,3]], B = [[4,1],[2,2]], C = matMul(A,B);
+    function drawGrid(mat, x0, y0, color){
+      var cell = 34;
+      for (var i=0;i<mat.length;i++) for (var j=0;j<mat[0].length;j++){
+        ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+        ctx.strokeRect(x0+j*cell, y0+i*cell, cell-4, cell-4);
+        ctx.fillStyle = color; ctx.font = '14px JetBrains Mono, monospace'; ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText(mat[i][j], x0+j*cell+(cell-4)/2, y0+i*cell+(cell-4)/2);
+      }
+    }
+    drawGrid(A, 30, h/2-38, '#22d3ee');
+    ctx.fillStyle = '#9aa0ae'; ctx.font = '20px monospace'; ctx.fillText('×', 110, h/2);
+    drawGrid(B, 130, h/2-38, '#e0a54c');
+    ctx.fillStyle = '#9aa0ae'; ctx.fillText('=', 210, h/2);
+    drawGrid(C, 230, h/2-38, '#e9e7de');
+  })();
+  window.addEventListener('resize', function(){});
+})();
+</script>
+</body>
+</html>
