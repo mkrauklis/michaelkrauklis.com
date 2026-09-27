@@ -473,6 +473,53 @@ Two small, targeted fixes rather than a rewrite:
   pass named at the top of this page," closing the loop between the two additions instead of
   leaving them as two disconnected facts.
 
+## Fifth-review pass: calibrated for "a math-inclined 8th grader," not a general adult reader
+
+Direct instruction: "make sure a math-inclined 8th grader would just get it." A stricter,
+differently-shaped bar than any previous pass — this reader is comfortable with real arithmetic
+(multiplication, addition, exponents, square roots, basic probability) but almost certainly hasn't
+seen vectors, matrices, or trigonometry taught formally yet. That's a different failure mode than
+the earlier passes caught: not missing intuition or missing "why," but **unexplained vocabulary
+quietly assumed as already known**, found by grepping the whole file for "vector," "matrix,"
+"dimension," and "e" and checking every hit against "would this reader already know this word."
+Four real gaps, all in the main flow (not the disclosures, which are explicitly the
+"precise version" and can carry more vocabulary):
+
+- **"Vector" was used from Stage 2 Step C onward and never once defined.** A reader who's only
+  met "vector" in a physics-arrow sense (magnitude and direction) could easily misread every
+  later "Query vector"/"Key vector" reference. Fixed with one parenthetical the first time the
+  word appears: "vector" just means an ordered list of numbers, and every fingerprint already
+  shown was already one.
+- **Matrix multiplication's explanation was a metaphor ("a recipe that blends numbers") with no
+  actual arithmetic in it.** For a *math-inclined* reader specifically, that's underselling what
+  they can handle — added the literal mechanic right after the metaphor: each output number is a
+  weighted sum (multiply each input by its own fixed number, add the products), repeated 8 times
+  with 8 different fixed-number sets to get all 8 outputs. Concrete multiply-and-add, no metaphor
+  required to hide behind.
+- **"e" was used in the softmax explanation with zero context** ("raise e to the power of..."). Most
+  8th graders, even math-inclined ones, haven't met Euler's number yet (that's typically an
+  Algebra 2/Precalc topic). Added a one-clause definition inline: a fixed number, about 2.718,
+  used whenever you need to turn any number positive without disturbing their relative order. Also
+  split what had become a single overloaded run-on sentence (the aside made softmax's actual two
+  steps hard to find in the middle of it) into two plain steps.
+- **Stage 6 said "apply one more fixed linear map, bringing it back into the same 16-dimensional
+  space"** — both "linear map" and "N-dimensional space" are linear-algebra vocabulary introduced
+  nowhere else on the page. Rewritten to reuse vocabulary the page had already established by that
+  point ("the same reshaping recipe from Stage 3... turning the 8 numbers back into 16, the same
+  length the embeddings started at") instead of introducing two new unexplained terms for a
+  restatement of something already explained.
+
+Also glossed "dimension" the one place it appeared in the main flow (Stage 4's √8 scaling) — "8
+because that's how long a Query/Key vector is here" — rather than assuming the linear-algebra
+sense of "dimension" is already familiar.
+
+**What this pass deliberately left alone**: the "How this actually works" disclosure keeps
+"dimensions," "projection," and similar vocabulary as-is — that section is explicitly for a reader
+who already wants "every detail," a different contract than the main flow. Trigonometry
+(sine/cosine in the positional-encoding disclosure) also wasn't touched — it's disclosure-only,
+correctly labeled as "the real formula from the original paper," and rewriting it in
+non-trigonometric terms would misrepresent what it actually is.
+
 ## Testing changes
 
 No test suite — static page. Verify via a local static server (root-relative `/nav.js` and

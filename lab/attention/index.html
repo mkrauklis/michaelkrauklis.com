@@ -259,7 +259,10 @@
       <button type="button" data-pos="on">Add position</button>
     </div>
     <p class="tooltip">Flip it and watch the strips above actually change — that's a real
-    position vector landing on top of the fingerprints you just looked at.</p>
+    position <b>vector</b> landing on top of the fingerprints you just looked at. ("Vector" is just
+    the math name for an ordered list of numbers — every fingerprint you've already seen is one,
+    16 numbers long. You'll see the word a lot from here on; it never means anything fancier than
+    that.)</p>
   </div>
 </section>
 
@@ -280,7 +283,12 @@
   <p class="lead">The reshaping itself is done by multiplying each embedding by a <b>matrix</b> —
   here, that just means a fixed grid of numbers that acts like a recipe: feed in the embedding's 16
   numbers, and it blends them together the same specific way every single time, handing back a
-  new list of 8 numbers. There are three separate recipes (three separate matrices), one for
+  new list of 8 numbers. Concretely, and this is genuinely all "matrix multiplication" means:
+  each of those 8 output numbers is its own weighted sum — multiply each of the 16 input numbers
+  by its own fixed number, then add up all 16 products to get one output number. Do that 8 times,
+  each time with a different set of 16 fixed numbers, and you've got all 8 outputs. That whole
+  grid — 8 rows of 16 fixed numbers each — <i>is</i> the matrix; nothing about it is more
+  mysterious than repeated multiply-and-add. There are three separate matrices here, one for
   Query, one for Key, one for Value, so the same starting fingerprint comes out three different
   ways depending on which job it's being reshaped for.</p>
   <div class="panel">
@@ -301,12 +309,17 @@
   vector with the other's Key vector — multiply each pair of matching numbers together and add up
   all the results, which takes two 8-number vectors and turns them into one plain number. The
   bigger that number, the more the two vectors point in the same direction, which is exactly what
-  we want: a stand-in for "how relevant is this other word to me." Divide that number by √8 (the
-  vectors' own dimension) to keep the scale steady. Collect one
+  we want: a stand-in for "how relevant is this other word to me." Divide that number by √8 (8
+  because that's how long a Query/Key vector is here — dividing by the square root of that length
+  is just a fixed correction that keeps the numbers from swinging wildly as vectors get longer) to
+  keep the scale steady. Collect one
   token's numbers against every token in the sentence (including itself) into a list, then turn
-  that list into a genuine probability distribution with <b>softmax</b>: raise <i>e</i> to the
-  power of each number, then divide every result by their total, so the whole list becomes
-  non-negative and sums to exactly 1. Finally, take a weighted average of every token's Value
+  that list into a genuine probability distribution with <b>softmax</b>, in two steps. First, raise
+  <i>e</i> to the power of each number in the list — <i>e</i> is just a fixed, special number
+  (about 2.718) that mathematicians reach for whenever they need a quick way to turn any number,
+  negative or positive, into a positive one without changing which numbers were bigger than which.
+  Then divide every result by their total, so the whole list becomes non-negative and sums to
+  exactly 1. Finally, take a weighted average of every token's Value
   vector using those probabilities as the weights — that weighted average <i>is</i> this token's
   new, context-dependent vector. Click a word below to see its own weights.</p>
   <div class="panel">
@@ -369,9 +382,10 @@
   <span class="step-tag">6 — prediction</span>
   <h2>What comes next?</h2>
   <div class="flow-map-holder" data-current="predict"></div>
-  <p class="lead">Take the last token's context-dependent vector from Stage 4 and apply one more
-  fixed linear map, bringing it back into the same 16-dimensional space the embeddings started
-  in. Then take its dot product against every candidate word's own embedding — the same kind of
+  <p class="lead">Take the last token's context-dependent vector from Stage 4 and run it through
+  one more fixed matrix — the same reshaping recipe from Stage 3, just this time turning the
+  8 numbers back into 16, the same length the embeddings started at. Then take its dot product
+  against every candidate word's own embedding — the same kind of
   comparison Stage 4 already used, just against a list of candidate next words instead of other
   tokens in your sentence — and run the results through that same softmax normalization to get a
   real probability for each candidate. Pick a word yourself below, or click "Generate next token"
