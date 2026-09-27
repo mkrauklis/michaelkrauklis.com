@@ -406,6 +406,41 @@ no longer silently assumes these," not "Attention now fully teaches these from f
 since a proper treatment of either is realistically its own tool, not a paragraph bolted onto this
 one.
 
+## Third-review pass: parallelism and training were never actually explained
+
+Direct follow-up question: "do we describe how this makes things parallelizable and how training
+interacts with it?" Answer at the time was no — the page said "trained"/"untrained" upward of a
+dozen times but never once explained what training actually *does* to these numbers, and never
+mentioned parallelism at all despite it being the actual reason transformers are trainable at
+scale in the first place. Both were real, checked-for-first gaps, not assumed ones — grepped the
+whole file for "train"/"parallel" before writing anything, to confirm this wasn't already covered
+somewhere less obvious.
+
+Two new subsections, both inside "How this actually works" (this is precise-version depth, not
+Stage-3/4-level plain-language territory, so it belongs there rather than in the main flow):
+
+- **"How training actually changes these numbers"**, right after the existing "Why the embeddings
+  and projections are fixed, not trained" section (which explained *why this page* skipped
+  training, but never explained what training would actually have *done*). Walks through the real
+  mechanism — loss function, backpropagation, gradient descent, each given a one-clause plain-
+  language gloss inline rather than assumed — ending on the same "mechanism unchanged, only the
+  numbers change" framing the rest of this page already uses everywhere else.
+- **"Why this can happen to a whole sentence at once"**, right after the "Attention" section.
+  States the actual mechanism (every Query/Key pair compared simultaneously as one matrix
+  multiplication, no step waiting on a previous step to finish) and contrasts it directly against
+  RNNs' genuine sequential dependency — that contrast is what makes "parallelizable" mean something
+  concrete instead of being an unexplained buzzword. The second paragraph deliberately connects
+  this forward to the KV cache section immediately below it: parallelism holds whenever the whole
+  sequence is already known (training, or reading a prompt), and breaks down specifically during
+  token-by-token generation, which is *exactly* why the KV cache exists — tying two previously
+  disconnected parts of this page (a section about training-time speed, a section about
+  generation-time caching) into one coherent story instead of two separate facts.
+
+Both sections were logged as answering a gap identified from [[project-lab-future-topics]]'s own
+premise (this page leans on prerequisite concepts without fully teaching them) — same spirit as
+the second-review pass above, but this time the gap was about the *system's* properties
+(training, parallelism) rather than a *component's* purpose (QKV, dot product).
+
 ## Testing changes
 
 No test suite — static page. Verify via a local static server (root-relative `/nav.js` and

@@ -530,6 +530,25 @@
     on real language actually buys you, and it's honestly out of scope for a page that runs
     entirely in a browser tab with no server and no training step.</p>
 
+    <h3 style="margin-top:24px;">How training actually changes these numbers</h3>
+    <p>Every matrix on this page — the embeddings, all three Query/Key/Value projections, the
+    final prediction matrix in Stage 6 — starts out in a real model exactly the way it starts out
+    here: random numbers with no meaning yet. Training is the process of nudging every one of
+    those numbers, a tiny bit at a time, until the model's predictions get better. Concretely: feed
+    it a real sentence with the next word hidden, let it predict that word using its current
+    (still mostly-random, early on) numbers, and compare the guess to the real word with a
+    <b>loss function</b> — one number measuring how wrong that guess was. <b>Backpropagation</b>
+    then works backward through the entire computation you just watched — the prediction matrix,
+    the attention weights, all three Q/K/V projections, even the embeddings — to figure out
+    exactly how much each individual number contributed to that wrongness. <b>Gradient descent</b>
+    nudges every number a small step in whichever direction would have made the guess less wrong.
+    Repeat that same cycle billions of times over a huge pile of real text, and the numbers stop
+    being random — a Key projection starts actually encoding "this is a noun," a Query projection
+    starts actually encoding "I'm an adjective looking for the noun I modify." Nothing about the
+    <i>mechanism</i> changes from what this page already computes — same dot products, same
+    softmax, same weighted average. Training only ever changes which numbers sit inside the
+    matrices, never what's done with them.</p>
+
     <h3 style="margin-top:24px;">Tokenization</h3>
     <p>Real tokenizers (like BPE, used by GPT-style models) learn their word-splitting rules
     from millions of real documents. This page uses a much simpler stand-in: split on
@@ -552,6 +571,27 @@
     of the threads you saw in Stage 4. The final output for a token is a weighted sum of every
     token's Value, using those exact weights — also real, also exactly what a trained model
     does with its own (trained) numbers.</p>
+
+    <h3 style="margin-top:24px;">Why this can happen to a whole sentence at once</h3>
+    <p>Stage 4 computes every pair of tokens' scores at the same time, as one matrix
+    multiplication over the whole sentence, not one pair at a time in sequence. That's not an
+    implementation shortcut — it's the actual reason transformers train the way they do. Older
+    architectures (recurrent networks, RNNs) read a sentence one word at a time, and each step
+    genuinely couldn't start until the previous step finished, because each word's output fed
+    directly into the next word's computation. Attention has no such dependency when the whole
+    sentence is already known (which is exactly the case during training, and while reading a
+    prompt): every token's Query needs comparing against every token's Key regardless of where
+    either one sits, so a GPU can compute the entire grid of comparisons in one shot instead of
+    working through the sentence step by step. That's the whole reason transformers could be
+    trained at the scale they have been — not a cleverer computation per pair, but removing the
+    "wait for the previous step" bottleneck entirely.</p>
+    <p><b>Generating new text is the one place that parallelism doesn't apply</b>, and it's
+    exactly why the KV cache below exists. When generating, the next word doesn't exist yet — you
+    can't compute a Query against a Key that hasn't been produced yet — so token-by-token
+    generation is unavoidably sequential no matter how the rest of the math works. The KV cache
+    isn't needed during training (the full sentence already exists, so everything above applies)
+    — it's a generation-time fix for the one part of this pipeline that genuinely can't be run
+    all at once.</p>
 
     <h3 style="margin-top:24px;">Reusing Key/Value vectors (the "cache")</h3>
     <p>Keys and Values only ever depend on a token and the ones before it, which is why they
