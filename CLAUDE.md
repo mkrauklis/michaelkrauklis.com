@@ -186,8 +186,8 @@ When adding a new lab tool, link both files and rely on `theme.css`'s defaults b
 new CSS — copying a whole `<style>` block from an existing tool page (the old pattern) is how
 the palette and the paragraph-width bug drifted out of sync across pages in the first place.
 
-`lab/index.html`'s tool list is ordered newest-first, top to bottom (currently Attention, Tonus,
-Inkling, Echo State, Neural Viaduct, Vectis, Afterimage, Ridgeline — keep this parenthetical
+`lab/index.html`'s tool list is ordered newest-first, top to bottom (currently Hunch, Attention,
+Tonus, Inkling, Echo State, Neural Viaduct, Vectis, Afterimage, Ridgeline — keep this parenthetical
 current when it drifts; it had already fallen a tool behind before this edit) — add a new tool's
 card at the *top* of
 `.tool-list`, not the bottom. Each card also gets a `/lab/<tool>/thumbnail.jpg` — build it from
@@ -209,8 +209,8 @@ Echo State trace of the text "MKConceptLab" (default reservoir: seed 42, H=8, sp
 0.9), not a hand-drawn icon. Every page's `<head>` links it directly (`<link rel="icon"
 type="image/png" href="/echo-state-trace-mkconceptlab.png">`, placed right before the
 `theme.css` link) rather than relying on the browser's automatic `/favicon.ico` fallback. If the
-site ever gets a different mascot/favicon, update all 10 pages' `<link>` tags together in one
-commit (root, `lab/index.html`, and 8 tools as of this writing — check `lab/index.html`'s own
+site ever gets a different mascot/favicon, update all 11 pages' `<link>` tags together in one
+commit (root, `lab/index.html`, and 9 tools as of this writing — check `lab/index.html`'s own
 newest-first list for the current count) — there's no shared head-include mechanism, so this one
 tag is duplicated per page the same way the SEO meta block below is.
 
