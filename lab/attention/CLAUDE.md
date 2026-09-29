@@ -520,6 +520,25 @@ who already wants "every detail," a different contract than the main flow. Trigo
 correctly labeled as "the real formula from the original paper," and rewriting it in
 non-trigonometric terms would misrepresent what it actually is.
 
+## Sixth-review pass: paragraph structure, not content, was the confusion
+
+Direct feedback landed on all three of Matrix Matrix, Hunch, and Attention at once ("they're too
+confusing still... simpler and more direct"), demoting all three to the bottom of `lab/index.html`
+pending a revamp. For Attention specifically, checked first rather than assumed: this page's main
+`<main>` text ran 11,777 characters versus Matrix Matrix's (already-trimmed) 4,608 — nearly 2.5×
+denser, the accumulated result of five prior calibration passes that each *added* clarifying
+sentences without ever removing anything. Re-reading Stage 3 and Stage 4 cold, the actual problem
+wasn't wrong or unnecessary content — every sentence added in earlier passes was still earning its
+place — it was that Stage 3's two paragraphs and Stage 4's one paragraph had each grown into a
+150+ word wall covering three or four distinct ideas with no paragraph break between them (the QKV
+problem statement bleeding straight into the library analogy bleeding into the matrix-multiplication
+mechanic, all as one visual block; dot product, scaling, and both softmax steps the same way in
+Stage 4). Fixed by breaking each into one-idea-per-paragraph chunks — no sentence was cut or
+reworded, only regrouped — which is a lower-risk fix than trimming content that five separate
+rounds of direct feedback had already shaped. Matrix Matrix and Hunch got real content/artifact
+changes this round (see their own CLAUDE.md files); this page's fix was structural because that's
+what the actual gap turned out to be once checked.
+
 ## Testing changes
 
 No test suite — static page. Verify via a local static server (root-relative `/nav.js` and

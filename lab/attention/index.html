@@ -275,23 +275,25 @@
   something that goes <i>looking</i> for other words, something that other words can <i>find it
   by</i>, and something it actually <i>hands over</i> once it's been found. One fingerprint can't
   do all three jobs well at the same time, so instead of comparing the plain fingerprints
-  directly, each one gets reshaped into three purpose-built copies. A library makes the roles
-  concrete: your <b>Query</b> is what you type into the search bar, every book's <b>Key</b> is its
-  catalog entry (the thing your search actually gets matched against), and its <b>Value</b> is
-  what's actually printed on the pages once you pick it up. Three different jobs, three different
-  vectors — none of them would work as well doing double duty as one of the others.</p>
+  directly, each one gets reshaped into three purpose-built copies.</p>
+  <p class="lead">A library makes the roles concrete: your <b>Query</b> is what you type into the
+  search bar, every book's <b>Key</b> is its catalog entry (the thing your search actually gets
+  matched against), and its <b>Value</b> is what's actually printed on the pages once you pick it
+  up. Three different jobs, three different vectors — none of them would work as well doing
+  double duty as one of the others.</p>
   <p class="lead">The reshaping itself is done by multiplying each embedding by a <b>matrix</b> —
   here, that just means a fixed grid of numbers that acts like a recipe: feed in the embedding's 16
   numbers, and it blends them together the same specific way every single time, handing back a
-  new list of 8 numbers. Concretely, and this is genuinely all "matrix multiplication" means:
-  each of those 8 output numbers is its own weighted sum — multiply each of the 16 input numbers
-  by its own fixed number, then add up all 16 products to get one output number. Do that 8 times,
-  each time with a different set of 16 fixed numbers, and you've got all 8 outputs. That whole
-  grid — 8 rows of 16 fixed numbers each — <i>is</i> the matrix; nothing about it is more
-  mysterious than repeated multiply-and-add. There are three separate matrices here, one for
-  Query, one for Key, one for Value, so the same starting fingerprint comes out three different
-  ways depending on which job it's being reshaped for. (Want to sit with matrix multiplication on
-  its own, worked by hand from a 2×2 up to two matrices of totally different shapes? See
+  new list of 8 numbers.</p>
+  <p class="lead">Concretely, and this is genuinely all "matrix multiplication" means: each of
+  those 8 output numbers is its own weighted sum — multiply each of the 16 input numbers by its
+  own fixed number, then add up all 16 products to get one output number. Do that 8 times, each
+  time with a different set of 16 fixed numbers, and you've got all 8 outputs. That whole grid —
+  8 rows of 16 fixed numbers each — <i>is</i> the matrix; nothing about it is more mysterious than
+  repeated multiply-and-add. There are three separate matrices here, one for Query, one for Key,
+  one for Value, so the same starting fingerprint comes out three different ways depending on
+  which job it's being reshaped for. (Want to sit with matrix multiplication on its own, worked by
+  hand from a 2×2 up to two matrices of totally different shapes? See
   <a href="/lab/matrixmatrix/">Matrix Matrix</a>.)</p>
   <div class="panel">
     <div class="tok-row" id="stage2Cards"></div>
@@ -314,16 +316,17 @@
   we want: a stand-in for "how relevant is this other word to me." Divide that number by √8 (8
   because that's how long a Query/Key vector is here — dividing by the square root of that length
   is just a fixed correction that keeps the numbers from swinging wildly as vectors get longer) to
-  keep the scale steady. Collect one
-  token's numbers against every token in the sentence (including itself) into a list, then turn
-  that list into a genuine probability distribution with <b>softmax</b>, in two steps. First, raise
-  <i>e</i> to the power of each number in the list — <i>e</i> is just a fixed, special number
-  (about 2.718) that mathematicians reach for whenever they need a quick way to turn any number,
-  negative or positive, into a positive one without changing which numbers were bigger than which.
-  Then divide every result by their total, so the whole list becomes non-negative and sums to
-  exactly 1. Finally, take a weighted average of every token's Value
-  vector using those probabilities as the weights — that weighted average <i>is</i> this token's
-  new, context-dependent vector. Click a word below to see its own weights.</p>
+  keep the scale steady.</p>
+  <p class="lead">Collect one token's numbers against every token in the sentence (including
+  itself) into a list, then turn that list into a genuine probability distribution with
+  <b>softmax</b>, in two steps. First, raise <i>e</i> to the power of each number in the list —
+  <i>e</i> is just a fixed, special number (about 2.718) that mathematicians reach for whenever
+  they need a quick way to turn any number, negative or positive, into a positive one without
+  changing which numbers were bigger than which. Then divide every result by their total, so the
+  whole list becomes non-negative and sums to exactly 1.</p>
+  <p class="lead">Finally, take a weighted average of every token's Value vector using those
+  probabilities as the weights — that weighted average <i>is</i> this token's new,
+  context-dependent vector. Click a word below to see its own weights.</p>
   <div class="panel">
     <div class="attn-wrap">
       <svg id="attnSvg" viewBox="0 0 700 260" width="100%" height="260"></svg>

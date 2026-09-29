@@ -146,11 +146,10 @@
   <section id="step-setup">
     <span class="step-tag">01 — meet the jars</span>
     <h2>Two jars, one secret</h2>
-    <p>There are two jars of candy, <b>Jar A</b> and <b>Jar B</b>. Each one has its own mix of
-    orange and blueberry candies — you can see exactly what's in each jar, that part's no secret.
-    Then a coin gets flipped where you can't see it: heads means a candy will come from Jar A,
-    tails means Jar B. <i>That's</i> the secret. Before anything else happens, your best guess has
-    to be a plain 50/50 — that's your <b>starting hunch</b>.</p>
+    <p>Two jars of candy, <b>Jar A</b> and <b>Jar B</b> — each with its own mix of orange and
+    blueberry, no secret there. What's secret: a hidden coin flip picks which jar a candy comes
+    from (heads = Jar A, tails = Jar B). Since you don't see the flip, your best guess starts at a
+    plain 50/50 — that's your <b>starting hunch</b>.</p>
 
     <div class="jar-row">
       <div class="jar-col">
@@ -222,15 +221,13 @@
         </div>
       </div>
       <div style="flex:1; min-width:240px;">
-        <p id="mathWalkthrough" class="status">The top rows are the 100 imaginary cases where the
-        coin picked Jar A; the bottom rows are where it picked Jar B. Every dot is colored by
-        whichever candy that imaginary case would have pulled. The ones with a ring around them
-        are the only ones that match your actual clue — and most of the ringed dots sit in
-        whichever jar is more likely.</p>
+        <p id="mathWalkthrough" class="status">Top rows = imaginary cases from Jar A, bottom rows =
+        from Jar B. Each dot shows the candy that case would pull. Draw a candy above, and the
+        dots matching what you saw get ringed — count where most of the rings land.</p>
       </div>
     </div>
 
-    <details class="disclosure advanced" open>
+    <details class="disclosure advanced">
       <summary>How this actually works <span class="adv-sub">— the formula, and its real name</span></summary>
       <div class="disclosure-body">
         <p>Everything above <i>is</i> Bayes' theorem, just without the notation. Reverend Thomas
@@ -294,11 +291,9 @@
 
   <section id="step-badge">
     <span class="step-tag">06 — take it with you</span>
-    <h2>Your detective badge</h2>
-    <p>Crack at least one case above to earn a badge with your name and your record on it —
-    then put it on a shirt.</p>
-    <label class="field">Detective name</label>
-    <input type="text" id="detectiveName" placeholder="Agent Ramirez" maxlength="24">
+    <h2>The joke you just earned</h2>
+    <p>Crack a case above and this fills in with the real swing your own hunch just made —
+    a starting number, an ending number, and the punchline.</p>
     <div class="row" style="margin-top:18px;">
       <div class="col">
         <canvas id="badgeCanvas" width="720" height="900"></canvas>
@@ -307,9 +302,9 @@
           <button type="button" data-theme="light">White</button>
         </div>
         <div class="actions">
-          <button type="button" class="primary" id="downloadBadgeBtn" disabled>Download badge PNG</button>
+          <button type="button" class="primary" id="downloadBadgeBtn" disabled>Download design PNG</button>
         </div>
-        <p class="status" id="badgeStatus">Crack a case above to unlock your badge.</p>
+        <p class="status" id="badgeStatus">Crack a case above to unlock this.</p>
       </div>
       <div class="col">
         <div class="merch-cta">
@@ -321,7 +316,7 @@
             <div class="shirt-print" id="shirtPrint"></div>
           </div>
           <div>
-            <p style="margin:0 0 10px;">A badge you actually earned is worth putting on
+            <p style="margin:0 0 10px;">A real number from a real update is worth putting on
             something — download it above, then upload it here to make it real.</p>
             <div class="actions">
               <a class="primary" href="https://www.zazzle.com/personalized_one_of_a_kind_photo_collage_t_shirt-235429040115913948?rf=238054754631086278" target="_blank" rel="noopener" style="display:inline-block; text-decoration:none;">Put it on a shirt →</a>
@@ -393,7 +388,6 @@
   var revealBody = document.getElementById('revealBody');
   var scoreboard = document.getElementById('scoreboard');
   var setupStatus = document.getElementById('setupStatus');
-  var detectiveName = document.getElementById('detectiveName');
   var badgeCanvas = document.getElementById('badgeCanvas');
   var downloadBadgeBtn = document.getElementById('downloadBadgeBtn');
   var badgeStatus = document.getElementById('badgeStatus');
@@ -523,7 +517,8 @@
       hunchCaption.textContent = 'Case started. No clues yet, so the hunch matches the coin’s own odds.';
     } else {
       var last = state.history[state.history.length - 1];
-      hunchCaption.textContent = 'Last clue: a ' + last.color + ' candy moved the hunch from ' +
+      hunchCaption.textContent = 'Last clue: ' + (last.color === 'orange' ? 'an ' : 'a ') + last.color +
+        ' candy moved the hunch from ' +
         Math.round(last.hunchBefore*100) + '% to ' + Math.round(last.hunchAfter*100) + '% for Jar A.';
     }
   }
@@ -602,13 +597,13 @@
 
     var totalMatches = matchA + matchB;
     var pct = totalMatches > 0 ? Math.round(matchA / totalMatches * 100) : 0;
-    mathIntro.textContent = 'Before this clue, your hunch was ' + Math.round(priorBefore*100) +
-      '% Jar A. Out of 100 imaginary cases, about ' + nA + ' would come from Jar A (top rows) and ' +
+    mathIntro.textContent = 'Your hunch before this clue: ' + Math.round(priorBefore*100) +
+      '% Jar A. Picture 100 cases like this one — about ' + nA + ' come from Jar A (top rows), ' +
       (100-nA) + ' from Jar B (bottom rows).';
-    mathWalkthrough.innerHTML = 'You saw a <b>' + color + '</b> candy. Ringed dots are the ones that ' +
-      'would show that same color. <b>' + matchA + '</b> ringed dots are in the Jar A group and ' +
-      '<b>' + matchB + '</b> are in the Jar B group — so out of every ringed dot, about <b>' + pct +
-      '%</b> are Jar A. (This picture rounds to the nearest dot; the exact number is what the hunch bar above shows.)';
+    mathWalkthrough.innerHTML = 'You saw ' + (color === 'orange' ? 'an ' : 'a ') + '<b>' + color +
+      '</b> candy — the ringed dots are the ones that would show it. <b>' + matchA +
+      '</b> are in Jar A’s group, <b>' + matchB + '</b> in Jar B’s — so <b>' + pct +
+      '%</b> of the matching dots are Jar A. (Rounded to the nearest dot; the hunch bar above has the exact number.)';
   }
 
   // ---------- setup phase controls ----------
@@ -728,125 +723,51 @@
     var headline, body;
     if (correct && state.guess === mathFavored && mathConfidence >= 65){
       headline = 'Case cracked. ✅';
-      body = 'It really was Jar ' + state.secretJar + ' — and the math agreed with you at ' + mathConfidence + '% confidence. That’s Bayes’ theorem working exactly like it’s supposed to.';
+      body = 'It was Jar ' + state.secretJar + ' — the math agreed with you, at ' + mathConfidence + '% confidence.';
     } else if (correct){
       headline = 'Case cracked — by a hair. ✅';
-      body = 'It was Jar ' + state.secretJar + '. The hunch only gave that ' + mathConfidence + '% confidence, so this one could easily have gone the other way — good guess, or good luck, or both.';
+      body = 'It was Jar ' + state.secretJar + '. Only ' + mathConfidence + '% confidence, so this could easily have gone the other way.';
     } else if (state.guess !== mathFavored){
       headline = 'Not this time. ❌';
-      body = 'It was actually Jar ' + state.secretJar + '. The hunch bar was already leaning ' + mathConfidence + '% toward Jar ' + mathFavored + ' before you locked in — worth checking the case log above against the math next time.';
+      body = 'It was actually Jar ' + state.secretJar + '. The hunch bar was already leaning ' + mathConfidence + '% toward Jar ' + mathFavored + ' before you locked in — check the case log against the math next time.';
     } else {
       headline = 'Not this time — tough break. ❌';
-      body = 'It was Jar ' + state.secretJar + '. You and the math agreed at ' + mathConfidence + '% confidence, and it still didn’t pan out — that’s the part of probability that isn’t under anyone’s control. A confident hunch is still just a hunch.';
+      body = 'It was Jar ' + state.secretJar + '. You and the math agreed at ' + mathConfidence + '% confidence, and it still didn’t pan out. A confident hunch is still just a hunch.';
     }
     revealHeadline.textContent = headline;
     revealBody.textContent = body;
     revealPanel.classList.add('show');
     scoreboard.innerHTML = 'Cases cracked: <b>' + state.casesSolved + '</b> / ' + state.casesTotal;
 
+    var startPct = Math.round((state.secretJar === 'A' ? state.priorA : (1 - state.priorA)) * 100);
     lastCase = {
       jarA: state.jarA, jarB: state.jarB, secretJar: state.secretJar,
-      guess: state.guess, correct: correct, confidence: mathConfidence, clues: state.history.length
+      guess: state.guess, correct: correct, confidence: mathConfidence, clues: state.history.length,
+      startConfidence: startPct
     };
     renderBadge();
     downloadBadgeBtn.disabled = false;
-    badgeStatus.textContent = 'Badge ready — download it, then put it on a shirt.';
+    badgeStatus.textContent = 'Ready — download it, then put it on a shirt.';
   });
 
   // ---------- badge ----------
   var lastCase = null;
 
-  function wrapText(ctx, text, x, y, maxWidth, lineHeight){
-    var words = text.split(' ');
-    var line = '';
-    for (var n = 0; n < words.length; n++){
-      var test = line + words[n] + ' ';
-      if (ctx.measureText(test).width > maxWidth && n > 0){
-        ctx.fillText(line, x, y);
-        line = words[n] + ' ';
-        y += lineHeight;
-      } else {
-        line = test;
-      }
-    }
-    ctx.fillText(line, x, y);
-    return y + lineHeight;
-  }
-
   var BADGE_THEMES = {
-    dark:  { bg: '#10131a', ink: '#e9e7de', dim: '#9aa0ae', line: '#4a5064', jarLine: '#4a5064', jarFill: 'rgba(255,255,255,0.04)' },
-    light: { bg: '#faf7f0', ink: '#20222a', dim: '#5b5f6b', line: '#c9bfae', jarLine: '#8a8f9b', jarFill: 'rgba(0,0,0,0.035)' }
+    dark:  { bg: '#10131a', ink: '#e9e7de', dim: '#9aa0ae' },
+    light: { bg: '#faf7f0', ink: '#20222a', dim: '#5b5f6b' }
   };
   var badgeTheme = 'dark';
-  var caseFileNo = 1000 + Math.floor(Math.random() * 9000);
-  var issueDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 
-  function drawMiniJar(ctx, cx, cy, jw, jh, orangeOutOf10, t){
-    var jx = cx - jw/2, jy = cy - jh/2;
-    ctx.beginPath();
-    ctx.moveTo(jx, jy + jh*0.14);
-    ctx.quadraticCurveTo(jx, jy, jx + jw*0.14, jy);
-    ctx.lineTo(jx + jw*0.86, jy);
-    ctx.quadraticCurveTo(jx + jw, jy, jx + jw, jy + jh*0.14);
-    ctx.lineTo(jx + jw, jy + jh*0.86);
-    ctx.quadraticCurveTo(jx + jw, jy + jh, jx + jw*0.86, jy + jh);
-    ctx.lineTo(jx + jw*0.14, jy + jh);
-    ctx.quadraticCurveTo(jx, jy + jh, jx, jy + jh*0.86);
-    ctx.closePath();
-    ctx.fillStyle = t.jarFill;
-    ctx.fill();
-    ctx.strokeStyle = t.jarLine;
-    ctx.lineWidth = Math.max(1.5, jw*0.035);
-    ctx.stroke();
-    ctx.fillStyle = t.jarLine;
-    ctx.fillRect(jx + jw*0.2, jy - jh*0.07, jw*0.6, jh*0.07);
-    var slots = [[0.32,0.26],[0.62,0.22],[0.78,0.42],[0.34,0.5],[0.62,0.56],[0.5,0.76]];
-    var r = jw*0.1;
-    var orangeSlots = Math.round(orangeOutOf10/10*slots.length);
-    for (var i = 0; i < slots.length; i++){
-      var ccx = jx + slots[i][0]*jw, ccy = jy + slots[i][1]*jh;
+  function drawCandyRow(ctx, cx, cy, orangeOutOf10, count, color1, color2){
+    var r = 9, gap = 26, total = (count - 1) * gap;
+    var orangeCount = Math.round(orangeOutOf10 / 10 * count);
+    for (var i = 0; i < count; i++){
       ctx.beginPath();
-      ctx.arc(ccx, ccy, r, 0, Math.PI*2);
-      ctx.fillStyle = i < orangeSlots ? COLOR_ORANGE : COLOR_BLUE;
+      ctx.arc(cx - total/2 + i*gap, cy, r, 0, Math.PI*2);
+      ctx.fillStyle = i < orangeCount ? color1 : color2;
       ctx.fill();
     }
-  }
-
-  function drawStar(ctx, cx, cy, outerR, innerR, color){
-    var rot = Math.PI/2*3, step = Math.PI/5;
-    ctx.beginPath();
-    ctx.moveTo(cx, cy - outerR);
-    for (var i = 0; i < 5; i++){
-      ctx.lineTo(cx + Math.cos(rot)*outerR, cy + Math.sin(rot)*outerR); rot += step;
-      ctx.lineTo(cx + Math.cos(rot)*innerR, cy + Math.sin(rot)*innerR); rot += step;
-    }
-    ctx.closePath();
-    ctx.fillStyle = color;
-    ctx.fill();
-  }
-
-  function drawSeal(ctx, cx, cy, r, color){
-    ctx.beginPath(); ctx.arc(cx, cy, r*1.22, 0, Math.PI*2);
-    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.globalAlpha = 0.5; ctx.stroke(); ctx.globalAlpha = 1;
-    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2);
-    ctx.fillStyle = color; ctx.globalAlpha = 0.14; ctx.fill(); ctx.globalAlpha = 1;
-    ctx.lineWidth = 3; ctx.stroke();
-    drawStar(ctx, cx, cy, r*0.5, r*0.22, color);
-    ctx.beginPath();
-    ctx.moveTo(cx - r*0.4, cy + r*0.85); ctx.lineTo(cx - r*0.6, cy + r*1.7); ctx.lineTo(cx - r*0.12, cy + r*1.15); ctx.closePath();
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(cx + r*0.4, cy + r*0.85); ctx.lineTo(cx + r*0.6, cy + r*1.7); ctx.lineTo(cx + r*0.12, cy + r*1.15); ctx.closePath();
-    ctx.fill();
-  }
-
-  function drawCornerFlourish(ctx, x, y, size, color){
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(Math.PI/4);
-    ctx.strokeStyle = color; ctx.lineWidth = 2;
-    ctx.strokeRect(-size/2, -size/2, size, size);
-    ctx.restore();
   }
 
   function renderBadge(){
@@ -856,100 +777,49 @@
 
     ctx.fillStyle = t.bg;
     ctx.fillRect(0, 0, w, h);
-
-    // ornate double border with corner flourishes
-    ctx.strokeStyle = COLOR_ACCENT;
-    ctx.lineWidth = 6;
-    ctx.strokeRect(24, 24, w - 48, h - 48);
-    ctx.strokeStyle = t.line;
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(38, 38, w - 76, h - 76);
-    [[24,24],[w-24,24],[24,h-24],[w-24,h-24]].forEach(function(c){
-      drawCornerFlourish(ctx, c[0], c[1], 16, COLOR_ACCENT);
-    });
-
     ctx.textAlign = 'center';
-    ctx.fillStyle = t.dim;
-    ctx.font = '600 15px Inter, sans-serif';
-    ctx.fillText('C E R T I F I C A T E   O F   A C H I E V E M E N T', w/2, 85);
 
     ctx.fillStyle = COLOR_ACCENT;
-    ctx.font = '600 24px Inter, sans-serif';
-    ctx.fillText('CERTIFIED', w/2, 128);
-    ctx.font = '600 46px Fraunces, serif';
-    ctx.fillStyle = t.ink;
-    ctx.fillText('Bayes Detective', w/2, 182);
+    ctx.font = '600 16px Inter, sans-serif';
+    ctx.fillText('REAL BAYES’ THEOREM — NOT CLIP ART', w/2, 130);
 
-    // jar A -- magnifying glass -- jar B, the real recipe from the last case (or the current jars)
+    ctx.fillStyle = t.ink;
+    ctx.font = '700 52px Inter, sans-serif';
+    ctx.fillText('I UPDATED', w/2, 220);
+    ctx.fillText('MY PRIOR', w/2, 280);
+
     var jarA = lastCase ? lastCase.jarA : state.jarA;
-    var jarB = lastCase ? lastCase.jarB : state.jarB;
-    var mgx = w/2, mgy = 265;
-    drawMiniJar(ctx, mgx - 155, mgy, 78, 92, jarA, t);
-    drawMiniJar(ctx, mgx + 155, mgy, 78, 92, jarB, t);
-    ctx.beginPath();
-    ctx.arc(mgx - 10, mgy, 40, 0, Math.PI*2);
-    ctx.strokeStyle = COLOR_ACCENT;
-    ctx.lineWidth = 8;
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(mgx + 18, mgy + 28);
-    ctx.lineTo(mgx + 52, mgy + 62);
-    ctx.lineWidth = 10;
-    ctx.lineCap = 'round';
-    ctx.stroke();
+    drawCandyRow(ctx, w/2, 330, jarA, 7, COLOR_ORANGE, COLOR_BLUE);
 
-    ctx.font = 'italic 19px Fraunces, serif';
-    ctx.fillStyle = t.dim;
-    ctx.fillText('This certifies that', w/2, 372);
-
-    var name = (detectiveName.value || 'Anonymous Detective').trim();
-    ctx.font = '600 36px Inter, sans-serif';
-    ctx.fillStyle = t.ink;
-    ctx.fillText(name, w/2, 415);
-
-    ctx.font = 'italic 19px Fraunces, serif';
-    ctx.fillStyle = t.dim;
+    ctx.fillStyle = COLOR_ACCENT;
+    ctx.font = '700 96px "JetBrains Mono", ui-monospace, monospace';
     if (lastCase){
-      ctx.fillText('has applied real Bayes’ theorem to crack', w/2, 452);
-      ctx.font = '700 26px Inter, sans-serif';
-      ctx.fillStyle = COLOR_ACCENT;
-      ctx.fillText(state.casesSolved + ' of ' + state.casesTotal + ' case' + (state.casesTotal===1?'':'s'), w/2, 490);
+      ctx.fillText(lastCase.startConfidence + '% → ' + lastCase.confidence + '%', w/2, 470);
     } else {
-      ctx.fillText('is ready to crack their first case.', w/2, 452);
+      ctx.fillStyle = t.dim;
+      ctx.fillText('??% → ??%', w/2, 470);
     }
 
-    ctx.font = '400 21px Inter, sans-serif';
     ctx.fillStyle = t.dim;
-    ctx.textAlign = 'left';
-    var y = 540;
-    if (lastCase){
-      y = wrapText(ctx, 'Last case: Jar A had ' + lastCase.jarA + '/10 orange, Jar B had ' + lastCase.jarB + '/10 orange.', w/2 - 260, y, 520, 29);
-      y = wrapText(ctx, 'Solved with ' + lastCase.clues + ' clue' + (lastCase.clues===1?'':'s') + ' and ' + lastCase.confidence + '% confidence.', w/2 - 260, y + 6, 520, 29);
-      y = wrapText(ctx, lastCase.correct ? 'Verdict: correct.' : 'Verdict: it happens to every detective.', w/2 - 260, y + 6, 520, 29);
-    }
+    ctx.font = 'italic 26px Fraunces, serif';
+    ctx.fillText('...and all I got was this T-shirt.', w/2, 550);
 
-    // seal + case file number, the certificate's own "official" flourishes
-    drawSeal(ctx, w - 128, 690, 46, COLOR_ACCENT);
-    ctx.textAlign = 'left';
-    ctx.font = '600 15px "JetBrains Mono", ui-monospace, monospace';
     ctx.fillStyle = t.dim;
-    ctx.fillText('CASE FILE NO. ' + caseFileNo, 78, 700);
-    ctx.font = '400 15px "JetBrains Mono", ui-monospace, monospace';
-    ctx.fillText('ISSUED ' + issueDate.toUpperCase(), 78, 722);
+    ctx.font = '400 17px Inter, sans-serif';
+    ctx.fillText(lastCase
+      ? ('Jar A: ' + lastCase.jarA + '/10 orange · Jar B: ' + lastCase.jarB + '/10 orange · ' + lastCase.clues + ' clue' + (lastCase.clues===1?'':'s')
+        + ' · ' + (lastCase.correct ? 'guessed right' : 'guessed wrong'))
+      : 'crack a case above to fill this in', w/2, 660);
 
-    ctx.textAlign = 'center';
-    ctx.font = 'italic 20px Fraunces, serif';
-    ctx.fillStyle = t.dim;
-    ctx.fillText('"Every guess is a hunch waiting for a clue."', w/2, h - 90);
     ctx.font = '400 16px Inter, sans-serif';
-    ctx.fillText('michaelkrauklis.me/lab/hunch', w/2, h - 55);
+    ctx.fillText('michaelkrauklis.me/lab/hunch', w/2, h - 60);
 
     shirtPrint.style.backgroundImage = 'url(' + badgeCanvas.toDataURL('image/png') + ')';
   }
 
   downloadBadgeBtn.addEventListener('click', function(){
     var link = document.createElement('a');
-    link.download = 'bayes-detective-badge-' + badgeTheme + '.png';
+    link.download = 'hunch-updated-my-prior-' + badgeTheme + '.png';
     link.href = badgeCanvas.toDataURL('image/png');
     link.click();
   });
@@ -962,8 +832,6 @@
     badgeTheme = btn.dataset.theme;
     renderBadge();
   });
-
-  detectiveName.addEventListener('input', function(){ renderBadge(); });
 
   // ---------- init ----------
   renderJars();

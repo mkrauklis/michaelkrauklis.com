@@ -186,10 +186,15 @@ When adding a new lab tool, link both files and rely on `theme.css`'s defaults b
 new CSS — copying a whole `<style>` block from an existing tool page (the old pattern) is how
 the palette and the paragraph-width bug drifted out of sync across pages in the first place.
 
-`lab/index.html`'s tool list is ordered newest-first, top to bottom (currently Matrix Matrix,
-Hunch, Attention, Tonus, Inkling, Echo State, Neural Viaduct, Vectis, Afterimage, Ridgeline — keep
-this parenthetical current when it drifts; it had already fallen a tool behind before this edit) —
-add a new tool's card at the *top* of
+`lab/index.html`'s tool list is ordered newest-first, top to bottom, **with one direct exception**:
+Matrix Matrix, Hunch, and Attention were demoted to the *bottom* of the list on direct instruction
+("they're good starts, but none of them are good enough to be top of the list") pending a revamp
+pass — see each tool's own CLAUDE.md for what changed. Current order: Tonus, Inkling, Echo State,
+Neural Viaduct, Vectis, Afterimage, Ridgeline, Matrix Matrix, Hunch, Attention (keep this
+parenthetical current when it drifts). Once a demoted tool's revamp is confirmed good, move it back
+into newest-first position rather than leaving the exception in place indefinitely — this ordering
+is a temporary quality gate, not a new permanent rule. A brand-new tool (not one of these three)
+still goes at the very top as usual. Add a new tool's card at the *top* of
 `.tool-list`, not the bottom. Each card also gets a `/lab/<tool>/thumbnail.jpg` — build it from
 the tool's own real output, not placeholder art, but crop it to a **tight square around the
 actual content** before saving it (no padding/letterboxing baked into the file — if the tool's

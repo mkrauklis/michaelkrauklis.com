@@ -98,12 +98,8 @@
   .shape-equation .inner.match{ color:#4fd17a; background:color-mix(in srgb, #4fd17a 15%, transparent); }
   .shape-equation .inner.mismatch{ color:var(--danger); background:color-mix(in srgb, var(--danger) 15%, transparent); }
 
-  /* ---- terminal-error design export (Stage 6) ---- */
+  /* ---- shirt design export (Stage 6) ---- */
   #designCanvas{ display:block; width:100%; max-width:420px; height:auto; background:#0c0e13; border:1px solid var(--line); border-radius:8px; }
-
-  table.data-table{ border-collapse:collapse; margin-top:14px; font-size:0.9rem; }
-  table.data-table th, table.data-table td{ border:1px solid var(--line); padding:8px 14px; text-align:center; }
-  table.data-table th{ background:var(--bg-panel-2); color:var(--ink-dim); font-weight:600; font-size:0.8rem; }
 </style>
 </head>
 <body>
@@ -148,28 +144,15 @@
   <section id="step-represent">
     <span class="step-tag">02 — what a matrix can represent</span>
     <h2>The grid doesn't care what the numbers mean</h2>
-    <p>A matrix is just a container — what makes it useful is that the same grid shape can hold
-    completely different kinds of information. Here are three real ones.</p>
+    <p>A matrix is just a container — the same grid shape can hold completely different kinds of
+    information. Two real ones:</p>
 
     <div class="panel">
-      <h3 class="stage-sub">A table of data</h3>
-      <p class="tooltip">The most literal reading: rows are things, columns are properties of
-      those things. Three students, three subjects, nine test scores — a 3×3 matrix, no different
-      in kind from any spreadsheet you've ever opened.</p>
-      <table class="data-table">
-        <tr><th></th><th>Math</th><th>Science</th><th>Art</th></tr>
-        <tr><th>Alice</th><td>92</td><td>85</td><td>78</td></tr>
-        <tr><th>Bob</th><td>74</td><td>90</td><td>95</td></tr>
-        <tr><th>Carol</th><td>88</td><td>81</td><td>99</td></tr>
-      </table>
-    </div>
-
-    <div class="panel" style="margin-top:20px;">
       <h3 class="stage-sub">A picture</h3>
       <p class="tooltip">Every digital image is a matrix — each cell's number is that pixel's
-      brightness (0 = fully off, higher = brighter). The exact same 8×8 grid of numbers below is
-      shown two ways: as plain numbers, and as an actual picture. Nothing was drawn by hand — the
-      picture <i>is</i> the numbers, just displayed as colored squares instead of digits.</p>
+      brightness. The same 8×8 grid of numbers below is shown two ways: as plain numbers, and as
+      an actual picture. Nothing was drawn by hand — the picture <i>is</i> the numbers, just
+      shown as colored squares instead of digits.</p>
       <div class="pixel-row">
         <canvas class="pixel-canvas" id="pixelCanvas" width="160" height="160"></canvas>
         <div class="matrix-grid" id="pixelNumbers" data-rows="8" data-cols="8"></div>
@@ -178,12 +161,10 @@
 
     <div class="panel" style="margin-top:20px;">
       <h3 class="stage-sub">A set of instructions for reshaping something</h3>
-      <p class="tooltip">A matrix can also be a recipe: feed it a point (or a whole shape made of
-      points), and it hands back a new point, moved somewhere specific. Every button below sets a
-      different 2×2 matrix — watch the square actually get rotated, stretched, or flipped by it.
-      Notice what's happening under the hood: moving <i>one</i> point is a 2×2 matrix multiplied
-      by a single point's 2 numbers — a matrix multiplication with the smallest possible second
-      matrix. Stage 3 below shows exactly how that multiplication works, then scales the same idea
+      <p class="tooltip">A matrix can also be a recipe: feed it a point, get back a new point,
+      moved somewhere specific. Each button below sets a different 2×2 matrix — watch the square
+      get rotated, stretched, or flipped by it. That's already a matrix multiplication happening
+      — a 2×2 matrix times a single point's 2 numbers. Stage 3 shows exactly how, then scales it
       up.</p>
       <canvas id="transformCanvas" width="320" height="320"></canvas>
       <div class="transform-controls" id="transformButtons">
@@ -200,12 +181,12 @@
   <section id="step-multiply">
     <span class="step-tag">03 — multiplying two matrices</span>
     <h2>Row, times column, added up</h2>
-    <p class="lead">Here's the entire rule: to find the number that goes in row <i>i</i>, column
-    <i>j</i> of the answer, take row <i>i</i> of the first matrix and column <i>j</i> of the second
-    matrix — two equal-length lists of numbers — multiply them together position by position, and
-    add up the results. That's a <b>dot product</b>, the exact same operation Attention uses to
-    compare two words. Do that once for every row/column pairing, and you've filled in the whole
-    answer. Click any cell in C below to see exactly which row and column made it.</p>
+    <p class="lead">Here's the entire rule: to fill row <i>i</i>, column <i>j</i> of the answer,
+    take row <i>i</i> of the first matrix and column <i>j</i> of the second — two equal-length
+    lists — multiply position by position, and add up. That's a <b>dot product</b>, the same
+    operation Attention uses to compare two words. Do that for every row/column pair and you've
+    filled in the whole answer — click any cell in C below to see exactly which row and column
+    made it.</p>
 
     <div class="panel">
       <h3 class="stage-sub">Start small: 2×2 times 2×2</h3>
@@ -229,12 +210,10 @@
 
     <div class="panel" style="margin-top:20px;">
       <h3 class="stage-sub">Different shapes: 1×2 times 2×4</h3>
-      <p class="tooltip">Square matrices can hide a real requirement: the first matrix's number of
-      <b>columns</b> has to match the second matrix's number of <b>rows</b> — here, 2 and 2. Every
-      row of A and every column of B still has to be the same length for the dot product to even
-      make sense; that shared length (2) disappears from the answer's own shape, which ends up
-      1 row × 4 columns — one row from A, but every column from B, each one getting its own dot
-      product against A's single row.</p>
+      <p class="tooltip">Square matrices can hide a real requirement: the first matrix's
+      <b>columns</b> have to match the second matrix's <b>rows</b> — here, 2 and 2. That shared
+      length disappears from the answer's shape, which ends up 1 row × 4 columns — one row from
+      A, but every column from B.</p>
       <div class="matmul-row" id="demoRect"></div>
       <div class="matmul-explain" id="demoRect-explain"></div>
     </div>
@@ -243,10 +222,9 @@
   <section id="step-shapes">
     <span class="step-tag">04 — try any shape</span>
     <h2>When does this actually work?</h2>
-    <p>The rule that showed up by accident above, stated in general: for an <b>m×k</b> matrix times
-    a <b>k×n</b> matrix, the two <b>k</b>'s in the middle have to match — that's the only
-    requirement. What survives into the answer's shape is the two numbers on the outside, <b>m</b>
-    and <b>n</b>. Try breaking it on purpose:</p>
+    <p>The rule above, stated in general: for an <b>m×k</b> matrix times a <b>k×n</b> matrix, the
+    two <b>k</b>'s in the middle have to match. What survives into the answer's shape is the two
+    outer numbers, <b>m</b> and <b>n</b>. Try breaking it on purpose:</p>
     <div class="panel">
       <div class="shape-inputs">
         <label>A rows (m) <input type="number" id="seM" min="1" max="6" value="2"></label>
@@ -287,7 +265,7 @@
     </div>
   </section>
 
-  <details class="disclosure advanced" open>
+  <details class="disclosure advanced">
     <summary>How this actually works <span class="adv-sub">— the precise version</span></summary>
     <div class="disclosure-body">
       <p>For matrix <i>A</i> (size m×k) and matrix <i>B</i> (size k×n), the product <i>C = AB</i>
@@ -587,33 +565,34 @@
     var w = designCanvas.width, h = designCanvas.height;
     ctx.fillStyle = '#050608';
     ctx.fillRect(0, 0, w, h);
-
-    ctx.textAlign = 'left';
-    ctx.font = '18px "JetBrains Mono", ui-monospace, monospace';
-    ctx.fillStyle = '#5eb0a4';
-    ctx.fillText('>>> attention_output = A @ B', 60, 90);
+    ctx.textAlign = 'center';
 
     ctx.fillStyle = '#e5484d';
-    ctx.font = 'bold 26px "JetBrains Mono", ui-monospace, monospace';
-    ctx.fillText('ValueError', 60, 150);
-    ctx.font = '20px "JetBrains Mono", ui-monospace, monospace';
+    ctx.font = '800 62px "JetBrains Mono", ui-monospace, monospace';
+    ctx.fillText('ValueError', w/2, 160);
+
     ctx.fillStyle = '#e9e7de';
-    ctx.fillText('shapes (3,4) and (5,6) not aligned:', 60, 190);
-    ctx.fillText('4 (dim 1) != 5 (dim 0)', 60, 220);
+    ctx.font = '700 38px "JetBrains Mono", ui-monospace, monospace';
+    ctx.fillText('shapes (3,4) and (5,6)', w/2, 220);
+    ctx.fillText('not aligned', w/2, 268);
+
+    ctx.font = '400 19px "JetBrains Mono", ui-monospace, monospace';
+    ctx.fillStyle = '#9aa0ae';
+    ctx.fillText('4 (dim 1) != 5 (dim 0)', w/2, 310);
 
     ctx.strokeStyle = '#2a3040';
-    ctx.beginPath(); ctx.moveTo(60, 270); ctx.lineTo(w-60, 270); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(120, 360); ctx.lineTo(w-120, 360); ctx.stroke();
 
-    ctx.textAlign = 'center';
     ctx.fillStyle = '#e9e7de';
-    ctx.font = '600 40px Fraunces, serif';
-    ctx.fillText('Make sure the', w/2, 400);
-    ctx.fillText('inner dimensions', w/2, 452);
-    ctx.fillText('match.', w/2, 504);
+    ctx.font = '800 52px Inter, sans-serif';
+    ctx.fillText('MAKE SURE THE', w/2, 460);
+    ctx.fillText('INNER DIMENSIONS', w/2, 522);
+    ctx.fillStyle = '#22d3ee';
+    ctx.fillText('MATCH.', w/2, 584);
 
-    ctx.font = 'italic 20px Fraunces, serif';
+    ctx.font = 'italic 22px Fraunces, serif';
     ctx.fillStyle = '#9aa0ae';
-    ctx.fillText('— every matrix multiplication error, eventually', w/2, 560);
+    ctx.fillText('— every matrix multiplication error, eventually', w/2, 645);
 
     ctx.font = '600 22px "JetBrains Mono", ui-monospace, monospace';
     ctx.fillStyle = '#22d3ee';

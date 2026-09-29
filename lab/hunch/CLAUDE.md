@@ -199,6 +199,43 @@ grid before the formula, never the reverse), and the "why this matters" section'
 examples (spam filters, weather forecasts, medical tests) are each two sentences of plain
 description with no technical terms of their own.
 
+## Second revamp: the certificate becomes a joke, and the page gets tighter
+
+Direct feedback, delivered alongside Matrix Matrix and Attention all being demoted to the bottom
+of `lab/index.html`: "nobody cares about a certificate. We want a joke or something that's
+relevant and mathy... they're too confusing still. Please make them simpler and more direct."
+Two separate fixes:
+
+**The badge became "I updated my prior."** `renderBadge()` now draws a plain, loud joke instead of
+a formal certificate: "REAL BAYES' THEOREM — NOT CLIP ART" (small, accent), "I UPDATED MY PRIOR"
+(huge, bold), a row of candy dots colored by the last case's real Jar A recipe, then the actual
+number swing from that case — `{startConfidence}% → {confidence}%` — at 96px, and "...and all I
+got was this T-shirt." underneath. `startConfidence` is a new field on `lastCase`, computed at
+reveal time as the coin's own starting odds for whichever jar turned out to be correct
+(`state.secretJar === 'A' ? state.priorA : (1 - state.priorA)`) — a real, honest "before" number to
+pair with the real "after" number already being tracked, not a made-up one. Everything from the
+old certificate concept — the name input, the formal "this certifies that" sentence, the seal, the
+case file number, the corner flourishes, the two full-size jar illustrations — was deleted, not
+just hidden; `drawMiniJar`/`drawStar`/`drawSeal`/`drawCornerFlourish` and the now-orphaned
+`wrapText` helper are gone. The Dark/White theme toggle survived, since it was never the problem —
+a joke still needs to print cleanly on a light shirt.
+
+**The main flow got shorter and less dense**, without cutting any real content: the "do the math"
+paragraphs were tightened (e.g. "Before this clue, your hunch was 50% Jar A. Out of 100 imaginary
+cases, about 50 would come from..." → "Your hunch before this clue: 50%... Picture 100 cases like
+this one — about 50 come from..."), the reveal-panel copy dropped its more philosophical asides, and
+the "How this actually works" disclosure — the formula and vocabulary table — now starts
+**collapsed**, not open, so the page's default view is the natural-frequency grid and plain
+language only, with the formal notation genuinely opt-in rather than front-loaded.
+
+**A real bug fixed along the way**: `hunchCaption` and the natural-frequency walkthrough both wrote
+"a orange candy" — a plain `'a ' + color` concatenation that never accounted for "orange" starting
+with a vowel sound. Fixed with a direct ternary (`color === 'orange' ? 'an ' : 'a '`) rather than a
+general a/an heuristic, since there are only ever two possible colors.
+
+`lab/index.html`'s card description was also trimmed — it no longer mentions "your own detective
+badge on a T-shirt," since the artifact backing that claim no longer exists in that form.
+
 ## Testing notes
 
 No test suite — static page. Verify via the local static server (root-relative `/nav.js` and

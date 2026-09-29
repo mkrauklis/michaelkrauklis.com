@@ -115,6 +115,33 @@ them at once except the very last cell in each grid. Any future change to `rende
 branch should re-run this exact test (edit a non-last cell, confirm only that cell's value and the
 recomputed answer change) before shipping.
 
+## Revamp: a punchier design, and one fewer representation in Stage 2
+
+Direct feedback, alongside Hunch and Attention both being demoted to the bottom of
+`lab/index.html`: "especially matrix matrix and hunch, they need better artifacts that can end up
+on t-shirts... they're too confusing still. Please make them simpler and more direct." The design
+concept (a real shape-mismatch error under a deadpan caption) was already the right idea — the
+execution wasn't landing it hard enough. Fixed by restructuring, not replacing: dropped the small
+`>>> attention_output = A @ B` prompt line entirely (extra clutter competing with the actual joke),
+made "ValueError" and the shape-mismatch text much larger and centered instead of small and
+left-aligned in a corner, and kept "MAKE SURE THE INNER DIMENSIONS MATCH." as the punchline but in
+bold sans instead of serif, matching the louder, more poster-like hierarchy the redesign was going
+for — lead with the big thing, not the fine print.
+
+**Stage 2 lost its third representation.** "A table of data" (a static 3×3 student-scores table)
+was cut entirely — it was the least essential of the three: it didn't set up anything later on the
+page the way "a picture" (real pixel-grid rendering) and "a set of instructions for reshaping
+something" (the live transform demo, which directly previews Stage 3's own multiplication) both do.
+Cutting it removed a full panel and its now-dead `table.data-table` CSS, and shortened the page
+without touching anything Stage 3's three worked examples, Stage 4's shape checker, or Stage 5's
+real-world tie-ins — all of which were explicit, specific requests in the original build and
+weren't second-guessed here.
+
+**The densest paragraphs were tightened** (Stage 3's lead, the "different shapes" callout, Stage
+4's intro), and **"How this actually works" now starts collapsed** instead of open — it's the
+"precise version" by its own subtitle, not something a first-time reader needs pushed in front of
+them immediately.
+
 ## Testing notes
 
 No test suite — static page. Verify via the local static server. Golden path: confirm the intro
